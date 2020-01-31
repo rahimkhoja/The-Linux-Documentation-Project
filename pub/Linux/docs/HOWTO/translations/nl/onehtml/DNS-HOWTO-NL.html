@@ -1,0 +1,1805 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+<HEAD>
+ <META NAME="GENERATOR" CONTENT="SGML-Tools 1.0.9">
+ <TITLE>DNS HOWTO</TITLE>
+
+
+</HEAD>
+<BODY>
+<H1>DNS HOWTO</H1>
+
+<H2>Nicolai Langfeldt 
+<A HREF="mailto:janl@math.uio.no">janl@math.uio.no</A>, <BR> Vertaald door Maarten van Steenbergen 
+<A HREF="mailto:maarten@nl.linux.org">maarten@nl.linux.org</A> </H2>v2.2, 11 februari 1999
+<P><HR>
+<EM>Deze HOWTO is een inleiding in het configureren van een nameserver met BIND.</EM>
+<HR>
+<H2><A NAME="s1">1. Inleiding</A></H2>
+
+<P>Keywords: DNS, bind, bind-4, bind-8, named, dialup, ppp, slip,
+isdn, Internet, domain, name, hosts, resolving, caching.
+<P>Dit document is een onderdeel van het Linux Documentation Project.
+<H2>1.1 Copyright</H2>
+
+<P>(C)opyright 1995-1999 Nicolai Langfeldt. Verander dit document niet 
+zonder de copyrights te vermelden. Het document is vrij te kopi&euml;ren, maar
+houd rekening met het copyright dat erop zit.
+<H2>1.2 Dank aan...</H2>
+
+<P>Ik wil Arnt Gulbrandsen bedanken die de proefversies van dit document
+heeft doorgelezen en verbeterd, en enkele handige suggesties heeft gegeven. 
+Ik wil ook de talrijke mensen bedanken die suggesties en tips mailden.
+<P>Dit document is nooit af. Als je fouten ziet of een verbetering weet mail
+dan even, dan kan de HOWTO beter worden. Zend commentaar en/of vragen of
+geld naar 
+<A HREF="janl@math.uio.no">janl@math.uio.no</A>. Als je
+email verzendt en je wilt een antwoord, zorg er dan voor dat het antwoordadres 
+er duidelijk bijstaat en het ook doet. Anders moet je even de 
+<A HREF="#qanda">QnA</A> sectie lezen voor je me mailt. Ik spreek Noors en Engels, dus mail 
+in &eacute;&eacute;n van die twee talen.
+<P>
+<P>Mail me als je deze HOWTO wilt vertalen. Ten eerste kan ik dan bijhouden
+in welke talen dit document is verschenen. Ten tweede kan ik je dan op de 
+hoogte houden van nieuwe versies.
+<H2>1.3 Opgedragen aan...</H2>
+
+<P>Deze HOWTO is opgedragen aan Anne Line Norheim Langfeldt. Ze zal het echter
+nooit lezen, omdat dit niet haar interessegebied is.
+<H2><A NAME="intro"></A> <A NAME="s2">2. Introductie</A></H2>
+
+<P><B>Wat is DNS?</B>
+<P>DNS staat voor 'Domain Name System'. DNS vertaalt namen van computers
+naar een IP adres. Elke computer op een netwerk heeft een uniek IP adres.
+DNS converteert namen naar nummers en andersom. Deze conversie is niets
+anders dan een "tabel" met een kolom namen (zoals <CODE>ftp.linux.org</CODE>) en
+een kolom adressen (zoals <CODE>199.249.150.4</CODE>).
+<P>DNS is voor de beginner (jij ;-) &eacute;&eacute;n van de minder
+doorzichtige aspecten van systeembeheer. Dit document tracht een aantal
+zaken op te helderen. Het beschrijft het opzetten van een <EM>simpele</EM> DNS
+server. Het begint met het configureren van een 'caching-only' DNS server, en
+behandelt vervolgens een 'primary' DNS server voor een domein. Voor complexere
+configuraties kan je bij het 
+<A HREF="#qanda">QnA</A> gedeelte terecht. Als
+het daar nog niet wordt besproken zal je de Echte Documentatie moeten lezen.
+In 
+<A HREF="#bigger">het laatste hoofdstuk</A> wordt naar deze Echte
+Documentatie verwezen.
+<P>Voordat je begint met DNS en BIND zal je eerst je machine zodanig moeten
+configureren dat je er vanuit en naartoe kan telnetten. In elk geval
+moet <CODE>telnet 127.0.0.1</CODE> werken (test het nu!). Ook zal je reeds goede
+<CODE>/etc/host.conf</CODE>, <CODE>/etc/hosts.conf</CODE>, en <CODE>/etc/resolv.conf</CODE>
+moeten hebben; de werking van deze bestanden wordt niet in deze HOWTO
+uitgelegd. Als deze basis van je netwerkconfiguratie nog niet goed is
+ingesteld, lees dan eerst de NET-3/4-HOWTO.
+<P>Als in deze HOWTO verwezen wordt naar 'je machine', dan wordt de machine
+bedoeld waarop je DNS aan het configureren bent. Dus niet een andere machine
+die op het netwerk aanwezig is.
+<P>Ik neem aan dat je niet achter een firewall zit die DNS verkeer tegenhoudt.
+Als dat wel het geval is, kijk dan in de 
+<A HREF="#qanda">QnA</A> sectie
+voor een oplossing.
+<P>De meest gebruikte nameserver software is <CODE>named</CODE>. Dit programma is
+onderdeel van "BIND", dat gemaakt wordt door het Internet Software Consortium
+(<CODE>www.isc.org</CODE>). Named is onderdeel van bijna elke Linux distributie en
+staat gewoonlijk in <CODE>/usr/sbin/named</CODE>. Als je het programma nog niet
+hebt, kan je het downloaden van 
+<A HREF="ftp://ftp.isc.org/isc/bind/src/cur/bind-8/">ftp.isc.org:/isc/bind/src/cur/bind-8/</A>. Deze HOWTO gaat over BIND
+versie 8. De oude HOWTO, over BIND versie 4, is nog steeds beschikbaar op
+<A HREF="http://www.math.uio.no/~janl/DNS/">http://www.math.uio.no/~janl/DNS/</A>. Het versienummer is te controleren
+in de named man pagina. Als onderaan bij de FILES sectie het bestand
+<CODE>named.conf</CODE> genoemd staat, dan is het versie 8. Als gesproken wordt over
+<CODE>named.boot</CODE>, dan is het versie 4. Als je versie 4 draait, is het onder
+meer om beveiligingsredenen aan te raden naar versie 8 te upgraden.
+<P>DNS is een gedistribueerde database. Let dus op wat je erin zet. Als je er
+onzin in zet, dan krijg je er onzin uit en zullen ook anderen er last van
+hebben. Houd je DNS configuratie schoon en consistent, dan zal DNS erg nuttig
+zijn. Leer het te gebruiken, beheer het, debug het, en je zal bijdragen aan
+het voorkomen van mismanagement van het Internet.
+<P>In dit document wordt ter vereenvoudiging niet altijd de volledige waarheid
+verteld. Alles zal echter (waarschijnlijk ;) werken, als je doet wat in dit
+document beschreven staat.
+<P><B>Tip:</B> Maak backups van alle bestanden die je wijzigt tijdens het testen
+van de DNS configuratie. Mocht het misgaan, dan kan je altijd nog de oude
+bestanden terugzetten.
+<H2><A NAME="caching"></A> <A NAME="s3">3. Een 'caching only' nameserver</A></H2>
+
+<P><B>Een eerste probeersel met DNS, erg bruikbaar voor inbelverbindingen</B>
+<P>Een 'caching only' nameserver zoekt adressen bij andere nameservers. De
+volgende keer dat om het adres voor dezelfde machinenaam gevraagd wordt, heeft
+de nameserver het antwoord al in het geheugen staan. Dit betekent een
+behoorlijke tijdswinst, zeker op langzame verbindingen.
+<P>Eerst moet een bestand <CODE>/etc/named.conf</CODE> aangemaakt worden. Dit
+bestand wordt gelezen als de nameserver start. Voorlopig bevat dit bestand
+alleen het volgende:
+<P>
+<HR>
+<PRE>
+// Config file for caching only name server
+
+options {
+directory "/var/named";
+
+// Uncommenting this might help if you have to go through a
+// firewall and things are not working out:
+
+// query-source port 53;
+};
+
+zone "." {
+type hint;
+file "root.hints";
+};
+
+zone "0.0.127.in-addr.arpa" {
+type master;
+file "pz/127.0.0";
+};
+</PRE>
+<HR>
+<P>Named kan aan de <CODE>directory</CODE> regel zien waar de configuratiebestanden
+gezocht moeten worden. Elk bestand dat hierna in <CODE>named.conf</CODE> voorkomt,
+staat onder de directory die je opgeeft. In dit voorbeeld is <CODE>pz</CODE> een
+subdirectory van <CODE>/var/named</CODE>, het is dus de directory 
+<CODE>/var/named/pz</CODE>.
+<P>In het bovenstaande configuratiebestand wordt <CODE>/var/named/root.hints</CODE>
+genoemd. <CODE>/var/named/root.hints</CODE> moet het volgende bevatten:
+<P>
+<HR>
+<PRE>
+;
+; There might be opening comments here if you already have this file.
+; If not don't worry.
+;
+.                       6D IN NS        G.ROOT-SERVERS.NET.
+.                       6D IN NS        J.ROOT-SERVERS.NET.
+.                       6D IN NS        K.ROOT-SERVERS.NET.
+.                       6D IN NS        L.ROOT-SERVERS.NET.
+.                       6D IN NS        M.ROOT-SERVERS.NET.
+.                       6D IN NS        A.ROOT-SERVERS.NET.
+.                       6D IN NS        H.ROOT-SERVERS.NET.
+.                       6D IN NS        B.ROOT-SERVERS.NET.
+.                       6D IN NS        C.ROOT-SERVERS.NET.
+.                       6D IN NS        D.ROOT-SERVERS.NET.
+.                       6D IN NS        E.ROOT-SERVERS.NET.
+.                       6D IN NS        I.ROOT-SERVERS.NET.
+.                       6D IN NS        F.ROOT-SERVERS.NET.
+
+G.ROOT-SERVERS.NET.     5w6d16h IN A    192.112.36.4
+J.ROOT-SERVERS.NET.     5w6d16h IN A    198.41.0.10
+K.ROOT-SERVERS.NET.     5w6d16h IN A    193.0.14.129
+L.ROOT-SERVERS.NET.     5w6d16h IN A    198.32.64.12
+M.ROOT-SERVERS.NET.     5w6d16h IN A    202.12.27.33
+A.ROOT-SERVERS.NET.     5w6d16h IN A    198.41.0.4
+H.ROOT-SERVERS.NET.     5w6d16h IN A    128.63.2.53
+B.ROOT-SERVERS.NET.     5w6d16h IN A    128.9.0.107
+C.ROOT-SERVERS.NET.     5w6d16h IN A    192.33.4.12
+D.ROOT-SERVERS.NET.     5w6d16h IN A    128.8.10.90
+E.ROOT-SERVERS.NET.     5w6d16h IN A    192.203.230.10
+I.ROOT-SERVERS.NET.     5w6d16h IN A    192.36.148.17
+F.ROOT-SERVERS.NET.     5w6d16h IN A    192.5.5.241
+</PRE>
+<HR>
+<P>Dit bestand levert informatie over de root nameservers op deze wereld. Deze
+informatie kan mettertijd veranderen, en moet dus worden bijgehouden. Zie de 
+sectie 
+<A HREF="#maint">Onderhoud</A> voor informatie over het bijhouden
+van dit bestand.
+<P>De volgende sectie van <CODE>named.conf</CODE> is de laatste <CODE>zone</CODE>. Het gebruik
+hiervan wordt later uitgelegd. Voorlopig is het voldoende het volgende bestand
+genaamd <CODE>127.0.0</CODE> in de subdirectory <CODE>pz</CODE> te plaatsen:
+<P>
+<HR>
+<PRE>
+@               IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. (
+                        1       ; Serial
+                        8H      ; Refresh
+                        2H      ; Retry
+                        1W      ; Expire
+                        1D)     ; Minimum TTL
+                NS      ns.linux.bogus.
+1                       PTR     localhost.
+</PRE>
+<HR>
+<P>Vervolgens heb je ook nog een <CODE>/etc/resolv.conf</CODE> nodig, dat er
+ongeveer uitziet als:
+<P>
+<HR>
+<PRE>
+search subdomain.your-domain.edu your-domain.edu
+nameserver 127.0.0.1
+</PRE>
+<HR>
+<P>De `<CODE>search</CODE>' regel geeft aan welke domeinen afgezocht moeten worden
+naar machinenamen die je zoekt. De <CODE>nameserver</CODE> regel bevat het IP adres
+van de DNS server die gebruikt moet worden. In dit geval is dat je eigen
+machine. De lokale machine zit altijd op IP adres <CODE>127.0.0.1</CODE>. Als je
+meerdere nameservers wilt gebruiken, geef dan een aparte <CODE>nameserver</CODE> regel
+op voor elke DNS server die je wilt gebruiken. Named leest dit bestand
+overigens nooit in. Dit bestand wordt alleen gebruikt door applicaties die een
+IP adres opzoeken.
+<P>Een uitleg van dit bestand: Als een programma de naam <CODE>foo</CODE> opzoekt,
+dan wordt eerst <CODE>foo.subdomain.your-domain.edu</CODE> geprobeerd, daarna
+<CODE>foo.your-domain.edu</CODE>, en tenslotte <CODE>foo</CODE>. Als een programma het
+IP adres van <CODE>www.linux.org</CODE> zoekt dan wordt eerst
+<CODE>www.linux.org.subdomain.your-domain.edu</CODE> geprobeerd, vervolgens
+<CODE>www.linux.org.your-domain.edu</CODE>, en tenslotte <CODE>www.linux.org</CODE>.
+Het is vreemd, maar zo werkt het nu eenmaal. Het opzoeken van elke naam kost
+tijd. Je moet dus niet al te veel domeinen in de <CODE>search</CODE> regel opnemen.
+<P>Dit voorbeeld gaat ervan uit dat het domein <CODE>subdomain.your-domain.edu</CODE> 
+bestaat. Je eigen machine heet dan waarschijnlijk
+<CODE>your-machine.subdomain.your-domain.edu</CODE>. De <CODE>search</CODE> regel moet
+nooit een TLD (Top Level Domain, <CODE>edu</CODE> in dit geval) bevatten. Als je vaak
+machines in een ander domein bezoekt, kan je de volgende regel opnemen:
+<P>
+<HR>
+<PRE>
+search subdomain.your-domain.edu your-domain.edu other-domain.com
+</PRE>
+<HR>
+<P>Natuurlijk moet je deze regel aan je eigen situatie aanpassen. 
+Merk op dat aan
+het eind van deze domains geen punt staat. Dit is belangrijk!
+<P>Vervolgens zal je, afhankelijk van je libc versie, 
+<CODE>/etc/nsswitch.conf</CODE>
+of <CODE>/etc/host.conf</CODE> aan moeten passen. Als je een
+<CODE>/etc/nsswitch.conf</CODE> bestand hebt, dan passen we dat aan. Anders passen
+we <CODE>/etc/host.conf</CODE> aan.
+<P><B>/etc/nsswitch.conf</B>
+<P><CODE>/etc/nsswitch.conf</CODE> is een lang bestand waarin beschreven wordt
+waar data vandaan gehaald moet worden. Bovenin staat bruikbaar commentaar wat
+je zou moeten lezen. Zoek daarna de regel die begint met <CODE>hosts:</CODE>. Daar
+moet staan:
+<P>
+<HR>
+<PRE>
+hosts:      files dns
+</PRE>
+<HR>
+<P>Als er geen <CODE>hosts:</CODE> regel in staat, voeg dan bovenstaande regel toe.
+De regel zorgt ervoor dat programma's eerst in <CODE>/etc/hosts</CODE> kijken, en
+dan pas de nameserver om een IP adres vragen.
+<P><B>/etc/host.conf</B>
+<P>Dit bestand bevat waarschijnlijk meerdere regels. E&eacute;n van die regels
+moet beginnen met '<CODE>order</CODE>', en moet er ongeveer als volgt uitzien:
+<P>
+<HR>
+<PRE>
+order hosts,bind
+</PRE>
+<HR>
+<P>Als deze regel er niet staat, maak er dan &eacute;&eacute;n aan. De regel
+zorgt ervoor dat eerst in <CODE>/etc/hosts</CODE> gekeken wordt, en dan pas de
+nameserver gebruikt wordt.
+<H2>3.1 Starten van Named</H2>
+
+<P>Nu is het tijd om named te starten. Als je een inbelverbinding gebruikt,
+bel dan eerst in. Type '<CODE>ndc start</CODE>' en tik enter. Als dat niet werkt, tik
+dan <CODE>/usr/sbin/ndc start</CODE>. Als het dan nog niet werkt, raadpleeg dan de 
+<A HREF="#qanda">QnA</A> sectie. Als je het bestand <CODE>/var/log/messages</CODE> 
+bekijkt tijdens het opstarten van named (bijvoorbeeld met het commando
+"<CODE>tail -f /var/log/messages</CODE>"), dan zie je iets als:
+<P>(regels die eindigen op "\" lopen door op de volgende regel)
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+Feb 15 01:26:17 roke named[6091]: starting.  named 8.1.1 Sat Feb 14 \
+  00:18:20 MET 1998 ^Ijanl@roke.uio.no:/var/tmp/bind-8.1.1/src/bin/named
+Feb 15 01:26:17 roke named[6091]: cache zone "" (IN) loaded (serial 0)
+Feb 15 01:26:17 roke named[6091]: master zone "0.0.127.in-addr.arpa" \
+  (IN) loaded (serial 1)
+Feb 15 01:26:17 roke named[6091]: listening [127.0.0.1].53 (lo)
+Feb 15 01:26:17 roke named[6091]: listening [129.240.230.92].53 (ippp0)
+Feb 15 01:26:17 roke named[6091]: Forwarding source address is [0.0.0.0].1040
+Feb 15 01:26:17 roke named[6092]: Ready to answer queries.
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Als er een foutmelding verschijnt, geeft named aan in welk bestand de fout
+zit (<CODE>named.conf</CODE> of <CODE>root.hints</CODE> hoop ik ;-). Stop named, en controleer
+de bestanden.
+<P>Nu is het zaakje klaar om getest te worden. Start nslookup om de
+configuratie te testen.
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+$ nslookup
+Default Server:  localhost
+Address:  127.0.0.1
+
+>
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Als dit op het scherm verschijnt, dan werkt het. Hopen we. Als het nog niet
+werkt, controleer alles dan nog eens. Altijd als <CODE>named.conf</CODE> veranderd
+wordt, moet je named herstarten met <CODE>ndc restart</CODE>.
+<P>Nu kan je proberen een IP adres op te zoeken. Gebruik een computer die
+dicht in de buurt staat. In mijn geval is dat <CODE>par.uio.no</CODE>, op de
+Universiteit van Oslo:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+> pat.uio.no
+Server:  localhost
+Address:  127.0.0.1
+
+Name:    pat.uio.no
+Address:  129.240.130.16
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>nslookup gaf aan named de opdracht <CODE>par.uio.no</CODE> op te zoeken. Het
+ondervraagt vervolgens &eacute;&eacute;n van de nameservers die in
+<CODE>root.hints</CODE> genoemd staan. Het kan even duren voordat je antwoord krijgt,
+omdat eerst gezocht wordt in elk domein dat in <CODE>/etc/resolv.conf</CODE>
+genoemd staat.
+<P>Als je nogmaals dezelfde machine opzoekt krijg je dit:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+> pat.uio.no
+Server:  localhost
+Address:  127.0.0.1
+
+Non-authoritative answer:
+Name:    pat.uio.no
+Address:  129.240.2.50
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Let op de regel '<CODE>Non-authoritative answer</CODE>'.  Dat betekent dat named dit
+keer niet het netwerk op is gegaan om een antwoord te zoeken, maar dat het
+antwoord uit de cache komt. Deze melding wordt gegeven zodat je er rekening mee
+kan houden dat de informatie inmiddels incorrect kan zijn. Dat je dit antwoord
+gekregen hebt betekent in elk geval dat je caching-only nameserver werkt.
+nslookup kan je verlaten door het commando <CODE>exit</CODE> te tikken.
+<H2>3.2 Verbeteren van de configuratie</H2>
+
+<P>In grote netwerken wordt vaak gebruik gemaakt van "forwarders". Deze
+machines verzorgen het opzoeken van een adres voor een andere machine. Dit
+vermindert de belasting op het interne en externe netwerk. Door gebruik te
+maken van zo'n forwarder worden de DNS lookups sneller, en ze genereren minder
+netwerkverkeer. Vooral als je een modemverbinding hebt kan dit behoorlijk wat
+schelen. Voor het voorbeeld nemen we aan dat je provider 2 nameservers heeft,
+met de IP nummers <CODE>10.0.0.1</CODE> en <CODE>10.1.0.1</CODE>. In het <CODE>named.conf</CODE>
+bestand moet bij de eerste sectie, "options", worden toegevoegd:
+<P>
+<HR>
+<PRE>
+           forward first;
+           forwarders {
+                10.0.0.1;
+                10.1.0.1;
+            };
+</PRE>
+<HR>
+<P>Herstart named en test het met nslookup. Dit zou zonder problemen moeten
+werken.
+<H2>3.3 Gefeliciteerd</H2>
+
+<P>Nu weet je hoe je een caching nameserver opzet. Neem een biertje, een glas
+melk, of wat dan ook om het te vieren!
+<H2><A NAME="simple"></A> <A NAME="s4">4. Een voorbeeld van een <EM>simpel</EM> domein</A></H2>
+
+<P><B>Het opzetten van je eigen domein</B>
+<H2>4.1 Maar eerst wat droge theorie</H2>
+
+<P>Voordat we <EM>echt</EM> met deze sectie aan de slag gaan, behandel ik eerst wat
+droge theorie met voorbeelden. Lees dit onderdeel, of neem het tenminste
+vluchtig door. Als je het vluchtig doorneemt, pak de draad dan weer op bij het
+gedeelte waar <CODE>named.conf</CODE> aangepast wordt.
+<P>DNS is een hierarchisch systeem met een boom-structuur. De 'top' heet <CODE>.</CODE> en 
+dit wordt 'root' genoemd. Onder <CODE>.</CODE> zijn een aantal Top Level Domains
+(TLD), waarvan de meest bekende <CODE>COM</CODE>, <CODE>NET</CODE>, <CODE>ORG</CODE>, en <CODE>EDU</CODE>
+zijn. Net als een boom begint de stuctuur ergens, en het breidt zich steeds
+verder uit. Als je een informatica-achtergrond hebt, dan herken je in DNS een
+'search tree' met knooppunten, eindpunten, en begrenzingen.
+<P>Als je een machinenaam opvraagt, begint de zoektocht in de top van de
+hierarchie. Als je bijvoorbeeld <CODE>prep.ai.mit.edu</CODE> zoekt dan moet je
+nameserver de server vinden die het <CODE>edu</CODE> domein verzorgt. Daarvoor
+ondervraagt het een <CODE>.</CODE> server. Van deze servers heeft de nameserver al het
+adres, dat staat namelijk in het <CODE>root.hints</CODE> bestand. De <CODE>.</CODE> server
+geeft een lijst van <CODE>edu</CODE> servers:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+$ nslookup
+Default Server:  localhost
+Address:  127.0.0.1
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Ondervraag een root server:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+> server c.root-servers.net.
+Default Server:  c.root-servers.net
+Address:  192.33.4.12
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Zet het 'query type' op NS (Name Server gegevens):
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+> set q=ns
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Vraag naar <CODE>edu</CODE>:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+> edu.
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>De <CODE>.</CODE> achter <CODE>edu</CODE> is erg belangrijk. Het vertelt nslookup 
+dat <CODE>edu</CODE>
+onder <CODE>.</CODE> zit, en niet onder een van onze `search' domeinen. Dit versnelt
+het zoeken.
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+edu     nameserver = A.ROOT-SERVERS.NET
+edu     nameserver = H.ROOT-SERVERS.NET
+edu     nameserver = B.ROOT-SERVERS.NET
+edu     nameserver = C.ROOT-SERVERS.NET
+edu     nameserver = D.ROOT-SERVERS.NET
+edu     nameserver = E.ROOT-SERVERS.NET
+edu     nameserver = I.ROOT-SERVERS.NET
+edu     nameserver = F.ROOT-SERVERS.NET
+edu     nameserver = G.ROOT-SERVERS.NET
+A.ROOT-SERVERS.NET      internet address = 198.41.0.4
+H.ROOT-SERVERS.NET      internet address = 128.63.2.53
+B.ROOT-SERVERS.NET      internet address = 128.9.0.107
+C.ROOT-SERVERS.NET      internet address = 192.33.4.12
+D.ROOT-SERVERS.NET      internet address = 128.8.10.90
+E.ROOT-SERVERS.NET      internet address = 192.203.230.10
+I.ROOT-SERVERS.NET      internet address = 192.36.148.17
+F.ROOT-SERVERS.NET      internet address = 192.5.5.241
+G.ROOT-SERVERS.NET      internet address = 192.112.36.4
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Dit vertelt ons dat alle <CODE>ROOT-SERVERS.NET</CODE> vragen beantwoorden over
+<CODE>EDU</CODE>, dus we kunnen op dezelfde server blijven doorvragen. We blijven de
+server <CODE>C</CODE> ondervragen. Nu willen we weten wat de server is voor
+<CODE>mit.edu</CODE>:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+> mit.edu.
+Server:  c.root-servers.net
+Address:  192.33.4.12
+
+Non-authoritative answer:
+mit.edu nameserver = W20NS.mit.edu
+mit.edu nameserver = BITSY.mit.edu
+mit.edu nameserver = STRAWB.mit.edu
+
+Authoritative answers can be found from:
+W20NS.mit.edu   internet address = 18.70.0.160
+BITSY.mit.edu   internet address = 18.72.0.3
+STRAWB.mit.edu  internet address = 18.71.0.151
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>
+<P><CODE>strawb</CODE>, <CODE>w20ns</CODE> en <CODE>bitsy</CODE> zijn allemaal nameservers voor
+<CODE>mit.edu</CODE>. We kiezen hieruit een nameserver en gaan weer een stap verder,
+naar <CODE>ai.mit.edu</CODE>:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+> server W20NS.mit.edu.
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Het maakt niet uit of je hoofd- of kleine letters gebruikt in de servernaam.
+Maar ik gebruik m'n muis om te knippen en plakken zodat ik geen spelfouten
+maak.
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+Server:  W20NS.mit.edu
+Address:  18.70.0.160
+
+> ai.mit.edu.
+Server:  W20NS.mit.edu
+Address:  18.70.0.160
+
+Non-authoritative answer:
+ai.mit.edu      nameserver = ALPHA-BITS.AI.MIT.EDU
+ai.mit.edu      nameserver = GRAPE-NUTS.AI.MIT.EDU
+ai.mit.edu      nameserver = TRIX.AI.MIT.EDU
+ai.mit.edu      nameserver = MUESLI.AI.MIT.EDU
+ai.mit.edu      nameserver = LIFE.AI.MIT.EDU
+ai.mit.edu      nameserver = BEET-CHEX.AI.MIT.EDU
+ai.mit.edu      nameserver = MINI-WHEATS.AI.MIT.EDU
+ai.mit.edu      nameserver = COUNT-CHOCULA.AI.MIT.EDU
+ai.mit.edu      nameserver = MINTAKA.LCS.MIT.EDU
+
+Authoritative answers can be found from:
+AI.MIT.EDU      nameserver = ALPHA-BITS.AI.MIT.EDU
+AI.MIT.EDU      nameserver = GRAPE-NUTS.AI.MIT.EDU
+AI.MIT.EDU      nameserver = TRIX.AI.MIT.EDU
+AI.MIT.EDU      nameserver = MUESLI.AI.MIT.EDU
+AI.MIT.EDU      nameserver = LIFE.AI.MIT.EDU
+AI.MIT.EDU      nameserver = BEET-CHEX.AI.MIT.EDU
+AI.MIT.EDU      nameserver = MINI-WHEATS.AI.MIT.EDU
+AI.MIT.EDU      nameserver = COUNT-CHOCULA.AI.MIT.EDU
+AI.MIT.EDU      nameserver = MINTAKA.LCS.MIT.EDU
+ALPHA-BITS.AI.MIT.EDU   internet address = 128.52.32.5
+GRAPE-NUTS.AI.MIT.EDU   internet address = 128.52.36.4
+TRIX.AI.MIT.EDU internet address = 128.52.37.6
+MUESLI.AI.MIT.EDU       internet address = 128.52.39.7
+LIFE.AI.MIT.EDU internet address = 128.52.32.80
+BEET-CHEX.AI.MIT.EDU    internet address = 128.52.32.22
+MINI-WHEATS.AI.MIT.EDU  internet address = 128.52.54.11
+COUNT-CHOCULA.AI.MIT.EDU        internet address = 128.52.38.22
+MINTAKA.LCS.MIT.EDU     internet address = 18.26.0.36
+</PRE>
+</CODE></BLOCKQUOTE>
+<P><CODE>muesli.ai.mit.edu</CODE> is dus een nameserver voor <CODE>ai.mit.edu</CODE>:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+> server MUESLI.AI.MIT.EDU
+Default Server:  MUESLI.AI.MIT.EDU
+Address:  128.52.39.7
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Nu verander ik het query type. We hebben de nameserver gevonden, dus kunnen
+nu kijken wat <CODE>muesli</CODE> weet over <CODE>prep.ai.mit.edu</CODE>.
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+> set q=any
+> prep.ai.mit.edu.
+Server:  MUESLI.AI.MIT.EDU
+Address:  128.52.39.7
+
+prep.ai.mit.edu CPU = dec/decstation-5000.25    OS = unix
+prep.ai.mit.edu
+        inet address = 18.159.0.42, protocol = tcp
+          ftp  telnet  smtp  finger
+prep.ai.mit.edu preference = 1, mail exchanger = gnu-life.ai.mit.edu
+prep.ai.mit.edu internet address = 18.159.0.42
+ai.mit.edu      nameserver = beet-chex.ai.mit.edu
+ai.mit.edu      nameserver = alpha-bits.ai.mit.edu
+ai.mit.edu      nameserver = mini-wheats.ai.mit.edu
+ai.mit.edu      nameserver = trix.ai.mit.edu
+ai.mit.edu      nameserver = muesli.ai.mit.edu
+ai.mit.edu      nameserver = count-chocula.ai.mit.edu
+ai.mit.edu      nameserver = mintaka.lcs.mit.edu
+ai.mit.edu      nameserver = life.ai.mit.edu
+gnu-life.ai.mit.edu     internet address = 128.52.32.60
+beet-chex.ai.mit.edu    internet address = 128.52.32.22
+alpha-bits.ai.mit.edu   internet address = 128.52.32.5
+mini-wheats.ai.mit.edu  internet address = 128.52.54.11
+trix.ai.mit.edu internet address = 128.52.37.6
+muesli.ai.mit.edu       internet address = 128.52.39.7
+count-chocula.ai.mit.edu        internet address = 128.52.38.22
+mintaka.lcs.mit.edu     internet address = 18.26.0.36
+life.ai.mit.edu internet address = 128.52.32.80
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>We zijn gestart op <CODE>.</CODE> en vonden nameservers voor elke laag van de
+machinenaam. Als je eigen DNS server zo'n zoektocht zou ondernemen, zou het
+gecached worden en voorlopig niet meer opgezocht hoeven worden.
+<P>In de boomstructuur is elke <CODE>.</CODE> in de machinenaam een vertakking. En elk
+woord dat tussen twee punten staat is een "tak" in de boomstructuur.
+<P>We zoeken steeds hoger in de boom, op zoek naar <CODE>prep.ai.mit.edu</CODE>. We
+beginnen bij <CODE>.</CODE> en zoeken naar de eerstvolgende tak. In dit geval
+<CODE>edu</CODE>. Als we die hebben gevonden gaan we een stapje hoger, en komen bij de
+<CODE>edu</CODE> server. Daar kunnen we vragen naar het domein <CODE>mit</CODE>. Als we die
+tak hebben gevonden gaan we weer een stapje hoger en komen op <CODE>mit.edu</CODE>.
+Als we nog een stapje hoger zitten, komen we bij <CODE>ai.mit.edu</CODE> en dan zijn
+we bij de laatste nameserver beland. De laatste stap is het zoeken naar
+<CODE>prep.ai.mit.edu</CODE>. In informaticatermen zou je <CODE>prep</CODE> een 'leaf', blad,
+of eindpunt van de boom kunnen noemen.
+<P>Een domein waar minder over gesproken wordt, maar wat minstens net zo
+belangrijk is, is het <CODE>in-addr.arpa</CODE> domein. Dit domein heeft net als de
+normale domeinen een boomstructuur. <CODE>in-addr.arpa</CODE> maakt het mogelijk dat
+een machinenaam opgezocht wordt, als je reeds het IP adres weet. Het is
+belangrijk op te merken dat IP adressen in omgekeerde volgorde worden
+genoteerd binnen het <CODE>in-addr.arpa</CODE> domein. Als je het adres van een
+machine hebt, bijvoorbeeld <CODE>192.128.52.43</CODE>, dan werkt named op dezelfde
+manier als bij het <CODE>prep.ai.mit.edu</CODE> voorbeeld: zoek de <CODE>arpa.</CODE> servers.
+Zoek vervolgens de <CODE>in-addr.arpa.</CODE> servers, zoek <CODE>192.in-addr.arpa.</CODE>, zoek
+<CODE>128.192.in-addr.arpa.</CODE>, zoek <CODE>52.128.192.in-addr.arpa.</CODE>, zoek de
+benodigde informatie voor <CODE>43.52.128.192.in-addr.arpa.</CODE>
+Handig, toch? (zeg 'ja'). Het omdraaien van de nummers kan echter verwarrend
+zijn.
+<P>Wat ik net verteld heb is niet helemaal waar. DNS werkt niet precies zoals
+hierboven beschreven staat. Maar het komt aardig dicht in de buurt.
+<H2>4.2 Je eigen domein</H2>
+
+<P>Nu ga je een eigen domein maken. We maken het domein <CODE>linux.bogus</CODE>, en
+zetten daar machines in. We gebruiken expres een domein dat niet bestaat,
+zodat het geen conflict oplevert met echte domeinen.
+<P>Nog &eacute;&eacute;n ding voordat we beginnen: in machinenamen zijn niet
+alle tekens toegestaan. We mogen alleen letters (a-z), cijfers (0-9) en het
+minteken ('-') gebruiken. Gebruik dus alleen deze tekens. Hoofd- en kleine
+letters zijn voor DNS hetzelfde, dus <CODE>pat.uio.no</CODE> is hetzelfde als 
+<CODE>Pat.UiO.No</CODE>.
+<P>We zijn eigenlijk al met dit onderdeel begonnen door de volgende regel in
+<CODE>named.conf</CODE> te plaatsen:
+<P>
+<HR>
+<PRE>
+zone "0.0.127.in-addr.arpa" {
+        type master;
+        file "pz/127.0.0";
+};
+</PRE>
+<HR>
+<P>Merk op dat er geen <CODE>.</CODE> staat aan het eind van de domeinnamen in dit
+bestand. Dit zorgt ervoor dat, nu we de zone <CODE>0.0.127.in-addr.arpa</CODE>
+configureren, we de master server voor deze zone zijn en dat het in een
+bestand staat genaamd <CODE>pz/127.0.0</CODE>. We hebben dit bestand al
+geconfigureerd, en er staat in:
+<P>
+<HR>
+<PRE>
+@               IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. (
+                                1       ; Serial
+                                8H      ; Refresh
+                                2H      ; Retry
+                                1W      ; Expire
+                                1D)     ; Minimum TTL
+                        NS      ns.linux.bogus.
+1                       PTR     localhost.
+</PRE>
+<HR>
+<P>Let op de <CODE>.</CODE> aan het eind van de volledige domeinnamen in dit bestand,
+in tegenstelling tot het <CODE>named.conf</CODE> bestand hierboven. Sommige mensen
+beginnen elk zone bestand graag met een <CODE>$ORIGIN</CODE> regel, maar dat is
+overbodig. De oorsprong van een zone bestand (de plaats die het inneemt in de
+DNS hierarchie) wordt gespecificeerd in het zone gedeelte van het
+<CODE>named.conf</CODE> bestand, in dit geval is het <CODE>0.0.127.in-addr.arpa</CODE>.
+<P>Dit zone bestand bevat drie 'Resource Records' (RR's). Een SOA RR, een NS
+RR, en een PRT RR. SOA betekent Start Of Authority. De `@' is een notatie voor
+`oorsprong' en omdat in <CODE>named.conf</CODE> staat dat het domein voor dit bestand 
+0.0.127.in-addr.arpa is, staat er op de eerste regel eigenlijk:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+0.0.127.in-addr.arpa.   IN      SOA ...
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>NS is de Name Server RR. Er staat geen '@' aan het begin van deze regel.
+Omdat de bovenstaande regel een '@' heeft staan, wordt verondersteld dat
+datzelfde ook bij deze regel hoort. Op de NS regel zou dus net zo goed kunnen
+staan:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+0.0.127.in-addr.arpa.   IN      NS      ns.linux.bogus
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Deze regel vertelt DNS wat de nameserver is voor het domein 
+<CODE>0.0.127.in-addr.arpa</CODE>, het is  <CODE>ns.linux.bogus</CODE>. 'ns' is een
+veelgebruikte naam voor nameservers, net als 'www' dat is voor webservers.
+Maar net zoals bij webservers mag je van de naam maken wat je wilt.
+<P>Tenslotte zegt het PTR record dat de machine op adres 1 in het subnet 
+<CODE>0.0.127.in-addr.arpa</CODE>, ofwel 127.0.0.1, <CODE>localhost</CODE> heet.
+<P>Alle zone bestanden beginnen met een SOA record, en er mag er
+hoogstens 1 zijn in
+een zone bestand. Het beschrijft de zone, zegt waar het vandaan komt (een
+machine genaamd <CODE>ns.linux.bogus</CODE>), wie verantwoorlijk is voor de inhoud
+(<CODE>hostmaster@linux.bogus</CODE>, vul je eigen email adres hier in), welk
+versienummer van het zonebestand het is (hier: serienummer 1), en dingen die
+te maken hebben met cachen en secundaire DNS servers. Gebruik voor de andere
+velden (refresh, retry, expire, en minimum) de getallen die in deze HOWTO
+gebruikt worden, dan zit je goed.
+<P>Herstart nu named met "<CODE>ndc restart</CODE>" en gebruik nslookup om te kijken
+wat je hebt gedaan:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+$ nslookup
+
+Default Server:  localhost
+Address:  127.0.0.1
+
+> 127.0.0.1
+Server:  localhost
+Address:  127.0.0.1
+
+Name:    localhost
+Address:  127.0.0.1
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>named begrijpt dus dat 127.0.0.1 <CODE>localhost</CODE> heet, goed zo. Nu het
+belangrijke werk, het <CODE>linux.bogus</CODE> domein. Voeg een zone sectie aan
+<CODE>named.conf</CODE> toe:
+<P>
+<HR>
+<PRE>
+zone "linux.bogus" {
+        notify no;
+        type master;
+        file "pz/linux.bogus";
+};
+</PRE>
+<HR>
+<P>Let weer op het ontbreken van <CODE>.</CODE> aan het einde van de domein naam in het
+<CODE>named.conf</CODE> bestand.
+<P>In het <CODE>linux.bogus</CODE> zone bestand zetten we wat zelfbedachte gegevens:
+<P>
+<HR>
+<PRE>
+;
+; Zone file for linux.bogus
+;
+; The full zone file
+;
+@       IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. (
+                        199802151       ; serial, todays date + todays serial #
+                        8H              ; refresh, seconds
+                        2H              ; retry, seconds
+                        1W              ; expire, seconds
+                        1D )            ; minimum, seconds
+;
+                NS      ns              ; Inet Address of name server
+                MX      10 mail.linux.bogus     ; Primary Mail Exchanger
+                MX      20 mail.friend.bogus.   ; Secondary Mail Exchanger
+;
+localhost       A       127.0.0.1
+ns              A       192.168.196.2
+mail            A       192.168.196.4
+</PRE>
+<HR>
+<P>We maken nog twee opmerkingen over het SOA record. <CODE>ns.linux.bogus</CODE> moet
+een bestaande machinenaam zijn met een A record. Het is niet voldoende om een
+CNAME te hebben voor de machine die in het SOA record genoemd wordt. De naam
+hoeft niet 'ns' te zijn, je mag elke naam gebruiken die je wilt. Vervolgens,
+lees hostmaster.linux.bogus als 'hostmaster@linux.bogus'. Dit moet het email
+adres zijn van de persoon die verantwoordelijk is voor de DNS configuratie.
+Je mag zelf weten welk email adres je hier plaatst, maar hostmaster is een
+adres dat veel gebruikt wordt.
+<P>Er is een nieuw type 'resource record' in dit bestand, het MX record of
+Mail eXchanger RR. Mail servers kunnen hieraan zien dat mail voor
+<CODE>iemand@linux.bogus</CODE> naar <CODE>mail.linux.bogus</CODE> of <CODE>mail.friend.bogus</CODE> 
+gestuurd moet worden. Het nummer voor elke machinenaam is de prioriteit van de
+MX records. De RR met het laagste nummer (10) is de machine waar mail heen
+gestuurd moet worden, indien mogelijk. Als dat niet lukt wordt de mail
+gestuurd naar een machine met een hoger nummer, in dit geval
+<CODE>mail.friend.bogus</CODE>, met prioriteit 20.
+<P>Herstart named weer door <CODE>ndc restart</CODE> te draaien, en controleer het
+resultaat met nslookup:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+$ nslookup
+> set q=any
+> linux.bogus
+Server:  localhost
+Address:  127.0.0.1
+
+linux.bogus
+        origin = ns.linux.bogus
+        mail addr = hostmaster.linux.bogus
+        serial = 199802151
+        refresh = 28800 (8 hours)
+        retry   = 7200 (2 hours)
+        expire  = 604800 (7 days)
+        minimum ttl = 86400 (1 day)
+linux.bogus     nameserver = ns.linux.bogus
+linux.bogus     preference = 10, mail exchanger = mail.linux.bogus.linux.bogus
+linux.bogus     preference = 20, mail exchanger = mail.friend.bogus
+linux.bogus     nameserver = ns.linux.bogus
+ns.linux.bogus  internet address = 192.168.196.2
+mail.linux.bogus        internet address = 192.168.196.4
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Als je goed kijkt zie je een bug. De regel:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+linux.bogus     preference = 10, mail exchanger = mail.linux.bogus.linux.bogus
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>is verkeerd. Er zou moeten staan:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+linux.bogus     preference = 10, mail exchanger = mail.linux.bogus
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Ik heb expres deze fout gemaakt, zodat je ervan kan leren ;-). Als je in
+het zone bestand kijkt zie je dat de regel
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+                MX      10 mail.linux.bogus     ; Primary Mail Exchanger
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>een punt mist. Of er staat een ".linux.bogus" te veel. Als een machinenaam
+niet met een punt eindigt, dan wordt de oorsprong eraan toegevoegd. In dit geval
+wordt dat dus <CODE>linux.bogus.linux.bogus</CODE>. De regel moet zijn:
+<P>
+<HR>
+<PRE>
+                MX      10 mail.linux.bogus.    ; Primary Mail Exchanger
+</PRE>
+<HR>
+<P>of:
+<P>
+<HR>
+<PRE>
+                MX      10 mail                 ; Primary Mail Exchanger
+</PRE>
+<HR>
+<P>Ik geef de voorkeur aan de laatste regel, het is minder tikken. De meningen
+verschillen over wat beter zou zijn. In een zone bestand moet het domein
+voluit geschreven worden met een <CODE>.</CODE> erachter, of het domein moet er niet
+bijstaan. In het laatste geval wordt de oorsprong automatisch het domein.
+<P>Ik zeg hier nogmaals dat in het <CODE>named.conf</CODE> bestand <EM>geen</EM> punten
+achter domeinnamen moeten staan. Je hebt geen idee hoe vaak een simpele punt
+voor een hoop problemen heeft gezorgd.
+<P>Hier volgt het nieuwe zone bestand, nu met wat extra informatie:
+<P>
+<HR>
+<PRE>
+;
+; Zone file for linux.bogus
+;
+; The full zone file
+;
+@       IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. (
+                        199802151       ; serial, todays date + todays serial #
+                        8H              ; refresh, seconds
+                        2H              ; retry, seconds
+                        1W              ; expire, seconds
+                        1D )            ; minimum, seconds
+;
+                TXT     "Linux.Bogus, your DNS consultants"
+                NS      ns              ; Inet Address of name server
+                NS      ns.friend.bogus.
+                MX      10 mail         ; Primary Mail Exchanger
+                MX      20 mail.friend.bogus. ; Secondary Mail Exchanger
+
+localhost       A       127.0.0.1
+
+gw              A       192.168.196.1
+                HINFO   "Cisco" "IOS"
+                TXT     "The router"
+
+ns              A       192.168.196.2
+                MX      10 mail
+                MX      20 mail.friend.bogus.
+                HINFO   "Pentium" "Linux 2.0"
+www             CNAME   ns
+
+donald          A       192.168.196.3
+                MX      10 mail
+                MX      20 mail.friend.bogus.
+                HINFO   "i486"  "Linux 2.0"
+                TXT     "DEK"
+
+mail            A       192.168.196.4
+                MX      10 mail
+                MX      20 mail.friend.bogus.
+                HINFO   "386sx" "Linux 1.2"
+
+ftp             A       192.168.196.5
+                MX      10 mail
+                MX      20 mail.friend.bogus.
+                HINFO   "P6" "Linux 2.1.86"
+</PRE>
+<HR>
+<P>Er zijn een aantal nieuwe RR's te zien. Het HINFO (Host INFOrmation) heeft
+twee gedeeltes. Het is een goede gewoonte om aanhalingstekens om beide 
+gedeeltes te zetten. Het eerste deel beschrijft de hardware van de
+machine, en het tweede deel beschrijft de software. De machine 'ns' heeft een
+pentium en draait Linux 2.0. De tweede nieuwe RR is CNAME (Canonical NAME).
+Met CNAME kan je een alias voor een machine maken. In dit voorbeeld is www een
+alias voor ns.
+<P>Het gebruik van het CNAME record is een beetje controversieel. Hou je in
+elk geval aan de regel dat een MX, CNAME, of SOA record <EM>nooit</EM> naar een
+CNAME record mag verwijzen, het moet altijd naar een machine met een A record
+verwijzen. De volgende regel is dus fout:
+<P>
+<HR>
+<PRE>
+foobar          CNAME   www                     ; NO!
+</PRE>
+<HR>
+<P>Maar de volgende regel is goed:
+<P>
+<HR>
+<PRE>
+foobar          CNAME   ns                      ; Yes!
+</PRE>
+<HR>
+<P>Je kan er ook van uit gaan dat CNAME geen geldige machinenaam is voor een
+email adres, <CODE>webmaster@www.linux.bogus</CODE> is dus fout in dit voorbeeld.
+Als je dit probleem wilt voorkomen, gebruik dan een A record, zoals:
+<P>
+<HR>
+<PRE>
+www             A       192.168.196.2
+</PRE>
+<HR>
+<P>Sommige BIND experts adviseren het CNAME record helemaal niet te gebruiken.
+Maar het zou te ver gaan daar in deze HOWTO verder op in te gaan.
+<P>Maar zoals je ziet houdt deze HOWTO zich, net als een hoop domeinen, zich
+niet aan die regel.
+<P>Laat named z'n configuratiebestanden opnieuw inlezen met het commando <CODE>ndc reload</CODE>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+$ nslookup
+Default Server:  localhost
+Address:  127.0.0.1
+
+> ls -d linux.bogus
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Bovenstaand commando zegt dat alle records weergegeven moeten worden. Dit
+resulteert in:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+[localhost]
+$ORIGIN linux.bogus.
+@                       1D IN SOA       ns hostmaster (
+                                        199802151       ; serial
+                                        8H              ; refresh
+                                        2H              ; retry
+                                        1W              ; expiry
+                                        1D )            ; minimum
+
+                        1D IN NS        ns
+                        1D IN NS        ns.friend.bogus.
+                        1D IN TXT       "Linux.Bogus, your DNS consultants"
+                        1D IN MX        10 mail
+                        1D IN MX        20 mail.friend.bogus.
+gw                      1D IN A         192.168.196.1
+                        1D IN HINFO     "Cisco" "IOS"
+                        1D IN TXT       "The router"
+mail                    1D IN A         192.168.196.4
+                        1D IN MX        10 mail
+                        1D IN MX        20 mail.friend.bogus.
+                        1D IN HINFO     "386sx" "Linux 1.0.9"
+localhost               1D IN A         127.0.0.1
+www                     1D IN CNAME     ns
+donald                  1D IN A         192.168.196.3
+                        1D IN MX        10 mail
+                        1D IN MX        20 mail.friend.bogus.
+                        1D IN HINFO     "i486" "Linux 1.2"
+                        1D IN TXT       "DEK"
+ftp                     1D IN A         192.168.196.5
+                        1D IN MX        10 mail
+                        1D IN MX        20 mail.friend.bogus.
+                        1D IN HINFO     "P6" "Linux 1.3.59"
+ns                      1D IN A         192.168.196.2
+                        1D IN MX        10 mail
+                        1D IN MX        20 mail.friend.bogus.
+                        1D IN HINFO     "Pentium" "Linux 1.2"
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Dat ziet er goed uit. Je ziet dat het lijkt op het zone bestand zelf.
+Laten we nu eens kijken wat er over <CODE>www</CODE> alleen gezegd wordt:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+> set q=any
+> www.linux.bogus.
+Server:  localhost
+Address:  127.0.0.1
+
+www.linux.bogus canonical name = ns.linux.bogus
+linux.bogus     nameserver = ns.linux.bogus
+linux.bogus     nameserver = ns.friend.bogus
+ns.linux.bogus  internet address = 192.168.196.2
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Hierin zie je dat <CODE>www.linux.bogus</CODE> een alias is voor <CODE>ns.linux.bogus</CODE>,
+en het geeft voor programma's die een IP adres zoeken voldoende informatie 
+over <CODE>ns.linux.bogus</CODE> om een verbinding met deze machine op te bouwen.
+<P>We zijn nu al halverwege!
+<H2>4.3 De reverse zone</H2>
+
+<P>Nu kunnen programma's de namen in linux.bogus vertalen naar IP nummers
+waarmee ze een verbinding kunnen opbouwen. Maar wat ook nodig is, is een
+`reverse zone', die DNS in staat stelt van een IP adres naar een machinenaam
+te converteren. Deze naam wordt door veel servers (WWW, FTP, IRC) gebruikt 
+om te besluiten of je een verbinding mag opbouwen en welke prioriteit je
+krijgt. Als je volledig van het Internet gebruik wilt maken heb je een reverse
+zone nodig.
+<P>Plaats het volgende in <CODE>named.conf</CODE>:
+<P>
+<HR>
+<PRE>
+zone "196.168.192.in-addr.arpa" {
+        notify no;
+        type master;
+        file "pz/192.168.196";
+};
+</PRE>
+<HR>
+<P>Dit is precies hetzelfde als met <CODE>0.0.127.in-addr.arpa</CODE>, en de inhoud
+lijkt er ook op:
+<P>
+<HR>
+<PRE>
+@       IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. (
+                        199802151 ; Serial, todays date + todays serial
+                        8H      ; Refresh
+                        2H      ; Retry
+                        1W      ; Expire
+                        1D)     ; Minimum TTL
+                NS      ns.linux.bogus.
+
+1               PTR     gw.linux.bogus.
+2               PTR     ns.linux.bogus.
+3               PTR     donald.linux.bogus.
+4               PTR     mail.linux.bogus.
+5               PTR     ftp.linux.bogus.
+</PRE>
+<HR>
+<P>Herstart named weer met <CODE>ndc restart</CODE> en controleer het resultaat met
+nslookup:
+<P>
+<HR>
+<PRE>
+> 192.168.196.4
+Server:  localhost
+Address:  127.0.0.1
+
+Name:    mail.linux.bogus
+Address:  192.168.196.4
+</PRE>
+<HR>
+<P>Het ziet er goed uit. Nu kunnen we alle informatie over het domein
+bekijken:
+<P>
+<HR>
+<PRE>
+> ls -d 196.168.192.in-addr.arpa
+[localhost]
+$ORIGIN 196.168.192.in-addr.arpa.
+@                       1D IN SOA       ns.linux.bogus. hostmaster.linux.bogus. (
+                                        199802151       ; serial
+                                        8H              ; refresh
+                                        2H              ; retry
+                                        1W              ; expiry
+                                        1D )            ; minimum
+
+                        1D IN NS        ns.linux.bogus.
+1                       1D IN PTR       gw.linux.bogus.
+2                       1D IN PTR       ns.linux.bogus.
+3                       1D IN PTR       donald.linux.bogus.
+4                       1D IN PTR       mail.linux.bogus.
+5                       1D IN PTR       ftp.linux.bogus.
+@                       1D IN SOA       ns.linux.bogus. hostmaster.linux.bogus. (
+                                        199802151       ; serial
+                                        8H              ; refresh
+                                        2H              ; retry
+                                        1W              ; expiry
+                                        1D )            ; minimum
+</PRE>
+<HR>
+<P>Ziet er ook goed uit! Als je andere informatie op je scherm krijgt, zoek
+dan naar foutmeldingen in de syslog. Hoe dat gaat staat uitgelegd in het begin
+van dit hoofdstuk.
+<H2>4.4 Dingen waar je op moet letten</H2>
+
+<P>Er zijn een paar dingen waar je goed op moet letten. Ten eerste, de IP 
+nummers die in de voorbeelden gebruikt worden vallen binnen de verzameling
+"prive adressen"; deze adressen mogen niet op het Internet gebruikt worden, en
+zijn derhalve uitermate geschikt om te gebruiken in de voorbeelden in deze
+HOWTO. De tweede opmerking gaat over de <CODE>notify no;</CODE> regel. Deze regel
+vertelt named dat de secondary name servers niet op de hoogte gesteld moeten
+worden van de veranderingen. Als we dat wel zouden doen bij deze experimenten,
+dan zouden we daarmee alleen maar het Internet vervuilen.
+<P>En natuurlijk is het door ons gemaakte domein nep, net als de IP adressen.
+Voor een voorbeeld van een echt domein, zie het volgende hoofdstuk.
+<H2>4.5 Waarom reverse lookups niet werken</H2>
+
+<P>Er zijn een aantal dingen die bij normale machinenaam lookups wel werken,
+en bij reverse lookups niet. Hieronder staat een uitleg en oplossing van deze
+zaken, maar eerst moet je zorgen dat de reverse lookups op je eigen machine
+werken. Als dat nog niet zo is, repareer dat en lees daarna verder.
+<P>Er zullen twee problemen met reverse lokups worden besproken:
+<H3>De reverse zone is niet gemachtigd</H3>
+
+<P>Als je van een ISP een reeks IP adressen krijgt en een domein naam, dan is
+dat domein gewoonlijk gemachtigd nameserver informatie te verstekken aan
+computers die daarom vragen. Die machtiging bestaat uit een NS record dat
+vertelt dat de nameserver informatie over jouw domein op jouw nameserver
+gevonden kan worden. Deze methode van recursief machinenamen opzoeken staat
+hierboven beschreven, in de sectie "droge theorie".
+<P>De reverse zone moet ook gemachtigd worden. Als je de <CODE>192.168.196</CODE>
+netwerkadressen en het <CODE>linux.bogus</CODE> domein hebt gekregen, dan moet je 
+provider ook
+<CODE>NS</CODE> records hebben voor je reverse zone en je forward zone. Als je de boom
+langsloopt van <CODE>in-addr.arpa</CODE> en bij je eigen domein probeert te komen,
+bestaat de kans dat er ergens iets niet werkt. Dat zal dan waarschijnlijk bij
+je ISP zijn. Neem in dat geval contact met je ISP op zodat ze een goed NS
+record aan kunnen maken.
+<H3>Subnetten die niet in de A, B, of C class vallen.</H3>
+
+<P>Door gebrek aan IP nummers worden er regelmatig subnets uitgedeeld die
+kleiner zijn dan een class C netwerk (256 adressen). Zo'n netwerk heet een
+classless netwerk. Deze kleine subnets maken
+het mogelijk dat het Internet nog steeds draait. Bij subnets kleiner dan een
+class C netwerk, kunnen er problemen optreden. Deze problemen met de
+oplossingen staan beschreven bij 
+<A HREF="http://www.acmebw.com/askmrdns/00007.htm">Ask Mr. DNS, op http://www.acmebw.com/askmrdns/00007.htm</A>.
+<P>Het probleem ligt iets te ingewikkeld om hier te behandelen, dus lees de
+`Mr. DNS' pagina goed door, en zorg dat je het begrijpt. Het kan gebeuren dat
+je ISP het probleem niet begrijpt. Dan zal je het dus moeten uitleggen, zodat
+ze toch een goede configuratie kunnen neerzetten die je vervolgens met
+nslookup kan testen.
+<P>De Mr. DNS uitleg van het probleem bespreekt o.a. een <CODE>CNAME</CODE> truuk en
+een truuk met het zone bestand. Niet elke resolver begrijpt deze <CODE>CNAME</CODE>
+truuk echter. Als je daar problemen mee krijgt, vraag je provider dan een PTR
+record rechtstreeks in het getruukte zone bestand te zetten in plaats van de
+<CODE>CNAME</CODE> truuk te gebruiken. Sommige ISP's hebben andere oplossingen voor
+dit probleem zoals een websysteem voor het bewerken van `reverse mappings'.
+<H2><A NAME="real-example"></A> <A NAME="s5">5. Een voorbeeld van een echt domein</A></H2>
+
+<P>In dit hoofdstuk laten we <EM>eindelijk</EM> wat echte zone bestanden zien.
+<P>Gebruikers van deze HOWTO vroegen om voorbeelden van een echt zone bestand.
+Het bestand dat hier gebruikt wordt is gemaakt door David Bullock van LAND-5, 
+met wat aanpassingen van mezelf. Wat je hier ziet kan dus iets verschillen van
+de informatie die je krijgt als je met nslookup de LAND-5 nameservers
+ondervraagt.
+<H2>5.1 /etc/named.conf (of /var/named/named.conf)</H2>
+
+<P>Hieronder staat de zone informatie voor LAND-5's subnet, <CODE>206.6.177</CODE>, 
+en de 'reverse zones'. Merk op dat de bestanden niet in een directory <CODE>pz</CODE>
+geplaatst worden zoals dat in deze HOWTO gebeurt, maar dat de directory
+<CODE>zone</CODE> heet.
+<P>
+<HR>
+<PRE>
+// Boot file for LAND-5 name server
+
+options {
+        directory "/var/named";
+};
+
+zone "." {
+        type hint;
+        file "root.hints";
+};
+
+zone "0.0.127.in-addr.arpa" {
+        type master;
+        file "zone/127.0.0";
+};
+
+zone "land-5.com" {
+        type master;
+        file "zone/land-5.com";
+};
+
+zone "177.6.206.in-addr.arpa" {
+        type master;
+        file "zone/206.6.177";
+};
+</PRE>
+<HR>
+<P>Als je dit in je <CODE>named.conf</CODE> bestand plaats, zet als *alsjeblieft*
+`<CODE>notify no;</CODE>' in de zone secties voor de twee <CODE>LAND-5</CODE> zones om
+ongelukken te voorkomen.
+<H2>5.2 /var/named/root.hints</H2>
+
+<P>Het bestand hieronder is inmiddels verouderd. Je zal dus zelf een nieuwe
+versie aan moeten maken. Het aanmaken van een <CODE>root.hints</CODE> bestand wordt
+verderop in deze HOWTO beschreven.
+<P>
+<HR>
+<PRE>
+; &lt;&lt;>> DiG 8.1 &lt;&lt;>> @A.ROOT-SERVERS.NET. 
+; (1 server found)
+;; res options: init recurs defnam dnsrch
+;; got answer:
+;; ->>HEADER&lt;&lt;- opcode: QUERY, status: NOERROR, id: 10
+;; flags: qr aa rd; QUERY: 1, ANSWER: 13, AUTHORITY: 0, ADDITIONAL: 13
+;; QUERY SECTION:
+;;      ., type = NS, class = IN
+
+;; ANSWER SECTION:
+.                       6D IN NS        G.ROOT-SERVERS.NET.
+.                       6D IN NS        J.ROOT-SERVERS.NET.
+.                       6D IN NS        K.ROOT-SERVERS.NET.
+.                       6D IN NS        L.ROOT-SERVERS.NET.
+.                       6D IN NS        M.ROOT-SERVERS.NET.
+.                       6D IN NS        A.ROOT-SERVERS.NET.
+.                       6D IN NS        H.ROOT-SERVERS.NET.
+.                       6D IN NS        B.ROOT-SERVERS.NET.
+.                       6D IN NS        C.ROOT-SERVERS.NET.
+.                       6D IN NS        D.ROOT-SERVERS.NET.
+.                       6D IN NS        E.ROOT-SERVERS.NET.
+.                       6D IN NS        I.ROOT-SERVERS.NET.
+.                       6D IN NS        F.ROOT-SERVERS.NET.
+
+;; ADDITIONAL SECTION:
+G.ROOT-SERVERS.NET.     5w6d16h IN A    192.112.36.4
+J.ROOT-SERVERS.NET.     5w6d16h IN A    198.41.0.10
+K.ROOT-SERVERS.NET.     5w6d16h IN A    193.0.14.129
+L.ROOT-SERVERS.NET.     5w6d16h IN A    198.32.64.12
+M.ROOT-SERVERS.NET.     5w6d16h IN A    202.12.27.33
+A.ROOT-SERVERS.NET.     5w6d16h IN A    198.41.0.4
+H.ROOT-SERVERS.NET.     5w6d16h IN A    128.63.2.53
+B.ROOT-SERVERS.NET.     5w6d16h IN A    128.9.0.107
+C.ROOT-SERVERS.NET.     5w6d16h IN A    192.33.4.12
+D.ROOT-SERVERS.NET.     5w6d16h IN A    128.8.10.90
+E.ROOT-SERVERS.NET.     5w6d16h IN A    192.203.230.10
+I.ROOT-SERVERS.NET.     5w6d16h IN A    192.36.148.17
+F.ROOT-SERVERS.NET.     5w6d16h IN A    192.5.5.241
+
+;; Total query time: 215 msec
+;; FROM: roke.uio.no to SERVER: A.ROOT-SERVERS.NET.  198.41.0.4
+;; WHEN: Sun Feb 15 01:22:51 1998
+;; MSG SIZE  sent: 17  rcvd: 436
+</PRE>
+<HR>
+<H2>5.3 /var/named/zone/127.0.0</H2>
+
+<P>In dit bestand staat niet bijzonders, alleen het verplichte SOA record en
+een record dat 127.0.0.1 laat verwijzen naar de lokale machine. Ook dit
+laatste is verplicht. In dit bestand hoeft verder niets te staan. Ook zal het
+nooit aangepast hoeven worden, tenzij het adres van je nameserver of
+hostmaster verandert.
+<P>
+<HR>
+<PRE>
+@               IN      SOA     land-5.com. root.land-5.com. (
+                                199609203       ; Serial
+                                28800   ; Refresh
+                                7200    ; Retry
+                                604800  ; Expire
+                                86400)  ; Minimum TTL
+                        NS      land-5.com.
+        
+1                       PTR     localhost.
+</PRE>
+<HR>
+<H2>5.4 /var/named/zone/land-5.com</H2>
+
+<P>In dit bestand zien we het verplichte SOA record en de benodigde NS
+records. We kunnen zien dat er een secundaire nameserver aanwezig is op 
+<CODE>ns2.psi.net</CODE>. Dit is ook zoals het zou moeten zijn; neem altijd een
+secundaire nameserver in een ander netwerk. Als je netwerk platligt is je
+secundaire DNS server nog steeds beschikbaar. We zien ook dat er een centrale
+server is genaamd <CODE>land-5</CODE>, die verschillende Internet servers draait. Naar
+deze machine wordt verwezen met <CODE>CNAME</CODE> records, dit zou je ook met <CODE>A</CODE>
+records kunnen doen.
+<P>Zoals je in het SOA record kan zien, is de oorsprong van dit zone bestand
+<CODE>land-5.com</CODE> en is de contactpersoon <CODE>root@land-5.com</CODE>. In plaats van
+<CODE>root</CODE> wordt ook het adres <CODE>hostmaster</CODE> vaak hiervoor gebruikt. Het
+serienummer is in het JJJJMMDDS formaat: de datum en het serienummer van de
+dag. Dit bestand is waarschijnlijk de zesde versie van 9 september 1996.
+Onthoud dat het serienummer altijd hoger moet zijn dat het vorige
+serienummer. Hier wordt slechts 1 cijfer gebruikt voor het serienummer van de
+dag. Als er op een dag 9 versies worden gemaakt, moet hij weer wachten tot de
+volgende dag voordat nieuwe versies kunnen worden gemaakt. Om dit te voorkomen 
+zou je twee getallen kunnen gebruiken voor het serienummer.
+<P>
+<P>
+<HR>
+<PRE>
+@       IN      SOA     land-5.com. root.land-5.com. (
+                        199609206       ; serial, todays date + todays serial #
+                        8H              ; refresh, seconds
+                        2H              ; retry, seconds
+                        1W              ; expire, seconds
+                        1D )            ; minimum, seconds
+                NS      land-5.com.
+                NS      ns2.psi.net.
+                MX      10 land-5.com.  ; Primary Mail Exchanger
+                TXT     "LAND-5 Corporation"
+
+localhost       A       127.0.0.1
+
+router          A       206.6.177.1
+        
+land-5.com.     A       206.6.177.2
+ns              A       206.6.177.3
+www             A       207.159.141.192
+
+ftp             CNAME   land-5.com.
+mail            CNAME   land-5.com.
+news            CNAME   land-5.com.
+
+funn            A       206.6.177.2
+
+;
+;       Workstations
+;
+ws-177200       A       206.6.177.200
+                MX      10 land-5.com.   ; Primary Mail Host
+ws-177201       A       206.6.177.201
+                MX      10 land-5.com.   ; Primary Mail Host
+ws-177202       A       206.6.177.202
+                MX      10 land-5.com.   ; Primary Mail Host
+ws-177203       A       206.6.177.203
+                MX      10 land-5.com.   ; Primary Mail Host
+ws-177204       A       206.6.177.204
+                MX      10 land-5.com.   ; Primary Mail Host
+ws-177205       A       206.6.177.205
+                MX      10 land-5.com.   ; Primary Mail Host
+; {Many repetitive definitions deleted - SNIP}
+ws-177250       A       206.6.177.250
+                MX      10 land-5.com.   ; Primary Mail Host
+ws-177251       A       206.6.177.251
+                MX      10 land-5.com.   ; Primary Mail Host
+ws-177252       A       206.6.177.252
+                MX      10 land-5.com.   ; Primary Mail Host
+ws-177253       A       206.6.177.253
+                MX      10 land-5.com.   ; Primary Mail Host
+ws-177254       A       206.6.177.254
+                MX      10 land-5.com.   ; Primary Mail Host
+</PRE>
+<HR>
+<P>Als je goed naar de land-5 nameserver kijkt, zie je dat de namen van de
+vorm <CODE>ws_</CODE><EM>nummer</EM> zijn. In nieuwere versies mag het underscoreteken 
+niet gebruikt worden, daarom is dat hier vervangen door een minteken.
+<P>Iets anders dat het opmerken waard is, is dat de werkstations geen
+individuele namen hebben, maar dat de laatste twee getallen van het IP adres
+gebruikt worden om unieke namen te maken. Dit vereenvoudigt de administratie,
+maar is een beetje onpersoonlijk. Het kan zijn dat gebruikers dit soort namen
+niet op prijs stellen.
+<P>We zien ook dat <CODE>funn.land-5.com</CODE> een alias is voor <CODE>land-5.com</CODE>,
+maar hier wordt gebruik gemaakt van een <CODE>A</CODE> record in plaats van een
+<CODE>CNAME</CODE> record. Zoals eerder opgemerkt is, is dat een goed gebruik.
+<H2>5.5 /var/named/zone/206.6.177</H2>
+
+<P>Onderstaand bestand zal in deze sectie besproken worden.
+<P>
+<HR>
+<PRE>
+@               IN      SOA     land-5.com. root.land-5.com. (
+                                199609206       ; Serial
+                                28800   ; Refresh
+                                7200    ; Retry
+                                604800  ; Expire
+                                86400)  ; Minimum TTL
+                        NS      land-5.com.
+                        NS      ns2.psi.net.
+;
+;       Servers
+;
+1       PTR     router.land-5.com.
+2       PTR     land-5.com.
+2       PTR     funn.land-5.com.
+;
+;       Workstations
+;
+200     PTR     ws-177200.land-5.com.
+201     PTR     ws-177201.land-5.com.
+202     PTR     ws-177202.land-5.com.
+203     PTR     ws-177203.land-5.com.
+204     PTR     ws-177204.land-5.com.
+205     PTR     ws-177205.land-5.com.
+; {Many repetitive definitions deleted - SNIP}
+250     PTR     ws-177250.land-5.com.
+251     PTR     ws-177251.land-5.com.
+252     PTR     ws-177252.land-5.com.
+253     PTR     ws-177253.land-5.com.
+254     PTR     ws-177254.land-5.com.
+</PRE>
+<HR>
+<P>De reverse zone is het deel van de DNS configuratie dat het meeste
+problemen oplevert. Het wordt gebruikt om erachter te komen welke machinenaam
+bij een IP adres hoort. Voorbeeld: Stel dat een Noorse IRC server alleen
+verbindingen wil accepteren van Noorse IRC clients. De irc server kan er
+makkelijk achter komen wat het IP adres van de client is. Dit IP adres zit
+namelijk in elk IP pakket dat de client stuurt. Nu wil de server weten welke
+machinenaam bij dit IP adres hoort. De server roept dan de functie
+gethostbyaddr aan. Deze functie zoekt vervolgens <CODE>200.177.6.206.in-addr.arpa</CODE>
+op door te beginnen bij een <CODE>.</CODE> server, en steeds een niveau verder te
+gaan. Deze methode staat beschreven in de sectie "droge theorie". De
+nameserver voor <CODE>177.6.206.in-addr.arpa</CODE> heeft een '<CODE>PTR
+ws-177200.land-5.com</CODE>' record voor <CODE>200.177.6.206.in-addr.arpa</CODE>, wat
+betekent dat bij <CODE>206.6.177.200</CODE> de machinenaam <CODE>ws-177200.land-5.com</CODE>
+hoort. Zoals eerder gezegd klopt deze uitleg niet helemaal, maar het komt
+aardig in de buurt van de werkelijkheid.
+<P>Even terug naar het voorbeeld van de IRC server. De IRC server accepteert
+alleen connecties van Noorse clients. Door de reverse lookup weet de server
+dat het verzoek afkomstig is van <CODE>ws-177200.land-5.com</CODE>. Omdat alleen
+verbindingen vanaf <CODE>.no</CODE> machines zijn toegestaan, zal de verbinding in dit
+geval niet opgebouwd worden. Als de reverse lookup zou falen, zou er helemaal
+geen hostname gevonden worden, en wordt er ook geen verbinding gemaakt.
+<P>Sommige mensen zeggen dat reverse lookups alleen belangrijk zijn voor
+servers, of dat ze helemaal niet belangrijk zijn. Dat is niet waar. Sommige
+ftp, news, IRC of zelfs HTTP servers accepteren geen connecties van een
+machine als er geen machinenaam gevonden kan worden. Reverse lookups zijn dus
+zelfs <CODE>verplicht</CODE>.
+<H2><A NAME="maint"></A> <A NAME="s6">6. Onderhoud</A></H2>
+
+<P><B>Alles aan de praat houden</B>
+<P>Er is een onderhoudstaak aan DNS servers, namelijk het up-to-date houden
+van het <CODE>root.hints</CODE> bestand. De makkelijkste manier om dat te doen is met
+het programma <CODE>dig</CODE>. Draai <CODE>dig</CODE> zonder opties, en je krijgt het
+<CODE>root.hints</CODE> bestand van je eigen server. Als je een rootserver
+ondervraagt met dig, is het resultaat te gebruiken als <CODE>root.hints</CODE>
+bestand. Het commando "<CODE>dig @e.root-servers.net . ns &gt;root.hints.new</CODE>)"
+levert een nieuw hints bestand. Hernoem het bestand <CODE>root.hints.new</CODE> naar
+<CODE>root.hints</CODE> en laat named het bestand opnieuw inlezen met <CODE>ndc reload</CODE>.
+<P>Al Longyear heeft me onderstaand script gemaild, dat gebruikt kan worden om
+<CODE>root.hints</CODE> automatisch te laten updaten. Het script gaat er van uit dat
+mail lokaal werkt en dat het adres <CODE>hostmaster</CODE> op de lokale machine
+bestaat. Pas het script eventueel aan zodat het werkt met de configuratie van
+jouw machine.
+<P>
+<HR>
+<PRE>
+#!/bin/sh
+#
+# Update the nameserver cache information file once per month.
+# This is run automatically by a cron entry.
+#
+# Original by Al Longyear
+# Updated for bind 8 by Nicolai Langfeldt
+# Miscelanious error-conditions reported by David A. Ranch
+# Ping test suggested by Martin Foster
+#
+(
+ echo "To: hostmaster &lt;hostmaster>"
+ echo "From: system &lt;root>"
+ echo "Subject: Automatic update of the root.hints file"
+ echo
+
+ PATH=/sbin:/usr/sbin:/bin:/usr/bin:
+ export PATH
+ cd /var/named
+
+ # Are we online?  Ping a server at your ISP
+ case `ping -qnc 10 some.machine.net` in
+   *'100% packet loss'*)
+        echo "The network is DOWN. root.hints NOT updated"
+        echo
+        exit 0
+        ;;
+ esac
+
+ dig @rs.internic.net . ns >root.hints.new 2>&amp;1
+
+ case `cat root.hints.new` in
+   *NOERROR*)
+        # It worked
+        :;;
+   *)
+        echo "The root.hints file update has FAILED."
+        echo "This is the dig output reported:"
+        echo
+        cat root.hints.new
+        exit 0
+        ;;
+ esac
+
+ echo "The root.hints file has been updated to contain the following information:"
+ echo
+ cat root.hints.new
+
+ chown root.root root.hints.new
+ chmod 444 root.hints.new
+ rm -f root.hints.old
+ mv root.hints root.hints.old
+ mv root.hints.new root.hints
+ ndc restart
+ echo
+ echo "The nameserver has been restarted to ensure that the update is complete."
+ echo "The previous root.hints file is now called   
+/var/named/root.hints.old."
+) 2>&amp;1 | /usr/lib/sendmail -t
+exit 0
+</PRE>
+<HR>
+<P>Misschien heb je al gezien dat het <CODE>root.hints</CODE> bestand ook via ftp
+beschikbaar is via Internic. Gebruik geen ftp om dit bestand op te halen.
+Bovenstaand script is beter voor Internic en voor het Internet als geheel.
+<H2><A NAME="bind8"></A> <A NAME="s7">7. Converteren van BIND 4 naar BIND 8</A></H2>
+
+<P>Oorspronkelijk was dit een sectie over het gebruik van BIND 8, door David
+E. Smith (dave@bureau42.ml.org). Het is iets aangepast, zodat de sectie beter
+bij bovenstaande titel past.
+<P>Eigenlijk is het heel eenvoudig. Behalve het gebruik van <CODE>named.conf</CODE> in
+plaats van <CODE>named.boot</CODE> is er weinig veranderd. Bij BIND 8 zit
+een perl script dat de oude naar de nieuwe configuratiebestanden converteert.
+Een voorbeeld van een <CODE>named.boot</CODE> (van BIND 4) bestand voor een
+caching-only nameserver:
+<P>
+<HR>
+<PRE>
+directory /var/named
+cache   .                                       root.hints
+primary 0.0.127.IN-ADDR.ARPA                    127.0.0.zone
+primary localhost                               localhost.zone          
+</PRE>
+<HR>
+<P>Ergens op je systeem staat het <CODE>named-bootconf.pl</CODE> script. In de BIND8
+source distributie staat dit in: <CODE>bind8/src/bin/named</CODE>. Om het bestand
+te converteren, tik:
+<P>
+<HR>
+<PRE>
+./named-bootconf.pl &lt; named.boot > named.conf
+</PRE>
+<HR>
+<P>Hiermee wordt <CODE>named.conf</CODE> aangemaakt:
+<P>
+<HR>
+<PRE>
+// generated by named-bootconf.pl
+
+options {
+        directory "/var/named";
+};
+
+zone "." {
+        type hint;
+        file "root.hints";
+};
+
+zone "0.0.127.IN-ADDR.ARPA" {
+        type master;
+        file "127.0.0.zone";
+};
+
+zone "localhost" {
+        type master;
+        file "localhost.zone";
+};
+</PRE>
+<HR>
+<P>Het script converteert alles dat in een <CODE>named.boot</CODE> bestand kan staan, 
+maar voegt er niet alle verbeteringen aan toe die in BIND8 te gebruiken zijn.
+Hieronder volgt een complete <CODE>named.conf</CODE> die hetzelfde doet, maar wat
+effici&euml;nter werkt:
+<P>
+<HR>
+<PRE>
+// This is a configuration file for named (from BIND 8.1 or later).
+// It would normally be installed as /etc/named.conf.
+// The only change made from the `stock' named.conf (aside from this
+// comment :) is that the directory line was uncommented, since I
+// already had the zone files in /var/named.
+
+options {
+        directory "/var/named";
+        datasize 20M;
+};
+
+zone "localhost" IN {
+        type master;
+        file "localhost.zone";
+};
+
+zone "0.0.127.in-addr.arpa" IN {
+        type master;
+        file "127.0.0.zone";
+};
+
+zone "." IN {
+        type hint;
+        file "root.hints";
+};
+</PRE>
+<HR>
+<P>Dit bestand kan je vinden in <CODE>bind8/src/bin/named/test</CODE> van de BIND8
+distributie, samen met zone bestanden die voor de meeste mensen zonder
+aanpassing te gebruiken zijn.
+<P>Het formaat van zone bestanden en het <CODE>root.hints</CODE> bestand zijn
+identiek, net als de commando's die gebruikt worden om deze bestanden bij te
+werken.
+<H2><A NAME="qanda"></A> <A NAME="s8">8. Vragen en antwoorden (Q &amp; A)</A></H2>
+
+<P>Lees deze sectie voordat je me een mailtje stuurt.
+<P>
+<OL>
+<LI>Mijn named vraagt om een <CODE>named.boot</CODE> bestand.
+
+Je leest de verkeerde HOWTO. Lees de DNS howto die over BIND 4 gaat, en te
+vinden is op 
+<A HREF="http://www.math.uio.no/~janl/DNS/">http://www.math.uio.no/~janl/DNS/</A></LI>
+<LI>Hoe gebruik ik DNS binnen een firewall?
+
+Een hint: gebruik <CODE>forward only;</CODE>, je hebt waarschijnlijk ook de regel:
+
+<HR>
+<PRE>
+  query-source port 53;
+  
+</PRE>
+<HR>
+
+
+nodig in het "options" gedeelte van je <CODE>named.conf</CODE> bestand, zoals
+beschreven staat in de sectie '
+<A HREF="#caching">caching</A>'.</LI>
+<LI>Hoe zorg ik ervoor dat DNS verschillende nummers voor dezelfde
+machinenaam (bijvoorbeeld <CODE>www.drukke.site</CODE>) uitdeelt, zodat ik 
+de load over meerdere machines kan uitspreiden?
+
+Maak meerdere <CODE>A</CODE> records voor <CODE>www.drukke.site</CODE> en gebruik BIND
+4.9.3 of een nieuwere versie. BIND zal dan de adressen "roteren". Deze truuk
+werkt niet met eerdere versies van BIND.</LI>
+<LI>Ik wil DNS gebruiken op een (gesloten) intranet. Hoe doe ik dat?
+
+Maak geen gebruik van het <CODE>root.hints</CODE> bestand, en gebruik alleen de
+zone bestanden. Op deze manier hoef je ook niet steeds nieuwe <CODE>root.hints</CODE> 
+bestanden op te halen.</LI>
+<LI>Hoe configureer ik een secundaire nameserver?
+
+Als de primaire nameserver adres <CODE>127.0.0.1</CODE> heeft, zet dan het
+volgende in het <CODE>named.conf</CODE> bestand van je secundaire nameserver:
+
+<HR>
+<PRE>
+  zone "linux.bogus" {
+        type slave;
+        file "sz/linux.bogus";
+        masters { 127.0.0.1; };
+  };
+  
+</PRE>
+<HR>
+
+  
+Eventueel kan je meerdere machines opgeven in de <CODE>masters</CODE> regel. De
+adressen van de machines moeten gescheiden worden met een ';'.</LI>
+<LI>Ik wil BIND kunnen gebruiken zonder Internet verbinding
+
+Er zijn drie antwoorden op deze vraag:</LI>
+<LI>Ik heb onderstaand mailtje ontvangen van Ian Clark
+&lt;ic@deakin.edu.au&gt;, waarin hij uitlegt hoe hij dat doet:
+
+<BLOCKQUOTE><CODE>
+<PRE>
+Ik draai zelf named op m'n masquerading machine. Ik heb twee &lt;tt/root.hints/
+bestanden, &lt;tt/root.hints.real/ met de echte rootnameserver informatie en
+&lt;tt/root.hints.fake/ met de volgende inhoud:
+
+----
+; root.hints.fake
+; this file contains no information
+----
+
+Als ik de internet verbinding verbreek zet ik de inhoud van
+&lt;tt/root.hints.fake/ in &lt;tt/root.hints/ en herstart ik named. Als ik weer
+verbinding maak, zet ik de inhoud van &lt;tt/root.hints.real/ in &lt;tt/root.hints/
+en herstart ik named. Deze commando's staan respectievelijk in m'n 
+&lt;tt/ip-down/ en &lt;tt/ip-up/ scripts.
+
+De eerste keer dat ik een IP adres opzoek als ik offline gegaan ben, komt de
+volgende regel in /var/log/messages te staan:
+
+Jan 28 20:10:11 hazchem named[10147]: No root nameserver for class IN
+
+En daar valt mee te leven.
+
+Deze methode werkt goed bij mij. Ik kan de nameserver voor lokale adressen
+gebruiken als ik off-line ben zonder de lange timeouts voor adressen buiten
+het lokale netwerk. En als ik online ben kunnen adressen buiten het lokale
+netwerk gewoon gevonden worden.
+</PRE>
+</CODE></BLOCKQUOTE>
+</LI>
+<LI>Ik heb ook een mailtje gekregen van Karl-Max Wanger over hoe BIND
+samenwerkt met NFS en de portmapper op een voornamelijk offline machine:
+
+<BLOCKQUOTE><CODE>
+<PRE>
+
+Ik draai BIND op al m'n machines die alleen af en toe verbonden zijn met het
+Internet via een modem. De nameserver werkt alleen als cache, het bevat zelf
+geen gegevens die niet ergens anders vandaan gehaald zijn. Zoals gebruikelijk
+in Slackware startte named voor nfsd en mountd.
+
+Met &eacute;&eacute;n van m'n machines had ik het probleem dat ik hem soms kon
+mounten vanaf een ander systeem, maar meestal niet. Het maakte geen verschil 
+of ik nu via PLIP, ethernet, of SLIP verbinding had gemaakt.
+
+Na een tijdje experimenteren kwam ik erachter dat named een conflict
+veroorzaakte met het communicatieproces tussen nsfd en de portmapper en tussen
+mountd en de portmapper. Als ik named na nfsd en mountd startte, was er geen
+probleem.
+
+Omdat deze volgorde geen nadelen heeft, raad ik iedereen aan in deze volgorde
+te booten, om zo problemen te voorkomen.
+</PRE>
+</CODE></BLOCKQUOTE>
+</LI>
+<LI>Tenslotte meld ik dat er een HOWTO is over dit onderwerp, bij 
+<A HREF="http://www.acmebw.com/askmrdns/#linux-ns">Ask Mr. DNS op http://www.acmebw.com/askmrdns/#linux-ns</A>. Het gaat echter wel over BIND 4,
+dus je zal op sommige plekken de informatie moeten aanpassen voor BIND 8.</LI>
+<LI>Waar plaatst een caching nameserver z'n cache? En kan ik de grootte
+van de cache aanpassen?
+
+De cache staat volledig in het geheugen, het wordt <CODE>nooit</CODE> naar disk
+geschreven. Elke keer dat je named stopt gaat de cache verloren. De grootte
+van de cache is niet aan te passen. Als je dit toch wilt, zal je named
+moeten hacken. Dit is niet aan te raden.</LI>
+<LI>Hoe krijg ik een domein? Als ik bijvoorbeeld het domein <CODE>linux-rules.net</CODE>
+wil hebben, hoe zorg ik dan dat het aan mij toegewezen wordt?
+
+Neem contact op met je ISP, zij zullen je hiermee kunnen helpen. Hou er
+wel rekening mee dat je zal moeten betalen voor het domein.</LI>
+</OL>
+<H2><A NAME="bigger"></A> <A NAME="s9">9. Hoe wordt ik een nog betere DNS beheerder</A></H2>
+
+<P><B>Documentatie en tools</B>
+<P>Er bestaat ook Echte Documentatie over dit onderwerp, online en in boeken.
+Je zal dit zeker moeten lezen wil je meer verstand krijgen van DNS. Het 
+standaard
+boek over DNS is <EM>DNS and BIND</EM> door C. Liu and P. Albitz van de uitgeverij
+O'Reilly &amp; Associates. ISBN 0-937175-82-X. Ik heb het gelezen, en het is
+erg goed. Het is gebaseerd op BIND4, maar dat is niet echt een probleem. Er is
+ook een sectie over DNS in het boek <EM>TCP/IP Network Administration</EM>,
+ISBN 0-937175-82-X, van Craig Hunt.
+<P>Online kan je informatie vinden op 
+<A HREF="http://www.dns.net/dnsrd/">http://www.dns.net/dnsrd/</A> (DNS Resources Directory) en 
+<A HREF="http://www.isc.org/bind.html">http://www.isc.org/bind.html</A>; een FAQ, een naslagwerk, definities van
+protocollen en DNS hacks (deze zijn ook, samen met de relevante protocollen
+die hieronder genoemd staan bij de BIND distributie ingesloten). Ik heb het
+grootste deel hiervan niet gelezen, maar ik ben dan ook geen ervaren DNS
+beheerder. Arnt Gulbrandsen is dat wel, en hij vindt ze fantastisch ;-). De
+nieuwsgroep 
+<A HREF="news:comp.protocols.tcp-ip.domains">comp.protocols.tcp-ip.domains</A> gaat over DNS. Verder zijn er een aantal
+RFC's over DNS, waarvan de belangrijkste zijn:
+<P>
+<P>
+<DL>
+<DT><B>RFC 2052</B><DD><P>A. Gulbrandsen, P. Vixie, <EM>A DNS RR for specifying
+the location of services (DNS SRV)</EM>, October 1996
+</DL>
+<P>
+<DL>
+<DT><B>RFC 1918</B><DD><P>Y. Rekhter, R. Moskowitz, D. Karrenberg, G. de Groot,
+E. Lear, <EM>Address Allocation for Private Internets</EM>, 02/29/1996.
+</DL>
+<P>
+<DL>
+<DT><B>RFC 1912</B><DD><P>D. Barr, <EM>Common DNS Operational and Configuration
+Errors</EM>, 02/28/1996.
+</DL>
+<P>
+<DL>
+<DT><B>RFC 1912 Errors</B><DD><P>B. Barr <EM>Errors in RFC 1912</EM>, this is available
+at 
+<A HREF="http://www.cis.ohio-state.edu/~barr/rfc1912-errors.html">http://www.cis.ohio-state.edu/~barr/rfc1912-errors.html</A></DL>
+<P>
+<DL>
+<DT><B>RFC 1713</B><DD><P>A. Romao, <EM>Tools for DNS debugging</EM>, 11/03/1994.
+</DL>
+<P>
+<DL>
+<DT><B>RFC 1712</B><DD><P>C. Farrell, M. Schulze, S. Pleitner, D. Baldoni,
+<EM>DNS Encoding of Geographical Location</EM>, 11/01/1994.
+<P>
+</DL>
+<P>
+<DL>
+<DT><B>RFC 1183</B><DD><P>R. Ullmann, P. Mockapetris, L. Mamakos, C. Everhart,
+<EM>New DNS RR Definitions</EM>, 10/08/1990.
+<P>
+</DL>
+<P>
+<DL>
+<DT><B>RFC 1035</B><DD><P>P. Mockapetris, <EM>Domain names - implementation and
+specification</EM>, 11/01/1987.
+<P>
+</DL>
+<P>
+<DL>
+<DT><B>RFC 1034</B><DD><P>P. Mockapetris, <EM>Domain names - concepts and
+facilities</EM>, 11/01/1987.
+</DL>
+<P>
+<DL>
+<DT><B>RFC 1033</B><DD><P>M. Lottor, <EM>Domain administrators operations
+guide</EM>, 11/01/1987.
+</DL>
+<P>
+<DL>
+<DT><B>RFC 1032</B><DD><P>M. Stahl, <EM>Domain administrators guide</EM>,
+11/01/1987.
+</DL>
+<P>
+<DL>
+<DT><B>RFC 974</B><DD><P>C. Partridge, <EM>Mail routing and the domain system</EM>,
+01/01/1986.
+</DL>
+</BODY>
+</HTML>

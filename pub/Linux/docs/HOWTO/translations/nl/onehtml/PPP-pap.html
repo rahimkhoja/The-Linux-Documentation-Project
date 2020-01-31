@@ -1,0 +1,746 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+<HEAD>
+ <META NAME="GENERATOR" CONTENT="SGML-Tools 1.0.9">
+ <TITLE>Het opzetten van een PPP verbinding met PAP.</TITLE>
+
+
+</HEAD>
+<BODY>
+<H1>Het opzetten van een PPP verbinding met PAP.</H1>
+
+<H2>  Jan-Willem Smaal &lt;PPP-pap@Smaal.Demon.nl&gt;</H2>Revisie: 0.5,  11 Jul 1999
+<P><HR>
+<EM>   Dit is een korte handleiding voor het opzetten van een PPP verbinding met
+  PAP authenticatie voor analoge (POTS) modems.  Dit verhaal gaat
+  waarschijnlijk ook op voor ISDN gebruikers met een externe TA.
+  De laatste versie van dit document is te vinden op:
+  
+<A HREF="http://doc.nl.linux.org/HOWTO/PPP-pap/PPP-pap.html">http://doc.nl.linux.org/HOWTO/PPP-pap/PPP-pap.html</A>
+  Dit document is vrij te verspreiden volgens de ``OpenContent''
+  richtlijnen, Copyrights 1999 (c) J-W Smaal &lt; J-W@Smaal.Demon.NL &gt; .</EM>
+<HR>
+<H2><A NAME="s1">1. Inleiding</A></H2>
+
+<H2>1.1 PAP</H2>
+
+<P>Vrijwel alle providers ondersteunen naast de zogenaamde scripted login ook
+het PAP authenticatie protocol voor het opzetten van een PPP verbinding. 
+Vaak kan op de vraag ``wie heeft er scripts voor provider X'' beantwoord
+worden met ``probeer of je met PAP kunt inloggen''.
+<P>PPP is een is een afkorting voor ``Point-to-Point-Protocol'' (zie:
+rfc1331.txt).  PAP is een afkorting voor `Password Authentication
+Protocol'' (zie: rfc1334.txt). 
+<P>Omdat authenticate bij PAP op het op PPP niveau gebeurd gaat het inloggen
+sneller dan met een zognaamde scripted login omdat er met een scripted login
+altijd enige vertraging tussen de send en expect sequence zit.
+<P>In deze korte handleiding is bewust gekozen om geen tooltjes van
+verschillende distributie makers te bespreken.  Als je met behulp van de
+distributie tooltjes verbinding wil maken verwijs ik je naar de distributie
+handleidingen.  Vaak werken deze distributie tooltjes eigenlijk alleen met
+een X interface (die van RedHat bijvoorbeeld) waardoor de indruk zou kunnen
+onstaan dat inbellen met de ISP een aangelegenheid is welke alleen onder X
+zou kunnen (wat uiteraard niet het geval is).
+<P> 
+Eerst worden voorbereidende handelingen vericht.  Daarna maken we de
+verschillende scripts aan (welke overigens ook gedownload kunnen worden). 
+Vervolgens gaan we proberen een verbinding te starten en loggen of het goed
+gaat.  Als je speciale ``dingen'' wilt doen dan kun je eventueel het laatste
+hoofdstuk ook lezen.
+<H2>1.2 Benodigde gegevens.</H2>
+
+<P>
+<UL>
+<LI> Serieele poort waar de modem aanhangt (/dev/ttySx) </LI>
+<LI> Telefoon nummer provider.</LI>
+<LI> Login name.</LI>
+<LI> Password.</LI>
+<LI> DNS IP addressen.</LI>
+</UL>
+<P>De rest van de gegevens kan de PPP server van de provider doorgeven op PPP
+niveau.  Alle overige gegevens (Lokaal IP, Remote IP etc...) moet je dus
+niet invullen anders kan de verbinding mislukken als je een provider
+gebruikt welke niet een vast-IP address aan de klanten geeft.  Sterker nog
+zelfs al heb je een vast IP address hoef je niet dat address in te vullen
+omdat de PPPdeamon dat voor jouw op kan vragen.   
+<H2>1.3 Bepalen waar de modem aan hangt</H2>
+
+<P>Eerst kijken we wat de kernel van onze serieele poorten denkt...
+<P>
+<HR>
+<PRE>
+[root@koala ~]# dmesg | grep tty
+ttyS00 at 0x03f8 (irq = 4) is a 16450
+ttyS01 at 0x02f8 (irq = 3) is a 16550A
+
+[root@koala ~]# setserial -a /dev/ttyS0
+/dev/ttyS0, Line 0, UART: 16450, Port: 0x03f8, IRQ: 4
+        Baud_base: 115200, close_delay: 50, divisor: 0
+        closing_wait: 3000, closing_wait2: infinte
+        Flags: spd_normal skip_test
+
+[root@koala ~]# setserial -a /dev/ttyS1
+/dev/ttyS1, Line 1, UART: 16550A, Port: 0x02f8, IRQ: 3
+        Baud_base: 115200, close_delay: 50, divisor: 0
+        closing_wait: 3000, closing_wait2: infinte
+        Flags: spd_normal skip_test
+</PRE>
+<HR>
+<P>``ttyS0'' is te vergelijken met ``COM1'', ``ttyS1'' is te
+vergelijken met ``COM2'' onder MS DOS enzovoort. 
+<P> 
+Mensen met een ISA PnP (Plug and Pray) modem zouden misschien nog deze
+moeten intialiseren met de ``isapnp-tools'' voordat de serieele poort gezien
+wordt.  Externe modems werken altijd goed (mits de serieele poort goed is
+natuurlijk ;-) ).  Modems welke *NIET* werken met Linux zijn de zognaamde
+``Winmodems'' dit omdat dit eigenlijk geen echte modems zijn maar een soort
+interface welke de CPU van de computer alle "toontjes" laat berekenen.  De
+fabrikanten van deze modems willen geen informatie over het aansturen van
+deze dingen geven dus ze zullen wel nooit gaan werken met Linux denk ik.
+<P>Probeer met het programma ``minicom'' te bepalen waar de modem aan hangt.  Met
+``ALT-O'' kun je onder serial port setup een andere serieele poort kiezen. 
+Blijf dit proberen totdat de modem een ``OK'' reactie geeft als je ``AT''
+intypt in de minicom terminal-emulator.
+<H2>1.4 Benodigde software.</H2>
+
+<P>
+<UL>
+<LI> Een werkende PPP daeamon (pppd), deze zit bij vrijwel alle
+distributies.</LI>
+<LI> Een kernel met PPP support, zit ook bij vrijwel alle distributies
+anders moet je deze even zelf compilen met PPP support.  Zie voor
+het laatste de kernel-HOWTO.</LI>
+<LI> Eventueel het programma ``sudo''.</LI>
+</UL>
+<H2>1.5 Benodigde vaardigheden.</H2>
+
+<P>
+<UL>
+<LI> Het kunnen omgaan met een unix editor (bijvoorbeeld ``vi'' of
+``pico'').</LI>
+<LI> Elementaire UNIX commando's zoals ``chmod'' kunnen gebruiken.</LI>
+</UL>
+<P>De meeste handelingen in deze handleiding moeten als de ``root'' user gedaan
+worden.  Met het ``su -l'' commando kun je als normale user tijdelijk
+``root'' user worden, zodra je klaar bent als root user kun je met ``exit''
+weer terug naar de orginele login shell.
+<H2><A NAME="s2">2. Aan de slag met PPPD.</A></H2>
+
+<P>
+<H2>2.1 Backups en voorbereidende handelingen.</H2>
+
+<P>Een goede gewoonte is om backups te maken van bestaande configuratie
+bestanden voordat erin aangepast gaat worden. 
+<P>Volgens de FHS hoort alle configuratie files van ppp in de ``/etc/ppp/''
+directory te staan.
+<P>Allereerst maken we een backup van de bestaande directory:
+<HR>
+<PRE>
+[root@koala ~]# cd /etc
+[root@koala /etc]# tar -cvzf ppp-backup.tar.gz ppp/
+[root@koala /etc]# chmod 600 ppp-backup.tar.gz
+</PRE>
+<HR>
+<P>Mocht het fout gaan dan kan alles weer teruggezet worden met:
+<HR>
+<PRE>
+[root@koala ~]# cd /etc
+[root@koala /etc]# tar -xvzf ppp-backup.tar.gz
+</PRE>
+<HR>
+<P>Alle file's die hier besproken worden zijn op de NL.Linux.org server terug te
+vinden zo hoef je alleen maar je eigen gegevens hierin aan te passen.
+<P>De scripts zijn hier 
+<A HREF="http://doc.nl.linux.org/HOWTO/PPP-pap/scripts/ppp-pap.tar.gz">ppp-pap.tar.gz</A> 
+te downloaden.  Je kunt deze file zo uitpakken (nadat je de backups van de bestaande
+files hebt gemaakt):
+<P>
+<HR>
+<PRE>
+[root@koala ~]# tar -xvzf scripts.tar.gz  -C /
+etc/
+etc/ppp/
+etc/ppp/ip-down
+etc/ppp/ip-up
+etc/ppp/ppp-on-dialer-PAP
+etc/ppp/options
+etc/ppp/pap-secrets
+usr/
+usr/local/
+usr/local/sbin/
+usr/local/sbin/ppp-off
+usr/local/sbin/ppp-on
+usr/local/src/
+usr/local/src/suid-ppp-off.c
+usr/local/src/suid-ppp-on.c
+</PRE>
+<HR>
+ 
+<P>De options file moet vrijwel leeg zijn, we geven namelijk alle opties mee in
+de aanroep van PPPD later in dit document.
+<P>
+<HR>
+<PRE>
+[root@koala /etc/ppp]# echo "lock" > options 
+</PRE>
+<HR>
+<H2>2.2 Aanmaken ip-up en ip-down scripts. </H2>
+
+<P> 
+Het ``ip-up'' script wordt aangeroepen (met een aantal argumenten) door
+``pppd' als deze correct de verbinding tot stand gebracht heeft.  Het
+``ip-down'' script wordt uiteraard aangeroepen als de verbinding weer verbroken wordt. 
+<P> 
+Start een editor op (bv ``vi'' of ``jpico'') en maak de ``/etc/ppp/ip-up''
+file aan:
+<P>
+<HR>
+<PRE>
+#!/bin/bash
+# filenaam: /etc/ppp/ip-up
+IFNAME=$1       # interface naam:
+IFTTY=$2        # tty waar de verbinding op "draait":
+IFSPEED=$3      # snelheid van de tty
+LOCALIP=$4      # lokale IP address 
+REMOTEIP=$5     # address van de router van de provider
+
+exit 0
+</PRE>
+<HR>
+<P>Start nogmaals een editor op en maak de ``/etc/ppp/ip-down''
+file aan:
+<HR>
+<PRE>
+#!/bin/bash
+# filenaam: /etc/ppp/ip-down
+IFNAME=$1       # interface naam:
+IFTTY=$2        # tty waar de verbinding op "draait":
+IFSPEED=$3      # snelheid van de tty
+LOCALIP=$4      # lokale IP address 
+REMOTEIP=$5     # address van de router van de provider
+
+exit 0
+</PRE>
+<HR>
+<P>De commentaar regels ``#'' mag je weglaten.  Ook mag je de regels met
+bijvoorbeeld ``IFNAME=$1'' weglaten, deze variablen kun je echter misschien
+later nog ergens voor gebruiken dus even aanmaken kan geen kwaad.
+<P>Nu de files alleen executable voor ``root'' maken:
+<HR>
+<PRE>
+[root@koala ~]# cd /etc/ppp
+[root@koala /etc/ppp]# chmod 700 ip-up ip-down
+</PRE>
+<HR>
+<H2><A NAME="s3">3.  De PPP daemon</A></H2>
+
+<P>De PPP deamon ``pppd'' zorgt voor de eigenlijke verbinding.  TCP/IP is niet
+het enige protocol wat over een PPP verbinding kan gaan maar in dit document
+bespreken we alleen een TCP/IP PPP verbinding.
+<H2>3.1 Aanmaken van de PAP secrets file</H2>
+
+<P>Start een editor op en maak de ``/etc/ppp/pap-secrets'' file aan (of gebruik
+de 
+<A HREF="http://doc.nl.linux.org/HOWTO/PPP-pap/scripts/PPP-pap.tar.gz">scripts</A> en pas deze dan aan) :
+<P>
+<HR>
+<PRE>
+# Secrets for authentication using PAP
+# client        server  secret                  
+jouwloginname   *       geheimpassword
+</PRE>
+<HR>
+<P>Verander in deze file de `jouwloginname'' en `geheimpassword''.  Het
+sterretje (*) tussen de twee moet blijven staan.  Voor de rest moet niets
+aangepast worden in deze file.
+<P>`jouwloginname'' en `geheimpassord'' zijn dezelfde die je gebruikt onder
+bijvoorbeeld het Windows95 dialup gebeuren.  Deze gegevens moet je van de
+provider hebben gekregen.
+<P>Heel belangrijk is dat je deze file alleen leesbaar maakt voor de
+`root'' user, er staat immers zeer gevoelige infomatie in !
+<P>
+<HR>
+<PRE>
+[root@koala ~]# cd /etc/ppp
+[root@koala /etc/ppp]# chmod 600 pap-secrets
+</PRE>
+<HR>
+<P>Jan Platvoet &lt;pa3fzx@dds.nl&gt;, stuurde mij een mailtje over problemen
+met passwords waar een hekje ``#'' in voorkomt.
+<P>Ikzelf denk dat de PPPdeamon dat als dan commentaar ziet en het password zal
+afbreken bij het hekje.  Totdat deze bug in pppd gefixt is, is een ander
+wachtwoord gebruiken (zonder hekje) een mogelijk oplossing. 
+<H2>3.2  Aanmaken van het chat script</H2>
+
+<P>We gebruiken het chat programma alleen om de modem te laten bellen. 
+``pppd'' roept dit script aan om te laten bellen naar de provider.  De
+login en password wordt door ``pppd'' zelf geregeld.   Ik heb alleen een
+``AT'' commando erin gezet.  Mocht je modem nog speciale installingen nodig
+hebben dan kun je ze op dezelfde manier toevoegen als de regel met
+`` 'OK-+++\c-OK'   ATH0 ''.
+<P>Start de editor op en maak de ``/etc/ppp/ppp-on-dialer-PAP'' file aan.
+<P>
+<HR>
+<PRE>
+#!/bin/bash
+exec /usr/sbin/chat                                     \
+        TIMEOUT         30                              \
+        ABORT           '\nBUSY\r'                      \
+        ABORT           '\nNO ANSWER\r'                 \
+        ABORT           '\nRINGING\r\n\r\nRINGING\r'    \
+        ''              AT                              \
+        'OK-+++\c-OK'   ATH0                            \
+        TIMEOUT         100                             \
+        OK              ATDT$TELEPHONE                  \
+        CONNECT         ''
+</PRE>
+<HR>
+<P>Ik laat nog een keer dezelfde file zien maar dan met een ``verbose'' optie. 
+Dit script kun je gebruiken als je problemen hebt met het bellen zelf.  Zo
+kun je vaak nagaan wat er dan wel of niet goed gaat met de modem.
+<P>
+<HR>
+<PRE>
+#!/bin/bash
+exec /usr/sbin/chat -V                                  \
+        TIMEOUT         30                              \
+        ABORT           '\nBUSY\r'                      \
+        ABORT           '\nNO ANSWER\r'                 \
+        ABORT           '\nRINGING\r\n\r\nRINGING\r'    \
+        ''              AT                              \
+        'OK-+++\c-OK'   ATH0                            \
+        TIMEOUT         100                             \
+        OK              ATDT$TELEPHONE                  \
+        CONNECT         ''
+</PRE>
+<HR>
+<P>Vervolgens deze alleen executable voor root maken.
+<P>
+<HR>
+<PRE>
+[root@koala ~]# cd /etc/ppp
+[root@koala /etc/ppp]# chmod 700 ppp-on-dialer-PAP 
+</PRE>
+<HR>
+<P>Het programma ``chat'' werkt met een send-expect sequence... De rechterkant
+verzenden wij naar de modem en de linkerzijde verwachten we terug van de modem.
+<H2>3.3  Aanmaken van het ppp-on script </H2>
+
+<P>Met dit script kunnen we straks verbinding maken met de provider door
+``ppp-on'' in te typen als root user.
+<P>Start een editor op en maak de ``/usr/local/sbin/ppp-on'' file aan:
+Lees het commentaar in deze file en vergeet niet je eigen gegevens in
+te vullen!  Pas in ieder geval TELEPHONE, ACCOUNT en MODEM aan.
+<P>
+<HR>
+<PRE>
+#!/bin/bash
+# Pas deze gegevens aan aan je eigen situatie.
+export TELEPHONE=010-8800805
+# De account naam moet *precies* dezelfde zijn als in de
+# ``/etc/ppp/pap-secrets'' file.
+ACCOUNT=jouwloginname
+MODEM=/dev/ttyS1
+
+# Hierna hoef je niet speciaal iets aan te passen...
+SPEED=115200
+DIALER_SCRIPT=/etc/ppp/ppp-on-dialer-PAP
+NETMASK=255.255.255.0
+
+# Vul hier EXTRA=debug in als je uitgebreide informatie wilt hebben
+# over het opbouwen van de verbinding.
+EXTRA= 
+
+/usr/sbin/pppd modem lock crtscts       \
+        $MODEM $SPEED                   \
+        0.0.0.0:0.0.0.0                 \
+        user $ACCOUNT noipdefault       \
+        $EXTRA                          \
+        netmask $NETMASK defaultroute   \
+        connect $DIALER_SCRIPT &amp;
+</PRE>
+<HR>
+<H2>3.4  Aanmaken van het ppp-off script </H2>
+
+<P>Dit scipt staat meestal op je systeem, kijk in /usr/doc/ppp-(versie) voor het
+script.
+<P>Het script hoort te staan in ``/usr/local/sbin/ppp-off''
+<P>
+<HR>
+<PRE>
+#!/bin/bash
+# Determine the device to be terminated.
+#
+if [ "$1" = "" ]; then
+        DEVICE=ppp0
+else
+        DEVICE=$1
+fi
+
+# If the ppp0 pid file is present then the program is running. Stop it.
+if [ -r /var/run/$DEVICE.pid ]; then
+        kill -INT `cat /var/run/$DEVICE.pid`
+# If the kill did not work then there is no process running for this
+# pid. It may also mean that the lock file will be left. You may wish
+# to delete the lock file at the same time.
+        if [ ! "$?" = "0" ]; then
+                rm -f /var/run/$DEVICE.pid
+                echo "ERROR: Removed stale pid file"
+                exit 1
+        fi
+
+# Success. Let pppd clean up its own junk.
+   echo "PPP link to $DEVICE terminated."
+
+echo "Done"
+exit 0
+
+fi
+# The ppp process is not running for ppp0
+echo "ERROR: PPP link is not active on $DEVICE"
+exit 1
+</PRE>
+<HR>
+<P>Na het aanmaken van de ``/usr/local/sbin/ppp-on'' en
+``/usr/local/sbin/ppp-off'' file moeten deze nog executable gemaakt worden:
+<P>
+<HR>
+<PRE>
+[root@koala ~]# cd /usr/local/sbin/
+[root@koala /usr/local/sbin]# chmod 700 ppp-on ppp-off
+</PRE>
+<HR>
+<H2>3.5  De resolv.conf file</H2>
+
+<P>Deze file bepaald hoe Internet namen omgezet worden naar IP addressen (naast
+andere dingen zoals hostname naar IP en Mailexchanger records etc...).  De
+``order'' regel geeft aan hoe met welke volgorde de ``resolver'' libraries
+de namen moeten opvragen.  Wij stellen het zo in dat eerst de ``/etc/hosts''
+geraadpleegt wordt en dan pas de nameservers van de provider.  Zo kun je dus
+voorkomen dat voor namen op het lokale netwerk de DNS van de provider
+geraadpleegt wordt.
+<P>Pas de ``/etc/resolv.conf'' file aan.
+<P>
+<HR>
+<PRE>
+order hosts named
+search demon.nl nl.demon.net
+nameserver 194.159.73.135
+nameserver 194.159.73.136
+</PRE>
+<HR>
+<P>De nameserver IP addressen moet je aanpassen aan die van je eigen provider
+(primary en secondary DNS IP addressen).  Deze gegevens moet je gekregen
+hebben bij de account gegevens.
+<P>De regel met ``search'' zorgt ervoor dat je niet de complete hostname hoeft
+in te typen van hosts welke in je domein zitten.  Stel dat ik smaal.demon.nl
+moet gebruiken.  Dan kan ik gewoon ``telnet smaal'' als hostname gebruiken
+in plaats van de hostname helemaal compleet in te typen.  Als je dit niet
+nodig vind kun je de search regel gewoon helemaal weghalen!
+<P>``search demon.nl nl.demon.net''  Zou je kunnen aanpassen aan die van je
+eigen provider.  Bijvoorbeeld ``search xs4all.nl''.  
+<H2><A NAME="s4">4.  Het testen van de configuratie.</A></H2>
+
+<P>
+<H2>4.1  Het grote moment...</H2>
+
+<P>Geef als de root user het ``ppp-on''  commando.  Als alles goed is gaat de
+modem nu bellen en wordt er hopelijk contact gemaakt.  De meeste
+distributies hebben standaard ``/usr/local/sbin/'' niet in het PATH staan
+type dan tijdelijk even ``/usr/local/sbin/ppp-on'' of ``./ppp-on'' als je in
+de ``/usr/local/sbin/'' staat. 
+<P>Controleer de vooruitgang van de PPP-daemon door dit commando op te geven:
+<P>
+<HR>
+<PRE>
+[root@koala ~]# tail -f /var/log/messages
+koala pppd[9269]: pppd 2.3.5 started by root, uid 0
+koala pppd[9269]: Serial connection established.
+koala pppd[9269]: Using interface ppp0
+koala pppd[9269]: Connect: ppp0 &lt;--> /dev/ttyS1
+koala pppd[9269]: Remote message: smaal: IP Address: 194.159.231.103  
+koala pppd[9269]: local  IP address 194.159.231.103
+koala pppd[9269]: remote IP address 194.159.73.222
+</PRE>
+<HR>
+<P>Als je de laatste 2 regels ziet dan werkt alles goed en heb je een
+verbinding opgebouwd.  Gefeliciteerd ;-) 
+<P>Controleer de verbinding (als je online bent !) door dit commando op te geven:
+<P>
+<HR>
+<PRE>
+[root@koala ~]# ifconfig ppp0
+ppp0      Link encap:Point-to-Point Protocol
+          inet addr:194.159.231.103  P-t-P:194.159.73.222 Mask:255.255.255.255
+          UP POINTOPOINT RUNNING NOARP MULTICAST  MTU:1524  Metric:1
+          RX packets:9620 errors:0 dropped:0 overruns:0
+          TX packets:80 errors:0 dropped:0 overruns:0
+</PRE>
+<HR>
+<P>De routering kun je controleren door dit commando:
+<HR>
+<PRE>
+[root@koala ~]# route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use
+Iface
+194.159.73.222  0.0.0.0         255.255.255.255 UH    0      0        0 ppp0
+10.76.12.0      0.0.0.0         255.255.255.0   U     0      0        0 eth0
+127.0.0.0       0.0.0.0         255.0.0.0       U     0      0        0 lo
+0.0.0.0         194.159.73.222  0.0.0.0         UG    0      0        0 ppp0
+</PRE>
+<HR>
+<P>0.0.0.0 is de ``default route'' alle packets waar de bestemming niet eth0
+of lo zijn worden naar de ``default gateway'' verstuurd.  (naar je Intenet
+provider dus).
+<H2>4.2  Als het niet de eerste keer lukt.</H2>
+
+<P>Het kan best gebeuren dat de connectie mislukt.  Als de modem helemaal niet
+gaat bellen dan is de serieele poort waarschijnlijk verkeerd ingesteld. 
+Kijk goed wat in de ``/var/log/messages'' file staat. 
+<H3> PATH niet compleet</H3>
+
+<P>Als je deze melding krijgt:
+<P>
+<HR>
+<PRE>
+  [root@koala ~]# ppp-on
+  bash: ppp-on: command not found
+  
+</PRE>
+<HR>
+<P>Dan staat ``/usr/local/sbin'' waarschijnlijk niet in het PATH van de root    
+user.  Je kunt dit oplossen door een editor op te starten en de
+``&nbsp;/.bashrc'' van de root user aan te passen:
+<P>
+<PRE>
+  export PATH=$PATH:~/bin:~/sbin/:/usr/local/sbin
+  
+</PRE>
+<H3>can't locate module ppp-compress-21</H3>
+
+<P>Als je onderstaande meldingen krijgt:
+<P>
+<HR>
+<PRE>
+pppd[3566]: Connect: ppp0 &lt;--> /dev/ttyS1
+pppd[3566]: Remote message: Login Succeeded
+modprobe: can't locate module ppp-compress-21
+modprobe: can't locate module ppp-compress-26
+modprobe: can't locate module ppp-compress-24
+  
+</PRE>
+<HR>
+<P>Voeg dan deze regels toe aan de ``/etc/conf.modules''
+(bij sommige distributies heet deze file ``/etc/modules.conf''):
+<P>
+<HR>
+<PRE>
+alias ppp-compress-21 bsd_comp
+alias ppp-compress-24 ppp_deflate
+alias ppp-compress-26 ppp_deflate
+  
+</PRE>
+<HR>
+<H3>PAP authentication failed</H3>
+
+<P>
+<HR>
+<PRE>
+sparkie kernel: PPP line discipline registered.
+sparkie kernel: registered device ppp0
+sparkie pppd[167]: pppd 2.3.5 started by root, uid 0
+sparkie pppd[167]: Serial connection established.
+sparkie pppd[167]: Using interface ppp0
+sparkie pppd[167]: Connect: ppp0 &lt;--> /dev/ttyS1
+sparkie pppd[167]: Remote message:
+sparkie pppd[167]: PAP authentication failed
+sparkie pppd[167]: LCP terminated by peer
+sparkie pppd[167]: Connection terminated.
+sparkie pppd[167]: Hangup (SIGHUP)
+sparkie pppd[167]: Exit.
+  
+</PRE>
+<HR>
+ 
+<P>Dit kan een paar dingen betekenen:
+<UL>
+<LI>Het password/login klopt niet, controleer de gegevens in
+``/etc/ppp/pap-secrets''.</LI>
+<LI>Je provider ondersteund geen PAP authenticated logins.  Wellicht
+werkt een CHAP authenticated login wel.  Copieer dan
+``/etc/ppp/pap-secrets'' naar ``/etc/ppp/chap-secrets''.  Probeer
+opnieuw in te bellen.  Dit laatste heb ik niet zelf kunnen testen
+omdat mijn provider alleen PAP gebruikt.</LI>
+</UL>
+<H2><A NAME="s5">5.  Extra mogelijkheden.</A></H2>
+
+<P>
+<H2>5.1  creatief met ip-up en ip-down.</H2>
+
+<P>Je kunt een hoop (leuke ?) dingen doen met met het ``/etc/ppp/ip-up'' en
+``/etc/ppp/ip-down'' scripts.
+<H3> Loggen van de verbindings tijden.</H3>
+
+<P>Dit zet je in je /etc/ppp/ip-up script erbij:
+<HR>
+<PRE>
+# Hou een log file bij met connectie gegevens.
+echo "$(date)           \
+      $IFNAME $IFTTY    \
+      speed $IFSPEED    \
+      local:$LOCALIP    \
+      remote:$REMOTEIP  \
+      Started." >>/var/log/dial.log
+</PRE>
+<HR>
+<P>Dit zet je vervolgens in het /etc/ppp/ip-down script erbij:
+<HR>
+<PRE>
+# Hou een log file bij met connectie gegevens.
+echo "$(date)           \
+      $IFNAME $IFTTY    \
+      speed $IFSPEED    \
+      local:$LOCALIP    \
+      remote:$REMOTEIP  \
+      Stopped." >>/var/log/dial.log
+</PRE>
+<HR>
+<P>Je krijgt dan zo'n soort ``/var/log/dial.log'' file:
+<HR>
+<PRE>
+Tue Feb  2 11:49:07 CET 1999 ppp0 /dev/ttyS1 speed 115200 local:194.159.231.103 remote:194.159.73.222 Started.
+Tue Feb  2 11:57:55 CET 1999 ppp0 /dev/ttyS1 speed 115200 local:194.159.231.103 remote:194.159.73.222 Stopped.
+</PRE>
+<HR>
+<H3> Configureren van een firewall.</H3>
+
+<P>Helaas shijnt het nodig te zijn om sommige vervelende figuren buiten ons
+eigen vertrouwde thuisnetwerk te houden...
+<P>Je zou dit bijvoorbeeld alleen willen doen als je online bent, dan zou je
+zo'n soort IP-chains combinatie in het ``/etc/ppp/ip-up'' script kunnen
+zetten. 
+<HR>
+<PRE>
+# Pas dit aan je eigen netwerk 
+MYLAN=10.76.12.0/24
+
+ipchains -F 
+ipchains -N ppp-in
+ipchains -A input -i $IFNAME -j ppp-in
+# Geen IP spoofing op mijn LAN...
+ipchains -A ppp-in -s $MYLAN -l -j DENY
+ipchains -A ppp-in -d $MYLAN -l -j DENY
+etc...etc...
+</PRE>
+<HR>
+<P>In je ``/etc/ppp/ip-down'' script kun je dan alle firewall rules weer
+verwijderen.
+<HR>
+<PRE>
+ipchains -F 
+</PRE>
+<HR>
+<P>Zie voor gebruik van IP-chains de IPCHAINS-HOWTO. 
+<H2>5.2  Normale users verbinding laten starten.</H2>
+
+<P>
+<H3> sudo</H3>
+
+<P>Met het programma ``sudo'' kun je gewone users bepaalde commando's als de
+root user laten uitvoeren.  Hieronder staat een voorbeeld hoe je dat zou
+kunnen doen.  Voeg aan de regel ``PPPERS = jw-smaal,...'' de users toe
+welke ``ppp-on'' en ``ppp-off'' mogen starten.  ``helium'' is mijn lokale
+hostname, deze naam moet je aanpassen aan je eigen sitatie, type
+``hostname'' in om te zien wat je in je eigen situatie moet invullen.
+<P>Aanpassen van de configuratie file van sudo kan <B>alleen</B> met het
+commando ``visudo''.  Voor het formaat van het programma sudo zie ``man
+sudoers''.
+<P>
+<HR>
+<PRE>
+  # This file MUST be edited with the 'visudo' command as root.
+  #
+  # See the man page for the details on how to write a sudoers file.
+  #
+  # Host alias specification
+  # User alias specification
+  User_Alias      PPPERS = jw-smaal,smaal,marcel,willem
+  # Cmnd alias specification
+  Cmnd_Alias      PPP=/usr/local/sbin/ppp-on,/usr/local/sbin/ppp-off
+  # User privilege specification
+  root            ALL=(ALL) ALL
+  PPPERS          helium = NOPASSWD: PPP
+  
+</PRE>
+<HR>
+<H3> SUID wrapper zelf maken </H3>
+
+<P> De kernel weigert om zogenaamde SUID (Set User ID) shell-scripts te
+runnen.  Je kunt hieromheen werken door een klein C programma te schrijven
+welke wel SUID gezet mag worden en vervolgens het ppp-on/ppp-off script
+runt.  Let op deze programma's kunnen onveilig zijn, gebruik bij voorkeur de
+``sudo'' methode.  Op eigen risico de C source:  
+<P> ``suid-ppp-on.c''
+<HR>
+<PRE>
+  #include &lt;unistd.h>
+  void main()
+  {
+        setreuid(0, 0);
+        execl("/usr/local/sbin/ppp-on", "", "");
+  }
+  
+</PRE>
+<HR>
+<P> ``suid-ppp-off.c''
+<HR>
+<PRE>
+  #include &lt;unistd.h>
+  void main()
+  {
+        setreuid(0, 0);
+        execl("/usr/local/sbin/ppp-off", "", "");
+  }
+  
+</PRE>
+<HR>
+<P>Compilen van beide programma's: 
+<HR>
+<PRE>
+  gcc -o suid-ppp-on  suid-ppp-on.c
+  gcc -o suid-ppp-off suid-ppp-off.c
+  
+</PRE>
+<HR>
+<P>Copieer ``suid-ppp-on'' en ``suid-ppp-off'' naar ``/usr/local/bin'' en
+geef deze commando's om deze SUID te maken:
+<P>
+<HR>
+<PRE>
+  [root@koala ~]# cd /usr/local/bin/
+  [root@koala /usr/local/bin]# chown root:jw-smaal suid-ppp-on suid-ppp-off 
+  [root@koala /usr/local/bin]# chmod u=srx,g=rx,o-srwx suid-ppp-on suid-ppp-off 
+  
+</PRE>
+<HR>
+ 
+<P>Als je nu ``suid-ppp-on'' als user ``jw-smaal'' typt dan wordt als het
+goed is de verbinding gestart.
+<H2>5.3  Relevante HOWTO's</H2>
+
+<P>
+<HR>
+<PRE>
+PPP-HOWTO
+ISP-Hookup-HOWTO
+ISP-Connectivity  (mini-HOWTO)
+</PRE>
+<HR>
+<H2>5.4  Aanvullingen en verbeteringen.</H2>
+
+<P>Aanvullingen en verbeteringen van dit document zijn van harte welkom graag
+opsturen naar J-W Smaal &lt;
+<A HREF="mailto:J-W@Smaal.Demon.NL">J-W@Smaal.Demon.NL</A>&gt; .
+</BODY>
+</HTML>

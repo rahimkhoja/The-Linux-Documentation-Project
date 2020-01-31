@@ -1,0 +1,668 @@
+traducere ver. 0.2 de catre Riddl
+
+Multumiri tuturor celor care m-au ajutat,  in special lui Gushterul.
+Observatie f importanta: probabil ca exista unele greseli in acest document.
+Am tradus si eu cum m-am priceput mai bine, daca descoperiti greseli de
+traducere si pentru observatii pertinente trimiteti-mi mail pentru Riddl la
+"discutzii at gmx dot net". Nu uitati sa precizati numele documentului.
+Multumesc anticipat.
+Aceasta versiune este  putin modificata fata de original, deorece unii termeni
+sunau foarte ciudat in ro.
+Pentru ultima versiune a acestui document verifica
+<http://www.securityorg.net/docs/>.
+
+Lecturare placuta!
+______________________________________________________________________
+Linux 2.4 NAT HOWTO
+Rusty Russell, lista de discutii netfilter@lists.samba.org
+$Revision: 1.3 $ $Date: 2002/06/05 13:21:56 $
+
+Acest document descrie cum sa realizezi masquerading, transparent proxy, 
+forwardare de porturi, si alte forme de NAT pentru kernelurile Linux ver 2.4.
+
+______________________________________________________________________  
+
+Cuprins
+
+1. Introducere
+2. Care este site-ul oficial si care sunt listele de discutii?
+	2.1. Ce inseamna NAT?
+	2.2. De ce as dori sa realizez NAT?
+3. Doua tipuri de NAT
+4. Trecere rapida de la kernelurile 2.0 si 2.2
+	4.1. Doresc sa realizez doar masquerading! Help!
+	4.2. Dar despre ipmasqadm?
+5. Controlul a ceea ce dorim sa facem cu NAT?
+	5.1 Selectare simpla folosind iptables
+	5.2 Aspecte delicate in privinta selectarii pachetelor ce le dorim
+	modificate	
+6. Cum sa modificam pachetele
+	6.1 Folosirea NAT pentru modificarea adresei sursa (SNAT)
+		6.1.1 Masquerading
+	6.2 Folosirea NAT pentru modificarea adresei destinatie (DNAT)
+		6.2.2 Redirectare
+	6.3 Mapare complexa
+		6.3.1. Selectarea de adrese multiple dintr-un sir
+		6.3.2. Realizarea de mapare NAT nula 
+		6.3.3. Comportamentul NAT standard
+		6.3.4. Mapare implicita a porturilor sursa
+		6.3.5. Ce se intampla cand NAT-area nu reuseste
+		6.3.6. Mapari multiple, Suprapuneri si Conflicte
+		6.3.7. Schimbarea destinatiei conexiunilor generate local
+7. Protocoale speciale
+8. Avertizmente privind folosirea NAT
+9. Folosirea SNAT si rutarea
+10. Folosirea DNAT pentru adrese aflate in aceeasi retea.
+11. Multumiri
+
+
+
+______________________________________________________________________
+
+1. Introducere
+
+Bine ai venit!
+
+Esti pe cale sa incepi sa inveti fascinanta (si uneori inspaimantatoare)
+lume a NAT-ului: traducerea adreselor de retea. Acest Howto iti va fi
+oarecum un ghid precis pentru kernelurile din linux ver. 2.4 si peste.
+
+In kernelul de linux ver. 2.4, a fost introdus suport pentru modificarea 
+pachetelor, numit "netfilter". Un nivel deasupra acestuia pune la dispozitie
+NAT (translatarea adreselor de retea), complet rescris fata de versiunile din
+kernelurile anterioare.
+
+(C) 2000 Paul "Rusty" Russell.  Sub licenta GNU GPL.
+
+
+
+2. Care este site-ul oficial si care sunt listele de discutii?
+
+Sunt trei site-uri oficiale:
+
+o       Multumiri lui Filewatcher <http://netfilter.filewatcher.org/>.
+o       Multumiri Echipei Samba si SGI <http://netfilter.samba.org/>.
+o       Multumiri lui Harald Welte <http://netfilter.gnumonks.org/>.
+
+Le poti accesa pe toate folosind round-robin DNS la:
+<http://www.netfilter.org/> si  <http://www.iptables.org/>
+
+Pentru lista de discutii oficiala de la netfilter, vezi:
+  <http://www.netfilter.org/contact.html#list>.
+
+
+
+2.1. Ce inseamna NAT?
+
+In mod normal, pachetele intr-o retea se deplaseaza de la sursa  (cum ar fi
+computerul tau) la destinatia  (cum ar fi www.securityorg.net) prin mai
+multe legaturi de retea diferite: de exemplu cam 19 de la locatia in care ma
+aflu eu. Nici una din aceste legaturi nu iti modifica pachetul, pur si simplu
+este trimis mai departe. 
+
+Daca una din aceste legaturi ar fi facut NAT, atunci ar fi modificat sursa sau
+destinatia pachetului ce intra. Dupa cum iti imaginezi nu asa a fost conceput
+sistemul sa functioneze, si din aceasta cauza NAT este intodeauna ceva
+in genul unui infirm. Deobicei legatura care a facut NAT va tine minte cum a
+modificat pachetul, si cand un pachet replica vine din cealalta parte, va
+realiza modificarea inversa a pachetului replica, asa ca totul va functiona.
+
+
+
+2.2. De ce as dori sa realizez NAT?
+
+Intr-o lume perfecta nu ai avea nevoie. Intre timp, principale motive sunt:
+
+	Conexiunile prin modem la internet
+	 Cele mai multe ISP-uri iti dau doar o singura adresa IP cand te
+	 conectezi la ei. Poti trimite pachete cu orice adresa sursa pe care o
+	 doresti, dar doar pachetele cu aceasta adresa IP se vor intoarce la
+	 tine. Daca doresti sa folosesti mai multe sisteme (cum ar fi reteaua
+	 de acasa) pentru a le conecta la internet prin aceasta singura
+	 legatura vei avea nevoie de NAT.
+	 Aceasta este de departe cel mai raspandit mod de folosire al NAT-ului
+	 din zilele noastre, cunoscut si sub numele de "masquerading" in lumea
+	 Linuxului. Eu numesc aceasta SNAT, deoarece modifici adresa sursa a
+	 primului pachet.
+	
+	Servere multiple
+	 Uneori doresti sa modifici directia in care sa se indrepte pachetele
+	 ce intra in reteaua ta. In mod frecvent aceasta este (ca si mai sus)
+	 deoarece ai doar o singura adresa IP, dar doresti ca oameni sa poata
+	 sa ajunga la computerele din spatele sistemului cu adresa IP "reala".
+	 Daca rescrii adresa destinatie a pachetelor care intra, poti realiza
+	 acest lucru. Acest tip de NAT a fost numit forwardare (inaintare) de
+	 porturi in versiunile anterioare de Linux.
+	 O variatie des intalnita a acestei aplicatii al NAT-ului este
+	 load-sharing-ul (incarcare partajata), unde se mapeaza mai multe 
+	 sisteme, permitand sistemelor sa ajung la aceste sisteme. Daca 
+	 realizezi acest lucru la o scara mare, ar fi bine sa te uiti pe 
+	 Linux Virtual Server <http://linuxvirtualserver.org/>.
+
+	Proxy transparent
+	 Uneori doresti sa para ca fiecare pachet care trece prin sistemul tau
+	 Linux este destinat pentru un program ruland chiar pe sistemul tau.
+	 Acest lucru este folosit pentru a realiza proxy-uri transparente: un
+	 proxy este un program care se interpune intre reteaua ta si lumea
+	 exterioara, mediand comunicarea intre ele. Se numeste transparent
+	 deoarece reteaua ta nici nu va realiza ca foloseste un proxy, doar daca
+	 bineinteles, proxy-ul nu functioneaza.
+	 Squid-ul poate fi configurat sa ruleze in acest mod, si aceasta era
+	 numita redirectare sau realizare de proxy transparent in versiunile
+	 anterioare de linux.
+
+
+
+3. Doua tipuri de NAT
+
+Am impartit NAT-ul in doua tipuri: NAT pentru sursa (SNAT) si NAT pentru
+destinatie (DNAT).
+
+SNAT este realizat atunci cand modifici adresa sursa al primului pachet:
+schimbi sursa de unde porneste conexiunea. SNAT este intodeauna realizat dupa
+procesul de rutare al pachetelor, chiar inainte de a pleca pe conexiune
+pachetul. Masquerading este o forma particulara de SNAT.
+
+DNAT este realizat cand modifici adresa destinatie al primului pachet: schimbi
+destinatia unde va fi facuta conexiunea. DNAT este intodeauna realizat
+inainte de rutarea pachetelor, cand pachetul tocmai a venit prin interfata.
+Forwardare de porturi, load-sharing-ul, si proxy-ul transparent sunt toate
+forme de DNAT.
+
+
+
+4. Trecere rapida de la kernelurile 2.0 si 2.2
+
+Imi pare rau pentru aceia dintre dumneavastra socati de trecerea de la
+versiunea 2.0 (ipfwadm) la 2.2 (ipchains). Exista vesti bune si vesti proaste.
+
+In primul rand, poti in mod simplu sa folosesti ipchains si ipfwadm ca mai
+inainte. Pentru aceasta trebuie sa incarci (insmod) modulele pentru kernel
+"ipchains.o" sau "ipfwadm.o" ce se gasesc in ultima distributie netfilter. 
+Acestea se exclud reciproc (ai fost avertizat), si nu ar trebui folosite cu 
+nici un alt modul din netfilter.
+
+Odata ce unul din aceste module a fost incarcat, vei putea folos ipchains si
+ipfwadm in mod normal, insa cu unele diferente:
+
+- Setarea de timeout-uri pentru masquerading cu ipchains  -M -S, sau ipfwadm
+  -M -s nu rezolva nimic. Cum timeout-urile sunt mai mari pentru noua
+  infrastructura NAT, acest lucru nu ar trebui sa conteze.
+
+- Campurile init_seq, delta si previous_delta in listarea detaliata a 
+  masqueradarii sunt intodeauna zero.
+
+- Resetarea si listarea counter-elor simultana "-Z -L" nu mai este posibila:
+  countere-le nu vor fi resetate.
+ 
+- Nivelul de compatibilitate nu este foarte bun pentru un numar de conexiuni
+  foarte mare: nu il folosi pentru gateway-ul corporatiei.
+
+Hackerii pot deasemenea sa observe:
+
+- Acum te poti lega si pe porturile 61000-65095 chiar daca realizezi
+  masquerading. Codul pentru masqueradare obisnuia sa considere ca nimic in
+  aceasta raza ar fi fost ceva corect, asa ca programele nu puteau sa o
+  foloseasca.
+
+- "Hack-ul" (nedocumentat) "getsockname", pe care programele ce realizau proxy
+  transparent il puteau folosi pentru a afla adresa reala a conexiunilor nu
+  mai este disponibil.
+
+ - "Hack-ul" (nedocumentat) bind-to-foreign-address (atasare pe o adresa
+   straina) nu mai este deasemnea implementat; acesta era folosit pentru a
+   completa iluzia de proxy transparent.
+
+
+
+4.1. Doresc sa realizez doar masquerading! Help!
+
+Aceasta este ce vor majoritatea oamenilor. Daca ai o adresa PPP IP dinamica,
+vrei in mod simplu sa spui sistemului tau ca toate pachetele ce vin din
+reteaua interna ar trebui sa fie modificate astfel incat sa para ca vin de la
+sistemul tau.
+
+	# Incarca modulul NAT (acesta introduce toate modulele necesare)
+	modprobe iptable_nat
+
+	# In tabela NAT (-t nat) in chain-ul POSTROUTING adauga o regula 
+	# pentru toate pachetele care ies prin ppp0 (-p ppp0) care precizeaza
+	# sa masqueradeze conexiunea (-j MASQUERADE).
+	iptables -t nat -A POSTROUTING -o ppp0 -j MASQUERADE
+
+	# Da drumul la forwardarea IP
+	echo 1 > /proc/sys/net/ipv4/ip_forward
+
+Observatie: aici nu faci nici un fel de filtrare a pachetelor: pentru aceasta
+citeste Packet Filtering HOWTO: capitolul "Folosirea impreuna a NAT-ului si a
+filtrarii de pachete".
+
+
+
+4.2. Dar despre ipmasqadm?
+
+Nu este cazul sa ne facem probleme prea mari pentru compatibilitate. Poti
+folosi in mod simplu  "iptables -t nat" pentru a realiza forwardare de
+porturi. De exemplu, in Linux 2.2 ai fi facut:
+	
+	# Linux 2.2
+	# Forwardeaza pachetele TCP catre portul 8080, adresa 1.2.3.4, spre
+	# portul 80, adresa 192.168.1.1
+	ipmasqadm portfw -a -P tcp -L 1.2.3.4 8080 -R 192.168.1.1 80
+
+Acum ar trebui sa faci:
+
+	# Linux 2.4
+	# Adauga o regula inainte de procesul rutarii in chain-ul PREROUTING
+	# (-A PREROUTING) in tabela NAT (-t nat) pentru ca pachetele TCP 
+	# (-p tcp) care vin spre adresa 1.2.3.4 (-d 1.2.3.4), portul 8080
+	# (--dport 8080) sa aiba destinatia mapata (-j DNAT) catre
+	# 192.168.1.1, portul 80 (--to 192.168.1.1:80)
+	iptables -A PREROUTING -t nat -p tcp -d 1.2.3.4 --dport 8080 \
+			-j DNAT --to 192.168.1.1:80
+
+
+
+5. Controlul a ceea ce dorim sa facem cu NAT?
+
+Ai nevoie sa scrii reguli NAT pentru a spune kernelului ce conexiuni sa
+schimbe, si cum sa le schimbe. Pentru a realiza aceasta folosim comanda
+iptables, si precizam ca dorim a schimba tabela NAT prin specificarea optiunii
+"-t nat".
+
+Tabela regulilor NAT cuprinde trei liste numite "chain-uri": fiecare regula
+este examinata in chain pana cand una se potriveste. Doua chain-uri sunt
+numite PREROUTING (pentru DNAT, pentru pachetele care tocmai au intrat) si
+POSTROUTING (pentru SNAT, pentru pachetele care sunt pe cale sa iasa). Al
+treilea chain (OUTPUT) va fi ignorat in cele ce urmeaza.
+
+Urmatoarea diagrama ilustreaza destul de bine cum stau lucrurile:
+
+             _____                                     _____
+            /     \                                   /     \
+          PREROUTING -->[Routing ]----------------->POSTROUTING----->
+            \D-NAT/     [Decision]                    \S-NAT/
+                            |                            ^
+                            |                            |
+                            |                            |
+                            |                            |
+                            |                            |
+                            |                            |
+                            |                            |
+                            --------> Local Process ------
+
+
+La fiecare dintre punctele de mai sus, cand un pachet trece este determinat
+carei conexiuni ii este asociat. Daca este o conexiune noua, este determinat
+chain-ul corespunzator in tabela NAT pentru a determina ce sa facem cu acel
+pachet. Raspunsul determinat va fi aplicat pentru toate pachetele viitoare
+apartinand acelei conexiuni.
+
+
+
+5.1 Selectare simpla folosind iptables
+
+iptables admite un numar de optiuni standard dupa cum sunt listate mai jos.
+Toate optiunile care incep cu "--" pot fi prescurtate, atat timp cat iptables
+poate sa le deosebeasca de alte optiuni. Daca kernelul tau are iptables
+compilat ca modul, este necesar sa incarci intai modulul iptables: "insmod
+ip_tables".
+
+Cea mai importanta optiune in acest caz este optiunea de selectare a tabelei,
+"-t". Pentru toate actiune NAT, vei dori sa folosesti "-t nat" pentru tabela
+NAT. A doua cea mai importanta optiune este "-A" pentru a adauga o noua regula
+la sfarsitul unui chain ("-A POSTROUTING"), sau "-I" pentru a insera o regula
+la inceputul unui chain ("-I PREROUTING").
+
+Poti specifia sursa ("-s" sau "--source") si destinatia ("-d" sau
+"--destination") pachetelor pe care le doresti sa le prelucrezi prin NAT.
+Aceste optiuni pot fi urmate de o singura adresa IP (192.168.1.1), un nume
+(www.securityorg.net), sau o adresa de retea (192.168.1.0/24 sau 
+192.168.1.0/255.255.255.0).
+
+Poti specifica interfata cu care sa se potriveasca regula, de intrare ("-i"
+sau "--in-interface") sau de iesire ("-o" sau "--out-interface"), dar ceea ce
+poti specifica depinde si de chain-ul in care introduci regula: pentru
+chain-ul PREROUTING poti selecta numai interfete prin care intra pachetele,
+si in chain-ul POSTROUTING poti selecta numai interfete de iesire. Daca
+folosesti o interfata gresita iptables iti va da eroare.
+
+
+
+5.2 Aspecte delicate in privinta selectarii pachetelor ce le dorim modificate
+
+Am spus mai sus ca poti preciza o adresa sursa si destinatie. Daca vei omite
+optiunea privitoare la adresa sursa, atunci regula se va potrivi pentru 
+orice adresa sursa. Analog, daca omiti optiunea pentru adresa destinatie, atunci
+regula se va potrivi pentru orice adresa destinatie. 
+
+Poti deasemenea indica un protocol specific ("-p" sau "--protocol"), cum ar fi
+TCP sau UDP; doar pachetele de acest tip se vor potrivi cu regula. Principalul
+motiv pentru a preciza unul dintre aceste protocoale permite apoi folosirea de
+noi optiuni: in special optiunile "--source-port" si "--destination-port"
+(prescurtate "--sport" si "--dport").
+
+Aceste optiuni iti permite sa specifici ca numai pachetele cu anumite porturi
+destinatie sau porturi sursa se vor potrivi cu regulii. Aceste optiuni sunt
+folositoare, de exemplu, pentru redirectarea cererilor web (porturile TCP 80
+sau 8080) si nemodificarea celorlalte pachete.
+
+Aceste optiuni trebuie sa fie puse dupa optiunea "-p" (care are ca alt efect
+incarcarea optiunilor extinse pentru acel protocol). Poti folosi pentru
+porturi numere, sau nume cum sunt scrise in fisierul /etc/services.
+
+Toate caracteristicile dupa care poti selecta un pachet sunt detaliate in
+pagina de manual pentru iptables (man iptables).
+
+
+
+6. Cum sa modificam pachetele
+
+In concluzie, acum stim cum sa selectam pachetele pe care le dorim modificate.
+Pentru a scrie regulile complete trebuie sa spunem kernelului cu exactitate
+ceea ce dorim sa facem pachetelor.
+
+
+
+6.1 Folosirea NAT pentru modificarea adresei sursa
+
+Doresti sa faci SNAT; sa schimbi adresa sursa a conexiunilor cu ceva diferit.
+Acesta este realizat in chain-ul POSTROUTING, chiar inainte de a fi trimis
+pachetul; acesta este un detaliu important, deoarece inseamna ca orice alceva
+in sistemul Linux (rutare, filtrare de pachete) va vedea doar pachetul
+neschimbat. Mai inseamna deasemenea ca optiunea "-o" (interfata de iesire)
+poate fi folosita.
+
+SNAT este specificat folosind optiunea "-j SNAT"; si optiunea "--to-source"
+specifica o adresa IP, un sir de adrese IP, si un port optional sau un sir de
+porturi (doar in cazul protocoalelor UDP si TCP).
+
+	## Schimba adresa sursa cu 1.2.3.4
+	# iptables -t nat -A POSTROUTING -o eth0 -j SNAT --to 1.2.3.4
+
+	## Schimba adresa sursa cu 1.2.3.4, 1.2.3.5 sau 1.2.3.6
+	# iptables -t nat -A POSTROUTING -o eth0 -j SNAT --to 1.2.3.4-1.2.3.6
+
+	## Schimba adresa sursa cu 1.2.3.4, si porturile intre 1-1023
+	# iptables -t nat -A POSTROUTING -o eth0 -j SNAT --to 1.2.3.4:1-1023
+
+
+
+6.1.1 Masquerading
+
+Exista un caz particular de SNAT numit masquerading: ar trebui sa fie folosit
+numai pentru adrese IP asignate dinamic, cum ar fi in cazul celor ce se
+conecteaza prin dial-up (pentru adrese IP statice, foloseste SNAT ca mai sus).
+
+Nu este necesar cand faci masquerading sa specifici adresa sursa: deoarece va
+folosi adresa sursa a interfetei prin care va iesi pachetul. Dar ce este mai
+importat, daca legatura cu ISP-ul cade, conexiunile (care acum sunt pierdute
+oricum) sunt uitate, acest lucru inseamnand mai putine probleme tehnice cand
+legatura cu ISP-ul revine cu o noua adresa IP.
+
+	## masqueradare pentru ppp0
+	# iptables -t nat -A POSTROUTING -o ppp0 -j MASQUERADE
+
+
+
+6.2 Folosirea NAT pentru modificarea adresei destinatie (DNAT)
+
+Aceasta se realizeaza  in chain-ul PREROUTING, exact  dupa primirea
+pachetului, aceasta insemna ca orice in sistemul Linux (rutare, filtrare de
+pachete) va vedea pachetul cu noua adresa destinatie. Mai inseamna ca optiunea
+"-i" (interfata de intrare) poate fi folosita.
+
+Se specifica folosirea DNAT cu ajutorul optiunii "-j DNAT", iar optiunea
+"--to-detination" specifica o adresa IP, un sir de adrese IP, si un port
+optional sau un sir de porturi (acest lucru fiind valabil doar pentru 
+protocoalele UPD si TCP).
+
+  ## Schimba adresa destinatie cu 5.6.7.8
+  # iptables -t nat -A PREROUTING -i eth0 -j DNAT --to 5.6.7.8
+
+  ## Schimba adresa destinatie cu  5.6.7.8, 5.6.7.9 sau 5.6.7.10.
+  # iptables -t nat -A PREROUTING -i eth0 -j DNAT --to 5.6.7.8-5.6.7.10
+
+  ##Schimba adresa destinatie a traficului spre portul 80 cu 5.6.7.8, port 8080.
+  # iptables -t nat -A PREROUTING -p tcp --dport 80 -i eth0 \
+          -j DNAT --to 5.6.7.8:8080
+
+
+
+6.2.2 Redirectare
+
+Exista un caz particular de DNAT numita redirectare: este o simpla conventie
+care este echivalenta cu a realiza DNAT catre adresa interfetei prin care
+intra pachetele.
+
+	## Trimite traficul care vine pe portul 80 catre squid (proxy-ul
+	transparent
+       	# iptables -t nat -A PREROUTING -i eth1 -p tcp --dport 80 \
+	                    -j REDIRECT --to-port 3128
+			     
+Observatie: squid-ul trebuie sa fie configurat pentru a putea fi folosit ca
+proxy transparent!
+
+
+
+6.3 Mapare complexa
+
+Sunt cateva lucruri rafinate in folosirea NAT pe care majoritatea oamenilor nu
+vor avea nevoie sa le foloseasca. Aceste lucruri sunt documentate mai jos
+pentru curiosi.
+
+
+
+6.3.1. Selectarea de adrese multiple dintr-un sir
+
+Daca un sir de adrese IP este specificat, adresa IP care va fi folosita este
+bazata pe cea mai putin folosita la conexiuni adresa IP de care sistemul stie.
+Acest comportament furnizeaza load-balancing primar.
+
+
+
+6.3.2. Realizarea de mapare NAT nula
+
+Poti folosi tinta "-j ACCEPT" pentru a permite realizarea conexiunii fara sa
+fie realizat deloc NAT.
+
+
+
+6.3.3. Comportamentul NAT standard
+
+Comportamentul obisnuit este sa modifice conexiunea cat mai putin posibil, cu
+exceptia regulilor date de catre utilizator. Aceasta inseamna ca nu vor fi
+remapate porturile decat daca suntem obligati sa realizam acest lucru.
+
+
+
+6.3.4. Mapare implicita a porturilor sursa
+
+Chiar daca folosirea NAT nu este ceruta pentru o conexiune, translatarea
+portului sursa poate fi facut automat, daca o alta conexiune a fost mapata
+peste una noua. De exemplu considerati un caz care este comun in masquerading:
+
+1. O conexiune web este realizata de la un sistem cu IP-ul 192.1.1.1 cu portul
+sursa 1024 catre www.securityorg.net portul 80.
+
+2. Aceasta conexiune este masqueradata de un sistem care se ocupa cu acest
+lucru, pentru a folosi IP-ul sursa al sistemului ce realizeaza masqueradarea
+(1.2.3.4)
+
+3. Insusi sistemul ce realizeaza masquerading initiaza o conexiune catre
+www.securityorg.net, portul 80, de la 1.2.3.4 (adresa interfetei externe)
+portul 1024
+
+4. Codul NAT va modifica portul sursa al celei de-a doua conexiuni cu 1025,
+astfel ca sa nu existe conflict intre cele doua conexiuni.
+
+Cand se realizeaza aceasta mapare automata a sursei, porturile sunt impartite
+in trei clase:
+
+o Porturile sub 512
+o Porturile intre 512 si 1023
+o Porturile de la 1024, inclusiv, in sus
+
+Un port nu va fi niciodata mapat automat intr-o clasa diferita.
+
+
+
+6.3.5. Ce se intampla cand NAT-area nu reuseste
+
+Daca nu mai este disponibil nici un mod in care sa se relizeze maparea unica a
+conexiunii cerute de catre utilizator, conexiunea va fi abandonata. Acest
+comportament se aplica ai in cazurile in care pachetele nu au putut fi
+clasificate ca parte a unei conexiuni, deoarece sunt malformate, sau sistemul
+nu mai are memorie libera, etc.
+
+
+
+6.3.6. Mapari multiple, Suprapuneri si Conflicte
+
+Daca ai reguli care folosesc NAT pentru mapare de porturi aflate intr-o raza
+comuna; codul NAT este destul de inteligent pentru a evita conflicte. Aceasta
+pentru ca, avand doua reguli, este corecta maparea adresei sursa pentru 
+192.168.1.1 si respectiv 192.168.1.2 in adresa 1.2.3.4.
+
+Mai mult, poti face mapare peste adrese IP reale folosite, atat timp cat
+aceste adrese trec deasemenea prin masina care realizeaza maparea. Asa ca daca
+ai o retea asignata (1.2.3.0/24), dar ai o retea interna care foloseste
+aceasta clasa de IP-uri si inca o retea care foloseste o clasa de adrese IP
+private 192.168.1.0/24, poti sa realizezi SNAT pentru adresele cu sursa IP 
+192.168.1.0/24 peste adresele din reteaua 1.2.3.0, fara sa iti fie teama de 
+conflicte:
+	
+	# iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -o eth1 \
+                      -j SNAT --to 1.2.3.0/24
+
+Aceeasi logica se aplica adreselor folosite de insusi sistemul ce realizeaza
+NAT: in acest fel functioneaza si masquerading-ul (prin folosirea impreuna a
+adresei interfatei de catre pachetele masqueradate si pachetele "reale"
+venite de la insusi sistemul ca realizeaza masquerading-ul).
+
+De altfel, poti mapa aceleasi pachete pe mai multe sisteme diferite, si
+acestea vor fi folosite in comun. De exemplu, daca nu doresti sa mappezi nimic
+peste adresa 1.2.3.5, ai putea sa dai urmatoarea comanda:
+
+       # iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -o eth1 \
+                      -j SNAT --to 1.2.3.0-1.2.3.4 --to 1.2.3.6-1.2.3.254
+
+
+
+6.3.7. Schimbarea destinatiei conexiunilor generate local
+
+Codul NAT iti permite sa introduce reguli in chainul OUTPUT avand ca tinta
+DNAT, dar acest lucru nu este in intregime suportat in kernelurile 2.4 (poate
+fi programat dar are nevoie de noi optiuni, testari, si putina programare,
+asa ca daca nimeni nu il contacteaza pe Rusty pentru al scrie, nu o sa fie
+disponibil prea devreme).
+
+Limitarea curenta este faptul ca poti sa schimbi destinatia pachetelor doar
+catre sistemul local ( "-j DNAT --to 127.0.0.1"), nu si catre alte sisteme, in
+caz contrar replicile nu vor fi primite in mod corect inapoi.
+
+
+
+7. Protocoale speciale
+
+Unele protocoale nu accepta sa fie NAT-uite. Pentru fiecare dintre aceste
+protocoale, doua module speciale trebuiesc scrie; unul pentru urmarirea
+conexiunilor si al doilea pentru operatia de NAT-are propriu-zisa.
+
+In cadrul distributiei netfilter, exista module pentru ftp: ip_conntrack_ftp.o
+si ip_nat_ftp.o. Daca le inserezi in kernel (insmod) sau le compilezi in
+kernel, atunci realizarea oricarui tip de NAT pentru conexiuni ftp ar trebui
+sa functioneze. Daca nu, atunci poti folosi ftp pasiv, si chiar si atunci s-ar
+putea sa nu functioneze foarte sigur daca vrei sa realizezi alceva decat SNAT.
+
+
+
+8. Avertizmente privind folosirea NAT
+
+Daca realizezi NAT pentru o conexiune, pachetele venind din ambele sensuri
+(din afara si din inauntrul retelei) trebuie sa treaca prin sistemul care
+realizeaza NAT-area, in caz contrar lucrurile nu vor functiona sigur. In
+special, codul urmarii conexiunilor reansambleaza fragmentele, care inseamna
+ca nu numai depistarea conexiunilor nu va fi sigura, dar chiar si pachetele
+s-ar putea sa nu treaca deloc, ca fragmente fiind retinute.
+
+
+
+9. Folosirea SNAT si rutarea
+
+Daca doresti sa realizezi SNAT, vei dori sa fii sigur ca fiecare masina la
+care ajung pachete care sunt parte a unei conexiuni SNAT, vor trimite
+pachetele replica inapoi la sistemul care realizeaza SNAT-ul.
+De exemplu, daca mapezi niste pachete ce ies, cu adresa sursa 1.2.3.4, atunci
+ruterul extern trebuie sa stie ca trebuie sa trimita pachetele replica inapoi
+(care vor avea adresa destinatie 1.2.3.4) catre acest sistem.
+Acest lucru poate fi realizat in urmatoarele moduri:
+
+1. Daca realizezi SNAT peste adresa propriului sistem (pentru care rutarea si
+toate celelalte merg deja), nu trebuie sa faci nimic
+
+2. Daca realizezi SNAT peste o adresa nefolosita din propriul LAN (de exemplu,
+mappezi peste 1.2.3.99, o adresa IP nefolosita din reteaua ta  1.2.3.0/24),
+sistemul ce realizeaza NAT va trebui sa raspunda la cereri ARP pentru aceea
+adresa ca si pentru propria sa adresa: cea mai simpla metoda de a rezolva
+acest lucru este sa creezi un alias pentru adresa IP, de exemplu:
+	
+	# ip address add 1.2.3.99 dev eth0
+	
+3. Daca realizezi SNAT peste o adresa complet diferita, va trebui sa te asiguri
+ca masinile la care vor ajunge pachetele SNAT-atate vor ruta aceasta adresa
+inapoi catre sistemul pe care se realizeaza SNAT-ul. Aceasta este realizata
+deja daca sistemul care realizeaza SNAT-ul este gateway-ul lor default, in caz
+contrar va trebui sa adaugi o ruta pe fiecare sistem prin care trec pachetele
+modificate.
+
+
+
+10. Folosirea DNAT pentru adrese aflate in aceeasi retea.
+
+Daca realizezi forwardare de porturi inapoi in aceeasi retea, trebuie sa fii
+sigur ca atat pachetele viitoare cat si pachetele ce vin in replica vor trece
+prin sistemul ce realizeaza DNAT-ul (pentru ca acestea sa fie modificate).
+Codul NAT va bloca (inca din ver. 2.4.0-test6) pachetele ICMP de redirectare
+care rezulta atunci cand pachetele NAT-ate se indreapta catre aceeasi interfata
+spre care au venit, dar serverul care primeste acele pachete va incerca in
+continuare sa raspunda direct catre client (care nu va recunoaste pachetele
+replica).
+
+Cazul clasic este cand un sistem din reteaua interna incearca sa acceseze
+serverul www "public", care este defapt DNAT-at de la adresa publica (1.2.3.4)
+catre un sistem din reteaua interna (192.168.1.1), astfel:
+
+       # iptables -t nat -A PREROUTING -d 1.2.3.4 \
+                      -p tcp --dport 80 -j DNAT --to 192.168.1.1
+
+O cale este sa rulezi un server de DNS intern care sa stie adresa IP reala
+(interna) al site-ului public de web, si sa inainteze toate celelate cereri
+catre un server DNS extern. Aceasta inseamna ca va fi folosita o conexiune
+directa catre server-ul de web, fara sa mai fie nevoie de a trece prin
+sistemul care realizeaza NAT.
+
+Cealalta cale este sa realizezi, pe sistemul care face DNAT, mapparea adresei
+sursa spre propria lui adresa pentru conexiunile venind din reteaua interna,
+pacalind serverul de web sa trimita pachetele replica spre masina ce se ocupa
+cu NAT-area. Pentru acest exemplu vom proceda astfel (presupunem ca adresa IP
+al sistemului care realizeaza NAT este 192.168.1.250):
+
+       # iptables -t nat -A POSTROUTING -d 192.168.1.1 -s 192.168.1.0/24 \
+                      -p tcp --dport 80 -j SNAT --to 192.168.1.250
+
+Deoarece regula din chain-ul PREROUTING este executata prima, pachetele vor fi
+deja destinate pentru server-ul de web intern: putem preciza care din pachete
+sunt din reteaua interna dupa adresa IP sursa.
+
+
+
+11. Multumiri
+
+Multumirile sunt in primul rand pentru WatchGuard, si David Bonn, care a
+crezut in ideea netfilter destul pentru a ma sustine sa o tranform in
+realitate. Si pentru toti ceilalti, care m-au suportat cand faceam pe grozavul
+cand am invatat despre uratenia NAT-ului, in special celor ce mi-au citit
+jurnalul.
+
+Rusty.

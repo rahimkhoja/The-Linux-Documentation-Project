@@ -1,0 +1,167 @@
+
+                        Linux-Modem-Sharing mini-HOWTO
+
+Friedemann Baitinger, traduit par Arnaud Gomes-do-Vale
+
+   Version 1.01, 2 novembre 1997
+     _________________________________________________________________
+
+   _Ce mini-HOWTO décrit la configuration d'un système Linux dans le but
+   de partager un modem avec d'autres systèmes à travers un réseau
+   TCP/IP._
+     _________________________________________________________________
+
+1. Introduction
+
+   Ce mini-HOWTO décrit la configuration d'un système Linux dans le but
+   de partager un modem avec d'autres systèmes à travers un réseau
+   TCP/IP.
+
+2. Configuration du serveur
+
+   Je suppose que le serveur est une machine sous Linux avec
+     * soit un modem rattaché à un périphérique /dev/ttyS_x_ ;
+     * soit un modem virtuel émulé par isdn4linux sur un port
+       /dev/ttyI_x_.
+
+   La configuration la plus simple à laquelle je peux penser utilise un
+   script perl de cinq lignes comme "démon modem" :
+
+$ cat /usr/sbin/modemd
+
+#!/usr/bin/perl
+select((select(STDOUT), $| = 1)[$[]);
+select((select(STDIN), $| = 1)[$[]);
+exec 'cu -s 115200 -l /dev/ttyS1';
+die '$0: Cant exec cu: $!\n';
+
+   Ce démon est lancé par le processus inetd si un client se connecte sur
+   le port approprié, comme décrit ci-dessous. Le modemd se contente de
+   connecter le socket avec l'entrée standard STDIN et la sortie standard
+   STDOUT de la commande cu et laisse cu piloter le véritable modem. Si
+   cu n'est pas installé sur votre système, installez le paquetage UUCP,
+   dont il fait habituellement partie.
+
+   inetd doit être averti de l'existence du démon modem. Pour cela, il
+   faut mettre à jour son fichier de configuration, en général
+   /etc/inetd.conf, comme ceci :
+
+#
+# modem daemon
+#
+modem stream tcp nowait root /usr/sbin/tcpd /usr/sbin/modemd /dev/ttyS1
+
+   Pour que cela fonctionne, il faut aussi ajouter une entrée au fichier
+   /etc/services :
+
+modem           2006/tcp        modemd
+
+   Cette entrée associe un nom symbolique à un port explicite, 2006 dans
+   cet exemple. Le numéro du port peut être n'importe quoi, du moment
+   qu'il n'est pas déjà assigné à un service existant. Après avoir
+   procédé à ces changements, il faut envoyer un signal à inetd pour lui
+   faire relire son fichier de configuration :
+
+$ ps |grep inetd
+194  ?  S     0:00 /usr/sbin/inetd
+
+kill -HUP 194
+
+   Maintenant, le serveur est prêt à accepter les requêtes des clients.
+   Vous pouvez vérifier son bon fonctionnement :
+
+$ telnet localhost modem
+
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+
+   Vous êtes maintenant connecté au modem. Vous pouvez lui passer des
+   commandes AT pour vérifier la configuration :
+
+atz
+atz
+OK
+
+ati1
+ati1
+Linux ISDN
+OK
+
+^]
+telnet>quit
+$
+
+   A la place du script perl, vous pouvez utiliser le programme mserver,
+   disponible sur ftp://ftp.innet.be/pub/staff/carl/. S'il ne s'y trouve
+   plus, vous pouvez utiliser archie ou tout autre moteur de recherche
+   pour trouver l'archive mserver. Jusqu'à présent, je n'ai pas eu
+   l'occasion de l'installer ni de l'utiliser.
+
+3. Configuration du client
+
+   A l'heure actuelle, seule la configuration d'un client Windows est
+   décrite ici. Sur le PC client, vous aurez besoin d'un redirecteur de
+   port COM vers TCP/IP. Le meilleur que j'ai trouvé est DialOut/IP de
+   Tactical Software, pour Windows 3.1 et Windows 95. La version 3.1 peut
+   être utilisée sous Windows NT avec des applications 16 bits ; une
+   version 32 bits pour Windows NT doit sortir à la fin de l'été 1997.
+   NdT : Actuellement, Windows 98 et NT4 sont également supportés.
+
+   DialOut/IP présente le modem partagé comme un nouveau port COM sur la
+   machine Windows. Ce port COM virtuel peut être utilisé par les
+   programmes Windows comme si le modem partagé était connecté
+   directement. La plupart des applications clientes (y compris l'accès
+   réseau à distance de Windows 95) l'acceptent et fonctionnent comme
+   s'il s'agissait d'un véritable port série, à l'exception des
+   applications de fax et de tout ce qui doit accéder directement à
+   l'UART. DialOut/IP peut être configuré pour utiliser le protocole
+   TELNET, mais cette fonction ne s'applique qu'à certains racks de
+   modems et pas à la configuration de Linux décrite ici. Notez que
+   malgré son nom, DialOut/IP peut aussi être utilisé par les
+   applications qui attendent des appels entrants.
+
+   Sur http://www.tactical-sw.com, vous trouverez une page où vous pouvez
+   télécharger une version d'évaluation totalement fonctionnelle
+   utilisable pendant une à deux semaines. L'installation et la
+   configuration sont assurées par un programme _ad hoc_, et les détails
+   de l'installation sont couverts par le fichier README.TXT. Quand vous
+   lancez DialOut/IP, vous entrez l'adresse IP et le numéro du port du
+   modem partagé.
+
+   DialOut/IP est un produit commercial dont la licence s'applique par
+   modem, c'est à dire que le prix dépend du nombre de modems que vous
+   partagez. La licence dit que vous pouvez installer le logiciel sur un
+   nombre quelconque de PC qui utilisent les modems partagés.
+
+4. Considérations sur la sécurité
+
+   Si vous n'avez qu'un seul modem pour toutes les machines de votre
+   réseau local, vous n'avez probablement aucune inquiétude à avoir quant
+   à la sécurité. Par contre, si une ou plusieurs machines de votre
+   réseau sont connectées à internet par d'autres moyens que votre
+   serveur de modem, vous devez vous pencher sur la sécurité, ou
+   n'importe qui pourra taper telnet votre_machine modem et lancer des
+   appels longue distance ou internationaux à volonté.
+
+   Je vous suggère d'installer et de configurer les TCP-wrappers pour
+   protéger le serveur de modem contre les accès non autorisés.
+
+5. Exemples
+
+   J'utilise la configuration décrite dans les sections précédentes avec
+   Quicken sur mon ThinkPad sous Windows 95 pour contacter ma banque à
+   domicile avec le modem de ma machine Linux. Le "modem" n'en est en
+   fait même pas un, c'est une émulation qui utilise une carte ISDN-So.
+   Quicken voit simplement un port série, il ne sait pas que le
+   périphérique relié au port série est en fait à l'autre bout du réseau
+   local ethernet, ni qu'il ne s'agit pas d'un modem analogique standard
+   mais d'un adaptateur ISDN qui se trouve comprendre les commandes AT.
+
+6. Historique de ce document
+
+   V1.01, 02/11/97 Conversion du source au format HTML. Ajout de
+   références sur les endroits où se procurer cu et mserver. Ajout du
+   paramètre -s à l'exemple d'utilisation de cu.
+
+   V1.00, 12/06/97 Première version.

@@ -1,0 +1,2587 @@
+  Root RAID HOWTO cookbook
+  Michael A. Robinton, michael@bzs.org
+  v1.07, 25 marzo 1998
+
+  Questo documento è un ``ricettario'' per la creazione di un filesystem
+  raid montato come root (root raid) e del suo compagno ideale, un sis­
+  tema di recupero, usando initrd. Le istruzioni sono complete e date
+  passo a passo, sia per dispositivi md0 raid1 che raid5. Per ciascun
+  passo viene data una spiegazione di ciò che con esso si vuole
+  ottenere.  In questa revisione c'è anche un file generico lliinnuuxxrrcc per
+  initrd che può essere configurato con un singolo file di poche righe
+  ``/etc/raidboot.conf'' per configurazioni raid1 e raid5. La traduzione
+  italiana è curata da Samuele Maretti s.maretti@tiscalinet.it
+  ______________________________________________________________________
+
+  Indice Generale
+
+
+
+  1. Introduzione
+     1.1 Dove ottenere copie aggiornate di questo documento.
+     1.2 Bug
+     1.3 Riconoscimenti
+     1.4 Informazioni di copyright (in lingua originale)
+
+  2. Di cosa hai bisogno PRIMA DI COMINCIARE
+     2.1 Pacchetti necessari
+     2.2 Altre implementazioni simili.
+     2.3 Documentazione -- Letture raccomandate
+     2.4 Risorse RAID
+
+  3. Partenza veloce con ROOT RAID
+  4. initrd - Ricette per il RAID montato come root
+     4.1 Note sulla sicurezza
+     4.2 Compilare il Kernel e gli strumenti Raid
+     4.3 Costruire i filesystem initrd di recupero e di boot.
+     4.4 Istruzioni PASSO dopo PASSO
+     4.5 Installa la distribuzione - Specifico per Slackware
+     4.6 Installa linux pthreads
+     4.7 Installazione degli strumenti Raid
+     4.8 Rimuovere directory e file non necessari dal nuovo filesystem.
+     4.9 Creare /dev/mdx
+     4.10 Creare un filesystem utilizzabile per initrd
+        4.10.1 Creare il filesystem di BOOT/RESCUE initrd
+     4.11 Eseguire il boot del dispositivo RAID - linuxrc
+     4.12 Modificare gli script rc per lo shutdown
+     4.13 Configurare RAIDBOOT - raidboot.conf
+     4.14 Le variabili del kernel per RESCUE e RAID
+
+  5. Configurare il sistema RAID.
+     5.1 Specifiche di sistema. Sono stati configurati due sistemi con schede madri identiche.
+     5.2 Partitionare i dischi rigidi.
+
+  6. Costruire il file system RAID.
+     6.1 /etc/raid5.conf
+     6.2 /etc/raid1.conf
+     6.3 Procedure per la costruzione passo a passo di un file system RAID.
+
+  7. Un'ultima cosa.
+  8. Appendice A. - Lo shutdown per md0 di Bohumil Chalupa
+  9. Appendice B. - Script di SHUTDOWN di esempio
+     9.1 Slackware - /etc/rc.d/rc.6
+     9.2 Debian bo - /etc/init.d/halt and /etc/init.d/reboot
+        9.2.1 /etc/init.d/halt
+        9.2.2 /etc/init.d/reboot
+
+  10. Appendice C. - altri file di setup
+     10.1 linuxrc ANAME CDATA linuxrc file(REF)REF
+     10.2 loadlin -- linux.bat file - boot.par ANAME CDATA linux.bat file - boot.par(REF)REF
+     10.3 linuxthreads Makefile.diff ANAME CDATA linuxthreads Makefile.diff(REF)REF
+     10.4 raid1.conf ANAME CDATA raid1.conf(REF)REF
+     10.5 raid5.conf ANAME CDATA raid5.conf(REF)REF
+     10.6 raidboot.conf ANAME CDATA raidboot.conf(REF)REF
+     10.7 rc.raidown ANAME CDATA rc.raidown(REF)REF
+
+  11. Appendice D. - script linuxrc e shutdown obsoleti
+     11.1 Lavoro obsoleto - linuxrc
+     11.2 Lavoro obsoleto - script di shutdown
+
+  12. Appendice E. - La patch di Gadi per il raid stop per il kernel linux
+  13. Appendice F. - rc.raidown
+  14. Appendice G. - teoria del funzionamento di linuxrc
+
+
+
+  ______________________________________________________________________
+
+  11..  IInnttrroodduuzziioonnee
+
+  Si assume che il lettore abbia familiarità con i vari tipi di
+  implementazione raid, i loro vantaggi ed effetti collaterali. Questo
+  non è un tutorial, solo un insieme di istruzioni su come implementare
+  un filesystem raid su un sistema linux. Tutte le informazioni
+  necessarie per familiarizzare con raid su linux sono elencate qui
+  direttamente o per riferimento: per favore leggetele prima di inviare
+  domande per e-mail.
+
+
+  11..11..  DDoovvee ootttteenneerree ccooppiiee aaggggiioorrnnaattee ddii qquueessttoo ddooccuummeennttoo..
+
+  Root-RAID-HOWTO
+
+  Disponibile in formato LaTeX (per DVI e PostScript), testo e HTML.
+
+       sunsite.unc.edu/mdw/HOWTO/
+
+
+  Disponibile in formato SGML e HTML.
+
+       ftp.bizsystems.com/pub/raid/
+
+
+
+  11..22..  BBuugg
+
+  Al momento della stesura di questo documento il problema di fermare un
+  dispositivo RAID montato come root non è ancora stato risolto in modo
+  soddisfacente. Un metodo per eliminare il bisogno di eseguire ckraid
+  (che richiede un sacco di tempo) ad ogni boot, proposto da Ed Welbon e
+  implementato da Bohumil Chalupa si trova in questo documento. Senza
+  tale metodo è necessario eseguire cckkrraaiidd sul dispositivo mmdd ogni volta
+  che viene fatto un reboot del sistema. Su un array troppo grande
+  questo può causare un grande scadimento delle prestazioni. Sul mio
+  dispositivo RAID1 da 6 giga, installato su una macchina con processore
+  Pentium 166 con 128 mega di ram ci vuole ben più di mezz'ora per
+  eseguire ckraid :-( dopo ogni reboot. Sul mio array RAID5 da 13 giga
+  con adattatore scsi da 20mb/sec ci vuole più di un'ora.
+
+
+  Il metodo consiste nel memorizzare, ad ogni shutdown, lo stato
+  dell'array sul dispositivo di boot vero e proprio e confrontarlo con
+  uno ``stato di riferimento'' là memorizzato quando il sistema è stato
+  costruito la prima volta. Se al reboot i due stati coincidono il
+  superblock dell'array viene ricostruito al boot successivo, altrimenti
+  l'operatore viene avvisato dell'errore di stato e viene lasciato in
+  esecuzione il sistema di recupero con tutti gli strumenti raid.
+
+
+  La ricostruzione del superblock fa sì che il sistema ignori che
+  l'array è stato spento senza eseguire mdstop marcando tutti i drive
+  come OOKK, come se nulla fosse accaduto. Questo funziona solo se tutti i
+  drive sono OK al momento dello shutdown. Se uno dei drive dell'array
+  ha dei problemi è necessario rimuovere tale drive prima di far
+  ripartire il dispositivo md, o si potrebbe avere perdita di dati.
+
+  Niente di tutto questo si applica a raid0, su cui non deve essere
+  eseguito mdstop prima dello shutdown.
+
+  Le soluzioni definitive proposte per questo problema includono
+  l'introduzione di un file ffiinnaallrrdd simile ad iinniittrrdd, e un comando
+  mmddrroooottssttoopp che, durante lo shutdown, scrive sull'array i flag cclleeaann
+  quando è montato in sola lettura. Sono sicuro che ce ne sono altre.
+
+  Nel frattempo il problema è stato solo aggirato. Per favore, fatemi
+  sapere quando verrà risolto in modo più pulito!!!
+
+
+  11..33..  RRiiccoonnoosscciimmeennttii
+
+  Ciò che le persone seguenti hanno scritto o hanno inviato per e-mail
+  mi ha aiutato a realizzare questo documento. Molte idee sono state
+  _r_u_b_a_t_e dal lavoro di altri, io ho solo provato a mettere tutto insieme
+  nella forma di un lliibbrroo ddii rriicceettttee in modo che fosse facile da usare.
+  I miei ringraziamenti vanno a:
+
+  ·  Linas Vepstas <mailto:linas@linas.org>
+      _p_e_r _i_l _R_A_I_D _h_o_w_t_o _c_h_e _m_i _h_a _s_p_i_e_g_a_t_o _l_a _m_a_g_g_i_o_r _p_a_r_t_e _d_e_l_l_e _c_o_s_e_.
+
+  ·  Gadi Oxman <mailto:gadio@netvision.net.il>
+      _p_e_r _a_v_e_r _r_i_s_p_o_s_t_o _a_l_l_e _m_i_e _s_c_i_o_c_c_h_e _d_o_m_a_n_d_e _d_a _p_r_i_n_c_i_p_i_a_n_t_e_.
+
+  ·  Ed Welbon <mailto:welbon@bga.com>
+      _p_e_r _l_'_e_c_c_e_l_l_e_n_t_e _p_a_c_c_h_e_t_t_o iinniittrrdd..mmdd che mi ha ispirato a scrivere
+     questo.
+
+  ·  Bohumil Chalupa <mailto:bochal@apollo.karlov.mff.cuni.cz>
+      _p_e_r _a_v_e_r _i_m_p_l_e_m_e_n_t_a_t_o _i_l _m_e_t_o_d_o _d_i _c_u_i _h_o _p_a_r_l_a_t_o _e _c_h_e _p_e_r_m_e_t_t_e
+     _a_i _d_i_s_p_o_s_i_t_i_v_i _r_a_i_d _m_o_n_t_a_t_i _c_o_m_e _r_o_o_t _d_i _f_u_n_z_i_o_n_a_r_e _i_n _m_o_d_o
+     _p_r_o_d_u_t_t_i_v_o_.
+
+
+  ·  e molti altri che, in un modo o nell'altro, hanno contribuito a
+     questo lavoro.
+
+
+  11..44..  IInnffoorrmmaazziioonnii ddii ccooppyyrriigghhtt ((iinn lliinngguuaa oorriiggiinnaallee))
+
+  This document is GNU copyleft by Michael Robinton michael@bzs.org.
+
+  Permission to use, copy, distribute this document for any purpose is
+  hereby granted, provided that the author's / editor's name and this
+  notice appear in all copies and/or supporting documents; and that an
+  unmodified version of this document is made freely available.  This
+  document is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY, either expressed or implied.  While every effort
+  has been taken to ensure the accuracy of the information documented
+  herein, the author / editor / maintainer assumes NO RESPONSIBILITY for
+  any errors, or for any damages, direct or consequential, as a result
+  of the use of the information documented herein.
+
+
+  22..  DDii ccoossaa hhaaii bbiissooggnnoo PPRRIIMMAA DDII CCOOMMIINNCCIIAARREE
+
+  I pacchetti di cui hai bisogno e la documentazione che risponde alle
+  domande più comuni sulla configurazione e l'utilizzo di raid sono
+  elencati sotto.  Leggi approfonditamente l'elenco.
+
+
+  22..11..  PPaacccchheettttii nneecceessssaarrii
+
+  Hai bisogno della versione più recente di questi pacchetti.
+
+  ·  un kernel che supporti raid, initrd e /dev/loopx
+
+       io ho usato linux-2.0.33 <ftp://sun­
+       site.unc.edu/pub/Linux/kernel/> da sunsite
+
+  ·  raid145-971022-2.0.31
+     <ftp://ftp.kernel.org/pub/linux/daemons/raid/> patch che aggiunge
+     il supporto per raid1/4/5
+
+  ·  raidtools-pre3-0.42 <ftp://ftp.kernel.org/pub/linux/daemons/raid/>
+     strumenti per creare e mantenere dispositivi raid (c'è anche la
+     documentazione).
+
+  ·  ``La patch di Gadi per il raid stop'' nell'Appendice E.
+
+  ·  linuxthreads-0.71
+     <ftp://ftp.inria.fr/INRIA/Projects/cristal/Xavier.Leroy> pacchetto
+     threads necessario. Deve essere scaricato con ftp: i browser non
+     funzionano.  ftp.inria.fr/INRIA/Projects/cristal/Xavier.Leroy
+
+  ·  Una distribuzione Linux pronta da installare.
+
+       Io ho usato Slackware-3.4 <ftp://ftp.cdrom.com/pub/linux>
+
+
+  Utile, ma non necessario
+
+  ·  raidboot-0.01.tar.gz <ftp://ftp.bizsystems.com/pub/raid/> sistema
+     di recupero e boot raid precostruito.
+
+  Le istruzioni dettagliate che trovate in questo documento sono basate
+  sui pacchetti citati. Se i pacchetti sono stati aggiornati o usate una
+  distribuzione linux diversa potreste dover modificare le procedure che
+  trovate qui.
+
+  Le patch, gli strumenti ecc... potrebbero essere diversi con i kernel
+  2.1.  Controllate la documentazione più recente a:
+
+
+       ftp.kernel.org/pub/linux/daemons/raid/
+
+
+
+  22..22..  AAllttrree iimmpplleemmeennttaazziioonnii ssiimmiillii..
+
+  Ho deciso di includere nel kernel tutte le parti necessarie in modo
+  che tutto funzioni a partire dal boot senza caricare alcun modulo.
+  L'immagine del kernel che ho ottenuto, compressa, è un po' più grande
+  di 300k.
+
+  Date un'occhiata all'iinniittrrdd..mmdd..ttaarr..ggzz di Ed Welbon
+  <mailto:welbon@bga.com> dove trovate un altro modo per avere un
+  dispositivo raid bootabile. Usa i moduli caricabili. Un'occhiata ai
+  suoi script molto concisi vi mostreranno come fare se avete bisogno di
+  un kernel molto piccolo con moduli.
+
+
+       http://www.realtime.net/~welbon/initrd.md.tar.gz
+
+
+
+  22..33..  DDooccuummeennttaazziioonnee ---- LLeettttuurree rraaccccoommaannddaattee
+
+  DDoovvrreessttee lleeggggeerree::
+
+       //uussrr//ssrrcc//lliinnuuxx//DDooccuummeennttaattiioonn//iinniittrrdd..ttxxtt
+
+
+
+  così come la documentazione e le pagine di manuale che accompagnano il
+  pacchetto raidtools. In particolare leggete mmaann mmddaadddd e il documento
+  QQuuiicckkSSttaarrtt..RRAAIIDD che sono inclusi in questo pacchetto.
+
+
+  Potrebbe essere interessante leggere anche:
+
+  ·  BootPrompt-HOWTO <http://sunsite.unc.edu/mdw/HOWTO/BootPrompt-
+     HOWTO.html>
+
+  ·  mmaann lliilloo
+
+  ·  mmaann lliilloo..ccoonnff
+
+
+  22..44..  RRiissoorrssee RRAAIIDD
+
+
+  ·  sunsite.unc.edu/mdw/HOWTO/mini/Software-RAID
+
+  ·  www.ssc.com/lg/issue17/raid.html
+
+  ·  linas.org/linux/raid.html
+
+  ·  ftp.kernel.org/pub/linux/daemons/raid/
+
+  ·  www.realtime.net/~welbon/initrd.md.tar.gz
+
+  ·  luthien.nuclecu.unam.mx/~miguel/raid/
+
+  Potete anche sottoscrivere le seguenti mailing list:
+
+  ·  majordomo@nuclecu.unam.mx _p_e_r _i_s_c_r_i_v_e_r_v_i ssuubbssccrriibbee rraaiiddddeevv
+
+     mandate un messaggio a: raiddev@nuclecu.unam.mx
+
+  ·  majordomo@vger.rutgers.edu _p_e_r _i_s_c_r_i_v_e_r_v_i ssuubbssccrriibbee lliinnuuxx--rraaiidd
+
+     mandate un messaggio a: linux-raid@vger.rutgers.edu _(_q_u_e_s_t_a _s_e_m_b_r_a
+     _e_s_s_e_r_e _l_a _l_i_s_t_a _p_i_ù _a_t_t_i_v_a_)
+
+
+  33..  PPaarrtteennzzaa vveellooccee ccoonn RROOOOTT RRAAIIDD
+
+  Se non vuoi compilare e fare il debug del sistema di recupero puoi
+  prenderne uno generico incluso nella Slackware-3.4 all'indirizzo:
+
+       ftp.bizsystems.com/pub/raid/raidboot-0.01.tar.gz
+
+
+  A questo punto segui i passi seguenti:
+
+  ·  Compila un kernel con raid attivo e con il supporto per i tuoi
+     dischi (deve essere contenuto nel kernel, non un modulo)
+
+  ·  Controlla che l'array raid sia ben configurato e venga montato
+     correttamente
+
+  ·  Installa il tuo sistema operativo sul sistema raid
+
+  ·  Correggi le voci in ffssttaabb in modo che //ddeevv//mmdd00 sia il dispositivo
+     di root. Assicurati anche che le partizioni che usi per il boot si
+     trovino in ffssttaabb.
+
+  ·  Modifica i tuoi script di shutdown e reboot (i miei si trovano in
+     /etc/rc.d/rc.6) come descritto in ``Modificare gli script rc per lo
+     shutdown''
+
+  ·  Segui i passi seguenti: dal filesystem usato per i passaggi
+     eseguiti finora (d'ora in poi ''sistema di sviluppo'') nel sistema
+     di recupero e nel nuovo sistema raid
+
+             cd /root/raidboot
+             mkdir mnt
+             gzip -d rescue.clean
+             losetup /dev/loop0  rescue.clean
+             mount /dev/loop0    mnt
+
+     copia questi file
+
+             cp -p /etc/*         mnt/etc
+             cp -p /etc/rc.d/*    mnt/etc/rc.d
+                     {o nel modo più appropriato per il tuo sistema}
+             cp -a /lib/modules/* mnt/lib/modules
+
+
+
+  Correggi le voci in ffssttaabb in modo che //ddeevv//mmdd00 sia il dispositivo di
+  root. Assicurati che le partizioni che usi per il boot appaiano in
+  ffssttaabb.
+
+
+  Crea //eettcc//rraaiiddbboooott..ccoonnff che descriva la configurazione di boot raid.
+  Questo file NNOONN può contenere commenti nelle prime tre linee, dopo
+  queste non ci sono problemi.
+
+  raidboot.conf
+
+          /dev/sda1 /dev/sda2
+          raidboot
+          raid5.conf
+  # eventuali commenti possono essere messi *dopo* le tre
+  # linee di configurazione.
+  #
+  # Questo è 'raidboot.conf'
+  #
+  # linea uno, le partizioni contenenti il sistema di recupero raid 'initrd'
+  #       Non è necessario eseguire il boot da queste partizioni; comunque,
+  #       poiché il sistema di recupero non entra in un floppy, è necessario
+  #       sapere quali partizioni devono essere usate per caricarlo.
+  #
+  # linea due, il percorso delle informazioni di configurazione raid di boot
+  #       dove, a tempo di boot, si trovano shutdown, status ecc.
+  #       NON include le informazioni sul punto di mount, solo 'percorso':
+  #       /punto_di_mount/'percorso'
+  #
+  # linea tre, nome del file di configurazione raid
+  #       File contenente la configurazione raid corrente: raid1.conf, raid5.conf
+
+
+  Mancano poche altre cose ed il sistema raid è pronto ad eseguire il
+  boot.
+
+  Crea ``rc.raidown'', come descritto in appendice F, e copialo in
+  /etc/rc.d sui sistemi di recupero, sviluppo e raid. Smonta il sistema
+  di recupero e comprimilo.
+
+          umount mnt
+          losetup -d /dev/loop0
+          mv rescue.clean rescue
+          gzip rescue
+
+
+
+  Copia il file di recupero sulle partizioni di raid di boot.
+
+          cp rescue.gz /mnt_point(1)/raidboot
+          cp rescue.gz /mnt_point(2)/raidboot
+
+
+  Attiva l'array raid.
+
+          mdadd -ar
+
+
+  Salva lo stato di riferimento ccoorrrreettttoo sulla partizione raid di boot.
+
+          cat /proc/mdstat | grep md0 > /mnt_point(1)/raidboot/raidgood.ref
+          cat /proc/mdstat | grep md0 > /mnt_point(1)/raidboot/raidgood.ref
+
+
+  Infine configura il programma di boot come indicato in ``Configurare
+  RAIDBOOT - raidboot.conf'' e riavvia il tuo sistema dall'array raid.
+
+
+
+  44..  iinniittrrdd -- RRiicceettttee ppeerr iill RRAAIIDD mmoonnttaattoo ccoommee rroooott
+
+  Questa è la procedura per creare un ramdisk 'initrd' con strumenti di
+  recupero per il raid.
+
+  Nello specifico, questo documento si riferisce alle implementazioni
+  RAID1 e RAID5.
+
+  44..11..  NNoottee ssuullllaa ssiiccuurreezzzzaa
+
+  Il filesystem di recupero può essere usato da solo. Nel caso in cui ci
+  fossero problemi a montare l'array raid vieni lasciato con il sistema
+  di recupero montato e funzionante. PRENDI LE PRECAUZIONI DI SICUREZZA
+  APPROPRIATE!!!
+
+
+  44..22..  CCoommppiillaarree iill KKeerrnneell ee ggllii ssttrruummeennttii RRaaiidd
+
+  La prima cosa da fare è applicare una patch e compilare il kernel e
+  familiarizzarsi con gli strumenti raid. Assicurati di usare anche ``La
+  patch di Gadi per il raid stop'' in appendice E.  Configura, monta e
+  prova i tuoi dispositivi raid. I dettagli su come questo deve essere
+  fatto sono inclusi nel pacchetto rraaiiddttoooollss e li vedremo in breve più
+  avanti in questo stesso documento.
+
+
+  44..33..  CCoossttrruuiirree ii ffiilleessyysstteemm iinniittrrdd  ddii rreeccuuppeerroo ee ddii bboooott..
+
+  Ho usato la distribuzione SSllaacckkwwaarree--33..44 per costruire i filesystem di
+  recupero e boot e il filesystem per la macchina di produzione. Tutte
+  le distribuzioni di linux dovrebbero andare bene. Se usi una
+  distribuzione diversa, controlla le parti di questa procedura
+  specifiche per Slackware e modificale in modo ad adattarle al tuo
+  caso.
+
+
+  Uso loadlin per eseguire il boot dell'immagine del kernel da una
+  partizione dos semplicemente perché nel mio sistema ci sono dei
+  dispositivi strani che hanno bisogno di software di configurazione che
+  gira solo sotto dos. Lilo funzionerà altrettanto bene e può essere
+  usata una piccola partizione linux contenente solo i file di boot raid
+  e il record di lliilloo.
+
+  Per il sistema di boot/recupero raid, ho deciso di creare un sistema
+  ramdisk di minime dimensioni usando lo script 'setup' di Slackware
+  seguito dall'installazione dei pacchetti 'linuxthreads' e 'raidtools'
+  sulla Slackware sul mio ramdisk. Ho usato una procedura del tutto
+  identica per costruire il sistema di produzione.  Così i sistemi di
+  recupero e produzione sono molto simili.
+
+
+  Questo processo di installazione dà, alla fine, un sistema piuttosto
+  semplice (salva una copia del file) a cui sovrappongo
+
+
+          /lib/modules/2.x.x......
+          /etc .... con fstab, mdtab, raidX.conf, raidboot.conf modificati
+          /etc/rc.d
+          /dev/md*
+
+
+
+  dal sistema che uso in modo da personalizzarlo per il kernel e la
+  macchina su cui verrà fatto girare.
+
+
+  Questo fa sì che il sistema di boot/ripristino sia lo stesso sistema
+  installato sul dispositivo raid montato come root, solo un pochino
+  ``dimagrito'' ma con le revisioni delle librerie ecc. sempre
+  aggiornate.
+
+
+
+  44..44..  IIssttrruuzziioonnii PPAASSSSOO ddooppoo PPAASSSSOO
+
+  Dalla directory home di root (/root):
+
+
+          cd /root
+          mkdir raidboot
+          cd raidboot
+
+
+
+  Crea un punto di mount su cui lavorare
+
+
+          mkdir mnt
+          mkdir mnt2
+
+
+
+  Crea un file abbastanza grande da contenere il file system. Sarà un
+  po' più grande del file system di recupero. Ho scelto 24 mega poiché
+  16 mega non sono sufficienti
+
+          dd if=/dev/zero of=build bs=1024k count=24
+
+
+  associa il file con un dispositivo di loop e genera sul file un file
+  system ext2
+
+
+          losetup /dev/loop0 build
+          mke2fs -v -m0 -L initrd /dev/loop0
+          mount /dev/loop0 mnt
+
+  44..55..  IInnssttaallllaa llaa ddiissttrriibbuuzziioonnee -- SSppeecciiffiiccoo ppeerr SSllaacckkwwaarree
+
+  ``...salta le operazioni specifiche per Slackware'' e vai alla
+  prossima sezione
+
+  Ora che un file system vuoto è stato creato e montato, esegui "setup".
+
+
+  Specifica                       /root/raidboot/mnt
+
+
+
+  come ''ttaarrggeett''. Come source puoi scegliere tutto quello che usi
+  normalmente. Scegli i pacchetti che vuoi installare e procedi, ma NNOONN
+  eseguire la configurazione.
+
+  Scegli il modo 'EXPERT'
+
+  Io scelgo 'A', 'AP' e 'N', installando solo il minimo indispensabile
+  per far funzionare il sistema più un editor che mi è familiare (vi,
+  jed, joe) e che è ragionevolmente compatto.
+
+  lqqqqqqqq SELECTING PACKAGES FROM SERIES A (BASE LINUX SYSTEM) qqqqqqqqk
+  x lqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqk x
+  x x   [X] aaa_base  Basic filesystem, shell, and utils - REQUIRED    x x
+  x x   [X] bash      GNU bash-1.14.7 shell - REQUIRED                 x x
+  x x   [X] devs      Device files found in /dev - REQUIRED            x x
+  x x   [X] etc       System config files & utilities - REQUIRED       x x
+  x x   [X] shadow    Shadow password suite - REQUIRED                 x x
+  x x   [ ] ide       Linux 2.0.30 no SCSI (YOU NEED 1 KERNEL)         x x
+  x x   [ ] scsi      Linux 2.0.30 with SCSI (YOU NEED 1 KERNEL)       x x
+  x x   [ ] modules   Modular Linux device drivers                     x x
+  x x   [ ] scsimods  Loadable SCSI device drivers                     x x
+  x x   [X] hdsetup   Slackware setup scripts - REQUIRED               x x
+  x x   [ ] lilo      Boots Linux (not UMSDOS), DOS, OS/2, etc.        x x
+  x x   [ ] bsdlpr    BSD lpr - printer spooling system                x x
+  x x   [ ] loadlin   Boots Linux (UMSDOS too!) from MS-DOS            x x
+  x x   [ ] pnp       Plug'n'Play configuration tool                   x x
+  x x   [ ] umsprogs  Utilities needed to use the UMSDOS filesystem    x x
+  x x   [X] sysvinit  System V-like INIT programs - REQUIRED           x x
+  x x   [X] bin       GNU fileutils 3.12, elvis, etc. - REQUIRED       x x
+  x x   [X] ldso      Dynamic linker/loader - REQUIRED                 x x
+  x x   [ ] ibcs2     Runs SCO/SysVr4 binaries                         x x
+  x x   [X] less      A text pager utility - REQUIRED                  x x
+  x x   [ ] pcmcia    PCMCIA card services support                     x x
+  x x   [ ] getty     Getty_ps 2.0.7e - OPTIONAL                       x x
+  x x   [X] gzip      The GNU zip compression - REQUIRED               x x
+  x x   [X] ps        Displays process info - REQUIRED                 x x
+  x x   [X] aoutlibs  a.out shared libs - RECOMMENDED                  x x
+  x x   [X] elflibs   The ELF shared C libraries - REQUIRED            x x
+  x x   [X] util      Util-linux utilities - REQUIRED                  x x
+  x x   [ ] minicom   Serial transfer and modem comm package           x x
+  x x   [ ] cpio      The GNU cpio backup/archiving utility            x x
+  x x   [X] e2fsbn    Utilities for the ext2 file system               x x
+  x x   [X] find      GNU findutils 4.1                                x x
+  x x   [X] grep      GNU grep 2.0                                     x x
+  x x   [ ] kbd       Change keyboard mappings                         x x
+  x x   [X] gpm       Cut and paste text with your mouse               x x
+  x x   [X] sh_utils  GNU sh-utils 1.16 - REQUIRED                     x x
+  x x   [X] sysklogd  Logs system and kernel messages                  x x
+  x x   [X] tar       GNU tar 1.12 - REQUIRED                          x x
+  x x   [ ] tcsh      Extended C shell version 6.07                    x x
+  x x   [X] txtutils  GNU textutils-1.22 - REQUIRED                    x x
+  x x   [ ] zoneinfo  Configures your time zone                        x x
+  x mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqj x
+
+  Dalla serie di pacchetti AP scelgo solo 'JOE', un editor che mi piace,
+  e 'MC', un piccolo ed utile file manager. Puoi scegliere i programmi
+  di cui avrai bisogno sul tuo sistema.
+
+  lqqqqqqqqq SELECTING PACKAGES FROM SERIES AP (APPLICATIONS) qqqqqqqqqk
+  x x     [ ] ispell    The International version of ispell          x x
+  x x     [ ] jove      Jonathan's Own Version of Emacs text editor  x x
+  x x     [ ] manpgs    More man pages (online documentation)        x x
+  x x     [ ] diff      GNU diffutils                                x x
+  x x     [ ] sudo      Allow special users limited root access      x x
+  x x     [ ] ghostscr  GNU Ghostscript version 3.33                 x x
+  x x     [ ] gsfonts1  Ghostscript fonts (part one)                 x x
+  x x     [ ] gsfonts2  Ghostscript fonts (part two)                 x x
+  x x     [ ] gsfonts3  Ghostscript fonts (part three)               x x
+  x x     [ ] jed       JED programmer's editor                      x x
+  x x     [X] joe       joe text editor, version 2.8                 x x
+  x x     [ ] jpeg      JPEG image compression utilities             x x
+  x x     [ ] bc        GNU bc - arbitrary precision math language   x x
+  x x     [ ] workbone  a text-based audio CD player                 x x
+  x x     [X] mc        The Midnight Commander file manager          x x
+  x x     [ ] mt_st     mt ported from BSD - controls tape drive     x x
+  x x     [ ] groff     GNU troff document formatting system         x x
+  x x     [ ] quota     User disk quota utilities                    x x
+  x x     [ ] sc        The 'sc' spreadsheet                         x x
+  x x     [ ] texinfo   GNU texinfo documentation system             x x
+  x x     [ ] vim       Improved vi clone                            x x
+  x x     [ ] ash       A small /bin/sh type shell - 62K             x x
+  x x     [ ] zsh       Zsh - a custom *nix shell                    x x
+  x mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqj x
+
+
+  Dal pacchetto 'N' ho scelto solo TCPIP. Nonostante non sia veramente
+  necessario si rivela molto utile e permette l'accesso alla rete mentre
+  si cerca di aggiustare qualche guaio o di effettuare un aggiornamento
+  con l'array raid non montato. TCPIP contiene anche 'biff', che è usato
+  da alcune applicazioni di 'A'. Anche se non installi 'N' probabilmente
+  sarebbe il caso di installare il pacchetto biff ugualmente.
+
+  lqqqq SELECTING PACKAGES FROM SERIES N (NETWORK/NEWS/MAIL/UUCP) qqqqqk
+  x lqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqk x
+  x x    [ ] apache    Apache WWW (HTTP) server                      x x
+  x x    [ ] procmail  Mail delivery/filtering utility               x x
+  x x    [ ] dip       Handles SLIP/CSLIP connections                x x
+  x x    [ ] ppp       Point-to-point protocol                       x x
+  x x    [ ] mailx     The mailx mailer                              x x
+  x x    [X] tcpip     TCP/IP networking programs                    x x
+  x x    [ ] bind      Berkeley Internet Name Domain server          x x
+  x x    [ ] rdist     Remote file distribution utility              x x
+  x x    [ ] lynx      Text-based World Wide Web browser             x x
+  x x    [ ] uucp      Taylor UUCP 1.06.1 with HDB && Taylor configs x x
+  x x    [ ] elm       Menu-driven user mail program                 x x
+  x x    [ ] pine      Pine menu-driven mail program                 x x
+  x x    [ ] sendmail  The sendmail mail transport agent             x x
+  x x    [ ] metamail  Metamail multimedia mail extensions           x x
+  x x    [ ] smailcfg  Extra configuration files for sendmail        x x
+  x x    [ ] cnews     Spools and transmits Usenet news              x x
+  x x    [ ] inn       InterNetNews news transport system            x x
+  x x    [ ] tin       The 'tin' news reader (local or NNTP)         x x
+  x x    [ ] trn       'trn' for /var/spool/news                     x x
+  x x    [ ] trn-nntp  'trn' for NNTP (install 1 'trn' maximum)      x x
+  x x    [ ] nn-spool  'nn' for /var/spool/news                      x x
+  x x    [ ] nn-nntp   'nn' for NNTP (install 1 'nn' maximum)        x x
+  x x    [ ] netpipes  Network pipe utilities                        x x
+  x mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqj x
+
+
+  Completata l'installazione rispondi no a tutto il resto (cioè rispondi
+  no a tutte le richieste di configurazione) ed esci dallo script.
+
+
+  44..66..  IInnssttaallllaa lliinnuuxx pptthhrreeaaddss
+
+  Adesso devi installare la libreria 'linuxthreads-0.71'.  Ho incluso la
+  patch che segue per il Makefile di linuxthreads invece di spiegare i
+  dettagli dell'installazione. Salva il Makefile originale, applica la
+  patch e poi:
+
+          cd /usr/src/linuxthreads-0.71
+    patch
+          make
+          make install
+
+
+
+  -------------------diff Makefile.old  Makefile.raid-----------------
+  2a3,13
+  > # Se stai compilando "linuxthreads" per installarlo su un punto di mount
+  > # che non è la partizione di root, ridefinisci 'BUILDIR' in modo che sia
+  > # uguale al punto di mount che vuoi usare come directory "root"
+  > # Potresti doverlo fare se stai costruendo un 'ram disk iniziale' come
+  > # quello usato con i dispositivi root raid capaci di eseguire il boot.
+  > # RICHIEDE la versione 1.9.5 o superiori di ldconfig
+  > # per controllare esegui ldconfig -v
+  > #
+  > BUILDIR=/root/raidboot/mnt
+  > #BUILDIR=
+  >
+  81,82c92,93
+  <       install pthread.h $(INCLUDEDIR)/pthread.h
+  <       install semaphore.h $(INCLUDEDIR)/semaphore.h
+  ---
+  >       install pthread.h $(BUILDIR)$(INCLUDEDIR)/pthread.h
+  >       install semaphore.h $(BUILDIR)$(INCLUDEDIR)/semaphore.h
+  84c95
+  <       test -f /usr/include/sched.h || install sched.h $(INCLUDEDIR)/sched.h
+  ---
+  >       test -f $(BUILDIR)/usr/include/sched.h || install sched.h $(BUILDIR)$(INCLUDEDIR)/sched.h
+  86,89c97,103
+  <       install $(LIB) $(LIBDIR)/$(LIB)
+  <       install $(SHLIB) $(SHAREDLIBDIR)/$(SHLIB)
+  <       rm -f $(LIBDIR)/$(SHLIB0)
+  <       ln -s $(SHAREDLIBDIR)/$(SHLIB) $(LIBDIR)/$(SHLIB0)
+  ---
+  >       install $(LIB) $(BUILDIR)$(LIBDIR)/$(LIB)
+  >       install $(SHLIB) $(BUILDIR)$(SHAREDLIBDIR)/$(SHLIB)
+  >       rm -f $(BUILDIR)$(LIBDIR)/$(SHLIB0)
+  >       ln -s $(SHAREDLIBDIR)/$(SHLIB) $(BUILDIR)$(LIBDIR)/$(SHLIB0)
+  > ifneq ($(BUILDIR),)
+  >       ldconfig -r ${BUILDIR} -n $(SHAREDLIBDIR)
+  > else
+  91c105,106
+  <       cd man; $(MAKE) MANDIR=$(MANDIR) install
+  ---
+  > endif
+  >       cd man; $(MAKE) MANDIR=$(BUILDIR)$(MANDIR) install
+
+
+
+  44..77..  IInnssttaallllaazziioonnee ddeeggllii ssttrruummeennttii RRaaiidd
+
+  Il passo successivo consiste nell'installazione degli strumenti raid.
+  raidtools-0.42
+
+  Devi eseguire lo script "configure" facendolo puntare al Makefile
+  nella directory con i sorgenti per i file ramdisk
+
+    cd /usr/src/raidtools-0.42
+    configure --sbindir=/root/raidboot/mnt/sbin --prefix=/root/raidboot/mnt/usr
+    make
+    make install
+
+
+  La parte del Makefile riguardante l'installazione non funziona benis­
+  simo, quindi fai quello che segue per sistemare le cose. Questo prob­
+  lema verrò corretto nelle versioni future, così non sarà necessario
+  effettuare nuovi link.
+
+
+       Correggere l'errore di make install
+
+
+  I link che sono specificati nel Makefile alla sezione 'LINKS' devono
+  essere rimossi e rifatti correttamente in modo che tutto funzioni nel
+  modo giusto.
+
+          cd /root/raidboot/mnt/sbin
+          ln -fs mdadd mdrun
+          ln -fs mdadd mdstop
+
+
+
+  44..88..  RRiimmuuoovveerree ddiirreeccttoorryy ee ffiillee nnoonn nneecceessssaarrii ddaall nnuuoovvoo ffiilleessyysstteemm..
+
+  Cancella le seguenti directory dal filesystem (ATTENZIONE NON
+  CANCELLARLE DAL SISTEMA ATTUALMENTE IN ESECUZIONE) è un errore facile
+  da commettere, indovina come me ne sono accorto!!!
+
+          cd /root/raidboot/mnt
+          rm -r home/ftp/*
+          rm -r lost+found
+          rm -r usr/doc
+          rm -r usr/info
+          rm -r usr/local/man
+          rm -r usr/man
+          rm -r usr/openwin
+          rm -r usr/share/locale
+          rm -r usr/X*
+          rm -r var/man
+          rm -r var/log/packages
+          rm -r var/log/setup
+          rm -r var/log/disk_contents
+
+
+
+  44..99..  CCrreeaarree //ddeevv//mmdd xx
+
+  L'ultimo passo consiste semplicemente nel copiare i dispositivi
+  /dev/md* dal filesystem corrente sul filesystem di rescue. Potresti
+  anche crearli con mknode.
+
+          cp -a /dev/md* /root/raidboot/mnt/dev
+
+  44..1100..  CCrreeaarree uunn ffiilleessyysstteemm uuttiilliizzzzaabbiillee ppeerr iinniittrrdd
+
+  Adesso hai un filesystem pronto per essere personalizzato. Una volta
+  personalizzato, questo filesystem può essere usato per recuperare il
+  sistema nel caso in cui i dispositivi raid avessero problemi e ci
+  fosse bisogno degli strumenti raid per rimediare. Sarà anche usato per
+  eseguire il boot e montare come root il dispositivo raid usando il
+  file linuxrc che verrà discusso di seguito.
+
+  Copia il filesystem su un dispositivo più piccolo per il file initrd,
+  16 mega dovrebbero essere sufficienti.
+
+  Crea il filesystem più piccolo e montalo
+
+          cd /root/raidboot
+          dd if=/dev/zero of=bare.fs bs=1024k count=16
+
+
+  associa il file con un dispositivo di loop e genera un filesystem ext2
+  sul file
+
+          losetup /dev/loop1 bare.fs
+          mke2fs -v -m0 -L initrd /dev/loop1
+          mount /dev/loop1 mnt2
+
+
+  Copia il filesystem 'build' su 'bare.fs'
+
+          cp -a mnt/* mnt2
+
+
+  Salva il sistema 'bare.fs' prima di personalizzarlo in modo da rendere
+  più semplici eventuali aggiornamenti futuri. Il filesystem 'build' non
+  serve più e può essere cancellato.
+
+          cd /root/raidboot
+          umount mnt
+          umount mnt2
+          losetup -d /dev/loop0
+          losetup -d /dev/loop1
+          rm build
+          cp bare.fs rescue
+          gzip -9 bare.fs
+
+
+
+  44..1100..11..  CCrreeaarree iill ffiilleessyysstteemm ddii BBOOOOTT//RREESSCCUUEE iinniittrrdd
+
+  Adesso copia le cose dipendenti dal sistema che corrispondono al
+  kernel dal sistema usato per lo sviluppo, in alternativa puoi
+  modificare manualmente i file nel sistema di recupero in modo che
+  corrispondano al sistema che stai costruendo.
+
+          losetup /dev/loop0 rescue
+          mount /dev/loop0 mnt
+
+
+  Assicurati che nessun file *~, core o di log compaia nella tua direc­
+  tory etc. I 2 comandi che seguono danno dei messaggi di errore: igno­
+  rali.
+
+
+
+          cp -dp /etc/* mnt/etc
+          cp -dp /etc/rc.d/* mnt/etc/rc.d
+
+          mkdir  mnt/lib/modules
+          cp -a  /lib/modules/2.x.x mnt/lib/modules <--- la tua versione 2.x.x
+
+
+  Modifica i file seguenti per adattarli al tuo sistema di recupero.
+
+          cd mnt
+
+  Non-network
+          etc/fstab
+          etc/mdtab       dovrebbe funzionare correttamente
+  Network
+          etc/hosts
+          etc/resolv.conf
+          etc/hosts.equiv         e file correlati
+          etc/rc.d/rc.inet1       correggi ip#, mask, gateway, ecc...
+          etc/rc.d/rc.S           rimuovi tutta la sezione riguardante lo
+                                  stato del filesystem,
+                  a partire da:
+                          # Test to see if the root partition isread-only
+                  fino a, ma senza includerlo:
+                          # remove /etc/mtab* so that mount will .....
+                                  Questo evita il fastidioso avvertimento
+                                  che il ramdisk è montato in lettura/scrittura.
+          etc/rc.d/rc.xxxxx       altri se richiesto, vedi oltre
+          root/.rhosts            se presente
+          home/xxxx/xxxx          altri se richiesto
+
+  ATTENZIONE:     La procedura appena illustrata sposta i tuoi file
+                  password e shadow sul disco di recupero!!!!!
+
+  ATTENZIONE:     Forse non vuoi che questo accada per ragioni di sicurezza.
+
+
+  Crea tutte le directory che sono necessarie per montare /dev/disk...
+  Questi sono i punti di mount per eseguire il boot del sistema (par­
+  tizione di boot e partizione di boot di backup). Il mio sistema esegue
+  il boot da dos usando llooaaddlliinn, comunque anche partizioni linux e lilo
+  funzioneranno bene.  Il mio sistema usa:
+
+          cd /root/raidboot/mnt           <--- initrd root
+          mkdir dosa                      punto di mount della partizione dos
+          mkdir dosb                      punto di mount del mirror dos
+
+
+  Il filesystem di recupero è completo!
+
+  Noterai, esaminando i file nel filesystem di recupero, che ci sono
+  ancora molti file che potrebbero essere cancellati. Non l'ho fatto
+  perché complicherebbe troppo la procedura e la maggior parte dei
+  sistemi raid hanno memoria e spazio su disco a sufficienza. Se vuoi
+  avere un filesystem ancora più piccolo, fallo!
+
+
+  44..1111..  EEsseegguuiirree iill bboooott ddeell ddiissppoossiittiivvoo RRAAIIDD -- lliinnuuxxrrcc
+
+  Per far sì che il disco di recupero esegua il boot del dispositivo
+  raid devi solo copiare il file di script:
+
+
+       lliinnuuxxrrcc
+
+
+  nella directory root del dispositivo.
+
+  La teoria del funzionamento di questo file è discussa in ``Appendice
+  G, teoria del funzionamento di linuxrc''.
+
+  Un linuxrc (funzionante) molto semplice e più facile da capire si
+  trova in ``Appendice D'', _s_c_r_i_p_t _l_i_n_u_x_r_c _e _d_i _s_h_u_t_d_o_w_n _o_b_s_o_l_e_t_i. Copia
+  il testo seguente in un file lliinnuuxxrrcc e salvalo nella tua area di
+  sviluppo.
+
+
+
+   -------------------- linuxrc ----------------------
+  #!/bin/sh
+  # ver 1.13 3-6-98
+  #
+  ################# BEGIN 'linuxrc' ##################
+  #            DEFINIZIONE DELLE FUNZIONI            #
+  ####################################################
+  # Definisce la funzione 'Fault' nel caso in cui
+  # qualcosa vada storto durante l'esecuzione di 'linuxrc'
+  #
+  FaultExit () {
+  # corregge fstab per mostrare '/dev/ram0/ per il sistema di recupero
+      /bin/cat /etc/fstab | {
+      while read Line
+      do
+          if [ -z "$( echo ${Line} | /usr/bin/grep md0 )" ]; then
+              echo ${Line}
+          else
+              echo "/dev/ram0 / ext2 defaults 1 1"
+          fi
+      done
+      } > /etc/tmp.$$
+      /bin/mv /etc/tmp.$$ /etc/fstab
+  #       point root at /dev/ram0 (the rescue system)
+          echo 0x100>/proc/sys/kernel/real-root-dev
+          /bin/umount /proc
+          exit
+  }
+
+  # Definisce una procedura 'Warning' per stampare un banner sul terminale di boot
+  #
+  Warning () {
+      echo '*********************************'
+      echo -e " $*"
+      echo '*********************************'
+  }
+
+  # Definisce 'SplitKernelArg' che aiuta ad estrarre gli argomenti del kernel
+  # riguardanti 'Raid'
+  SplitKernelArg () { eval $1='$( IFS=,; echo $2)' }
+
+  # Definisce 'SplitConfArgs' che aiuta ad estrarre gli argomenti di
+  # configurazione del sistema
+  SplitConfArgs () {
+      RaidBootType=$1
+      RaidBootDevice=$2
+      RaidConfigPath=$3
+  }
+  ########################################################
+  ################### MAIN linuxrc #######################
+  ########################################################
+  # monta il filesystem proc
+  /bin/mount /proc
+
+  # Prende dalla linea di comando la partizione di boot e la posizione
+  # della configurazione
+  CMDLINE=`/bin/cat /proc/cmdline`
+  for Parameter in $CMDLINE; do
+      Parameter=$( IFS='='; echo ${Parameter} )
+      case $Parameter in
+          Raid*) SplitKernelArg $Parameter;;
+      esac
+  done
+
+  # controlla 'required raid boot'
+  if [ -z "${Raid_Conf}" ]; then
+      Warning Kernel command line \'Raid_Conf\' missing
+      FaultExit
+  fi
+  SplitConfArgs $Raid_Conf
+
+  # monta temporaneamente la partizione di boot
+  /bin/mount -t ${RaidBootType} ${RaidBootDevice} /mnt
+
+  # prende i file della directory etc dal sistema raid primario
+  pushd /etc
+
+  # questo verrà decompresso nella directory /etc (vedi rc.6)
+  if [ ! -f /mnt/${RaidConfigPath}/raidboot.etc ]; then
+  # cattive notizie, questo file dovrebbe esserci
+      Warning required file \'raidboot.etc\' \
+      missing from ${RaidBootDevice}/${RaidConfigPath} \\n \
+      \\tUsing rescue system defaults
+  else
+      /bin/tar -xf /mnt/${RaidConfigPath}/raidboot.etc
+  fi
+  # cerca il 'vero' dispositivo raidboot per questo boot
+  # il percorso dello stato e il nome di raidX.conf
+  if [ ! -f /mnt/${RaidConfigPath}/raidboot.cfg ]; then
+  # cattive notizie, questo file dovrebbe esserci
+      Warning required file 'raidboot.cfg' \
+      missing from ${RaidBootDevice}/${RaidConfigPath}\\n \
+      \\tUsing rescue system defaults
+  # Prendi il primo nome di file raidX.conf in $RArg1
+      RaidBootDevs=$RaidBootDevice
+      RaidStatusPath=$RaidConfigPath
+      for RaidConfigEtc in $( ls raid*.conf )
+      do break; done
+  else
+      {
+      read RaidBootDevs
+      read RaidStatusPath
+      read RaidConfigEtc
+      } < /mnt/${RaidConfigPath}/raidboot.cfg
+
+  fi
+  popd
+  /bin/umount /mnt
+
+  # Nel caso in cui non trovi il file di stato raid setta un flag
+  #
+  RAIDOWN="raidboot.ro not found"
+  RAIDREF="raidgood.ref not found"
+  echo "Reading md0 shutdown status."
+
+  # cerca lo stato di shutdown raid
+  for Device in ${RaidBootDevs}
+  do
+  # i tipi di questi filesystem dovrebbero essere in 'fstab'
+  #  le partizioni devono essere montate per avere uno shutdown raid pulito
+      /bin/mount ${Device} /mnt
+      if [ -f /mnt/${RaidStatusPath}/raidboot.ro ]; then
+          RAIDOWN=`/bin/cat /mnt/${RaidStatusPath}/raidboot.ro`
+          RAIDREF=`/bin/cat /mnt/${RaidStatusPath}/raidgood.ref`
+          /bin/umount /mnt
+          break
+      fi
+      /bin/umount /mnt
+  done
+  # Controlla che lo shutdown sia avvenuto in modo pulito
+  if [ "${RAIDOWN}" != "${RAIDREF}" ]; then
+      Warning shutdown ERROR ${RAIDOWN}
+      FaultExit
+  fi
+
+  # L'array raid è pulito, rimuovi i file di stato di shutdown
+  for Device in ${RaidBootDevs}
+  do
+      /bin/mount ${Device} /mnt
+      /bin/rm -f /mnt/${RaidStatusPath}/raidboot.ro
+      /bin/umount /mnt
+  done
+
+  # Scrivi un superblock pulito su tutti i dispositivi raid
+
+  echo "write clean superblocks"
+  /sbin/mkraid -f --only-superblock /etc/${RaidConfigEtc}
+
+  # Attiva gli array raid
+  if [ -z "$Raid_ALT" ]; then
+      /sbin/mdadd -ar
+  else
+      /sbin/mdadd $Raid_ALT
+  fi
+
+  #  Se ci sono errori - ESCI e lascia funzionante il sistema di recupero
+  if [ $? -ne 0 ]; then
+     Warning some RAID device has errors
+     FaultExit
+  fi
+
+  # Tutto va bene, fai montare /dev/md0 al kernel
+  # e dì al kernel di assumere /dev/md0 come il dispsitivo root
+  # Il valore 0x900 è il numero di dispositivo calcolato come:
+  #  256*numero_major + numero_minor
+  echo "/dev/md0 mounted on root"
+  echo 0x900>/proc/sys/kernel/real-root-dev
+  # umount /proc to deallocate initrd device ram space
+  /bin/umount /proc
+  exit
+  #------------------ end linuxrc ----------------------
+
+
+
+  Aggiungi 'linuxrc' al device di boot initrd
+
+          cd /root/raidboot
+          chmod 777 linuxrc
+          cp -p linuxrc mnt
+
+
+
+  44..1122..  MMooddiiffiiccaarree ggllii ssccrriipptt rrcc ppeerr lloo sshhuuttddoowwnn
+
+  Per completare l'installazione, modifica gli script rc in modo da
+  salvare lo stato degli md sul vero dispositivo di root quando si
+  verifica lo shutdown.
+
+  Nella slackware questi script sono rc.0 -> rc.6
+  Nella debian 'bo' sono sia 'halt' che 'reboot'
+
+  Se implementi questo in un'altra distribuzione, per favore invia per
+  e-mail le istruzioni e file di esempio in modo che possano essere inclusi qui.
+
+
+  Ho modificato leggermente il metodo per lo stop raid di Bohumil
+  Chalupa. La sua soluzione originale è presentata in ``Appendice A''.
+  Poiché non ci sono partizioni linux libere sul sistema di produzione
+  tranne mmdd00, le partizioni di boot sono usate per memorizzare lo stato
+  rraaiiddOOKK rreeaaddoonnllyy. Ho scelto di scrivere su ognuna copia della
+  partizione di boot un file contenente lo stato dell'array md allo
+  shutdown il cui significato è: il dispositivo md è stato rimontato in
+  sola lettura.  Questo fa sì che il sistema possa continuare a
+  funzionare anche nel caso che uno dei drive muoia.
+
+  Lo script di shutdown è stato modificato in modo da richiamare
+  ``rc.raidown'', che salva le informazioni necessarie per effettuare
+  effettuare il reboot e montare il dispositivo raid. Alcuni esempi di
+  script di shutdown per varie distribuzioni di linux si trovano in
+  ``Appendice B''.
+
+
+  Per catturare lo stato allo shutdown dell'array raid inserisci una
+  chiamata a ``rc.raidown'' dopo tutte le istruzioni ccaassee (se presenti)
+  ma prima dell'inizio dello shutdown vero e proprio (kill, salvataggi
+  di stato ecc.) e prima che i filesystem siano smontati.
+
+  ############ Salva informazioni di boot raid e stato ##############
+  #
+    if [ -x /etc/rc.d/rc.raidown ]; then
+      /etc/rc.d/rc.raidown
+    fi
+  ################## fine del boot raid #########################
+
+
+  Una volta che tutti i file system sono smontati (il file system di
+  root non verrà smontato) ma prima di qualsiasi controllo relativo allo
+  stato della mancanza di corrente aggiungi:
+
+  ################ per array raid #########################
+  # Ferma tutti gli array raid conosciuti (salvo root che non si ferma)
+    if [ -x /sbin/mdstop ]; then
+      echo "Stopping raid"
+      /sbin/mdstop -a
+    fi
+  ##########################################################
+
+
+  Questo fermerà in modo pulito tutti i dispositivi di raid tranne il
+  dispositivo di root. Il suo stato è passato in rraaiiddssttaatt..rroo al prossimo
+  boot.
+
+  Copia il file rc sul tuo nuovo array raid, sul file system di recupero
+  che è ancora montato come //rroooott//rraaiiddbboooott//mmnntt e sul sistema usato per
+  lo sviluppo se si trova sulla stessa macchina.
+
+  Modifica eettcc//ffssttaabb sul filesystem di recupero in modo opportuno ed
+  assicurati che mmddttaabb sul filesystem di recupero sia corretto.
+
+  Adesso copia il disco di recupero sulla tua partizione dos, e tutto
+  dovrebbe essere pronto per eseguire il boot con il dispositivo raid
+  come root.
+
+          umount mnt
+          losetup -d /dev/loop0
+          gzip -9 rescue
+
+
+  Copia rescue.gz sulle tue partizioni di boot.
+
+  Tutto ciò che rimane è creare il file di configurazione rraaiiddbboooott..ccoonnff
+  e controllare il nuovo file system eseguendo il reboot.
+
+  44..1133..  CCoonnffiigguurraarree RRAAIIDDBBOOOOTT -- rraaiiddbboooott..ccoonnff
+
+  I commenti che seguono il file di configurazione di esempio spiegano
+  ciascuna delle tre linee. Questo file di esempio è relativo ad un
+  array scsi raid5 con 4 drive con partizioni di boot duplicate sui
+  drive sda1 e sdb1.  Sostituisci invece i parametri relativi ai tuoi
+  file system.
+
+    /dev/sda1 /dev/sdb1
+    linux
+    raid5.conf
+  # i commenti possono essere messi solo 'dopo' le tre
+  # linee di configurazione.
+  #
+  # Questo è 'raidboot.conf'
+  #
+  # linea uno, le partizioni contenenti il sistema raid-rescue 'initrd'
+  #       Non è necessario eseguire il boot da queste partizioni; comunque,
+  #       poiché il sistema di recupero non entra su un solo floppy, è
+  #       necessario sapere quali partizioni devono essere usate per caricare
+  #       il sistema di recupero
+  #
+  # linea due, il percorso del file di configurazione raidboot
+  #       La posizione dello stato di shutdown, ecc... a tempo di boot
+  #       NON include le informazioni sul punto di mount, solo il 'percorso'
+  #       /punto_di_mount/'percorso'
+  #
+  # linea tre, il nome del file di configurazione raid
+  #       Il file di configurazione raid corrente, ad esempio
+  #       raid1.conf, raid5.conf
+
+
+
+  44..1144..  LLee vvaarriiaabbiillii ddeell kkeerrnneell ppeerr RREESSCCUUEE ee RRAAIIDD
+
+  Ci sono due variabili del kernel per il sistema di recupero e RAID,
+  solo la prima deve essere specificata.
+
+  ·  Raid_Conf=msdos,/dev/sda1,raidboot
+
+       Questa variabile punta al dispositivo raid di boot e al file
+       di configurazione. Per il floppy di boot di recupero puoi
+       specificarla alla linea di comando del kernel o nei file di
+       boot di loadlin o di lilo.
+
+
+       formato: 'filesystem-type,device,path-to-config-from-mount­
+       point'
+
+
+  ·  Raid_ALT=-r,-p5,/dev/md0,/dev/sda3 /dev/sdb3 /dev/sdc3 /dev/sdd3
+
+       Parametri alternativi per mdadd necessari quando si effettua
+       il boot con array raid non ridondanti. Questi sono i
+       parametri da linea di comando, separati da virgole, per
+       mmddaadddd. A meno che non siano necessari per avviare un array
+       malfunzionante/non ridondante, COMMENTATELI O SPECIFICATELI
+       CON UN 'NULL'.
+
+
+       i.e. Raid_ALT=
+
+
+  Entrambi questi parametri possono essere specificati nel file di boot
+  di lilo o loadlin o nella linea di comando del kernel di loadlin.
+  Bisogna fare attenzione, comunque, a non eccedere la lunghezza massima
+  di linea nel caso si usi la linea di comando (128 caratteri).
+
+  Eseguendo il boot con lliilloo, i parametri sono inclusi nel file di
+  configurazione di lilo nella forma:
+
+  append="Raid_Conf=msdos,/dev/sda1,raidboot"
+  append="Raid_ALT=-r,-p5,/dev/md0,/dev/sda3 /dev/sdb3 /dev/sdc3 /dev/sdd3"
+
+
+  Vedi mmaann lliilloo..ccoonnff per informazioni più dettagliate.
+
+  Poiché ho dell'hardware che richiede utility di configurazione DOS, ho
+  una piccola partizione dos nel sistema.  Quindi, uso loadlin per
+  eseguire il boot del sistema raid5 dalla partizione dos con un mirror
+  (una copia) del disco. Un metodo identico è usato per il sistema
+  raid1. L'esempio sotto usa loadlin, ma la procedura è molto simile per
+  lilo.
+
+  Il mio sistema dos contiene fra le utility un piccolo editor, così
+  posso modificare i parametri di boot di loadlin se necessario,
+  permettendomi di effettuare il reboot del sistema linux sul mio disco
+  di swap mentre faccio dei test.
+
+  Il sistema dos contiene questo albero di directory per linux
+
+          c:\raidboot.bat
+          c:\raidboot\loadlin.exe
+          c:\raidboot\zimage
+          c:\raidboot\rescue.gz
+          c:\raidboot\raidboot.cfg
+          c:\raidboot\raidboot.etc
+          c:\raidboot\raidgood.ref
+          c:\raidboot\raidstat.ro       (solo allo shutdown)
+
+
+
+  linux.bat contiene:
+
+  ---------------------- linux.bat ---------------------------
+  echo "Start the LOADLIN process:"
+  c:\raidboot\loadlin @c:\raidboot\boot.par
+  -------------------- end linux.bat -------------------------
+
+
+  boot.par contiene:
+
+
+
+          # loadlin boot parameter file
+          #
+          # version 1.02 3-6-98
+
+          # immagine del kernel di linux
+          c:\linux\zimage
+
+          # dispositivo target di root
+          root=/dev/md0
+          #root=/dev/ram0
+          #root=/dev/sdc5
+
+          # monta il dispositivo di root come 'ro'
+          ro
+
+          # dimensione del ram disk
+          ramdisk_size=16384
+
+          # nome del file initrd
+          initrd=c:\raidboot\rescue.gz
+          #noinitrd
+
+          # la memoria finisce qui
+          mem=131072k
+
+          # punta al dispositivo raid di boot, al file di configurazione
+          # per il boot da floppy di recupero, puoi specificarlo
+          # sulla linea di comando invece di qui
+          # formato 'tipo-di-filesystem,dispositivo,percorso-di-config-frm_mntpnt'
+          Raid_Conf=msdos,/dev/sda1,raidboot
+
+          # Parametri alternativi di mdadd
+          # necessari per il boot con raid non ridondante
+          # altrimenti COMMENTARE O SPECIFICARE 'NULL'
+          #Raid_ALT=-r,-p5,/dev/md0,/dev/sda3 /dev/sdb3 /dev/sdc3 /dev/sdd3
+
+          # dispositivi ethernet
+          ether=10,0x300,eth0
+
+  ***** >> NOTA!! la sola differenza fra forzare l'esecuzione del sistema
+          di recupero e montare il dispositivo raid è il parametro di loadlin
+
+                  root=/dev/ram0          per il sistema di recupero
+                  root=/dev/md0           per RAID
+
+                  Con root=/dev/ram0 il dispositivo RAID non sarà montato
+                  e il sistema di recupero partirà incondizionatamente.
+
+
+
+  Se l'array RAID fallisce, il sistema di recupero viene lasciato
+  montato e funzionante.
+
+
+  55..  CCoonnffiigguurraarree iill ssiisstteemmaa RRAAIIDD..
+
+
+  55..11..  SSppeecciiffiicchhee ddii ssiisstteemmaa.. SSoonnoo ssttaattii ccoonnffiigguurraattii dduuee ssiisstteemmii ccoonn
+  sscchheeddee mmaaddrrii iiddeennttiicchhee..
+
+
+
+                                    Raid-1          Raid-5
+  Motherboard:    Iwill P55TU     dual ide        adaptec scsi
+  Processore:     Intel P200
+  Dischi:                         2ea  7 gig      4 ea Segate 4.2 gig
+                                  Maxtors         wide scsii
+
+
+  I drive sono indicati da linux con i nomi da 'sda' a 'sdd' sul sistema
+  raid5 e da 'hda' a 'hdc' sul sistema raid1.
+
+
+  55..22..  PPaarrttiittiioonnaarree ii ddiisscchhii rriiggiiddii..
+
+  Poiché testare un grosso array raid di root montabile è difficile a
+  causa del problema di reboot causato da ckraid, ho ripartizionato il
+  mio spazio di swap in modo da includere una partizione RAID più
+  piccola a scopo di test, sda6, sdb6, sdc6, sdd6 e una piccola coppia
+  di partizioni, root e /usr/src per sviluppare e testare il kernel raid
+  e gli strumenti.  Forse ti può essere utile.
+
+
+
+          <bf/SISTEMA DI SVILUPPO - RAID5/
+     Dispos.      Sistema         Dim.    Scopo
+
+    /dev/sda1     dos boot        16 meg  partizione di boot
+  * /dev/sda2     extended        130 meg (vedi sotto)
+    /dev/sda3     linux native    4 gig   raid5-1 primario
+  ----------------------sda2------------------------------
+  * /dev/sda5     linux swap      113 meg spazio di swap
+  * /dev/sda6     linux native    16 meg  test raid5-1
+  ========================================================
+    /dev/sdb1     dos boot        16 meg  copia partizione di boot
+  * /dev/sdb2     extended        130 meg (vedi sotto)
+    /dev/sdb3     linux native    4 gig   raid5-2 primario
+  ----------------------sdb2------------------------------
+  * /dev/sdb5     linux swap      113 meg spazio di swap
+  * /dev/sdb6     linux native    16 meg  test raid5-2
+  ========================================================
+  * /dev/sdc2     extended        146 meg (vedi sotto)
+    /dev/sdc3     linux native    4 gig   raid5-3 primario
+  ----------------------sdc2------------------------------
+  * /dev/sdc5     linux swap      130 meg partiz. di root di sviluppo
+  * /dev/sdc6     linux native    16 meg  test raid5-3
+  ========================================================
+  * /dev/sdd2     extended        146 meg (vedi sotto)
+    /dev/sdd3     linux native    4 gig   raid5-4 primario
+  ----------------------sdd2------------------------------
+  * /dev/sdd5     linux swap      130 meg /usr/src di sviluppo
+  * /dev/sdd6     linux native    16 meg  test raid5-4
+
+
+          <bf/SISTEMA DI SVILUPPO - RAID1/
+     Dispos.      Sistema         Dim.    Scopo
+
+    /dev/hda1     dos             16meg   partizione di boot
+  * /dev/hda2     extended        126m    (vedi sotto)
+    /dev/hda3     linux           126m    partizione root di sviluppo
+    /dev/hda4     linux           6+gig   raid1-1
+  ----------------------hda2------------------------------
+  * /dev/hda5     linux            26m    test raid1-1
+  * /dev/hda6     linux swap      100m
+  ========================================================
+
+    /dev/hdc1     è semplicemente una copia esatta di hda1 così che
+                  la partizione può essere resa attiva se hda fallisce
+  * /dev/hdc2     extended        126m    (vedi sotto)
+    /dev/hdc3     linux           126m    /usr/src di sviluppo
+    /dev/hdc4     linux           6+gig   raid1-2
+  ----------------------hdc2------------------------------
+  * /dev/hdc5     linux            26m    test raid1-2
+  * /dev/hdc6     linux swap      100m
+
+
+  Le partizioni sdx2 e hdx3 sono state definite 'swap' dopo lo sviluppo
+  di questa utility. Avrei potuto farla su un'altra macchina, comunque,
+  le librerie e i kernel sono vecchi di un anno o più sulle mie altre
+  macchine linux, e ho preferito costruirla sulla macchina target.
+
+  Lo schema di partizionamento è stato scelto in modo tale che, nel caso
+  che uno qualsiasi dei dischi fallisca catastroficamente, il sistema
+  continui a funzionare e sia ancora possibile eseguire il boot con il
+  minimo sforzo e senza perdita di dati.
+
+  ·  Se un qualsiasi drive fallisce, la procedura di boot terminerà e
+     verrà fatto partire il sistema di recupero. L'esame dei messaggi su
+     schermo o /dos_x/raidboot/raidstat.ro informerà l'operatore sullo
+     stato dell'array.
+  ·  Se sda1 (raid5) o hda1 (raid1) fallisce, la partizione di boot di
+     backup del dos deve essere resa 'attiva' e il bios deve riconoscere
+     la nuova partizione come dispositivo di boot o deve essere spostato
+     fisicamente alla posizione _xda.
+
+     In alternativa, il sistema potrebbe essere fatto partire con un
+     floppy disk usando l'immagine initrd sul boot drive di backup che
+     rimane.  Il sistema raid può poi essere reso attivo ancora con:
+
+              "/sbin/mkraid /etc/raid<it/x/.conf -f --only-superblock"
+
+
+  per ricostruire i superblocchi rimanenti.
+
+  ·  Fatto questo,
+
+
+             mdadd -ar
+
+
+
+  ·  Esamina lo stato dell'array per verificare che tutto sia OK poi
+     rimpiazza il riferimento giusto all'array con lo stato corrente
+     finché il disco mal funzionante può essere riparato o sostituito.
+
+
+             cat /proc/mdstat | grep md0 > /dosx/raidboot/raidgood.ref
+
+             shutdown -r now
+
+
+  per fare un reboot pulito, e il sistema è ancora in funzione.
+
+  66..  CCoossttrruuiirree iill ffiillee ssyysstteemm RRAAIIDD..
+
+  Questa è la descrizione dei miei sistemi RAID di cui parlo nelle
+  specifiche di sistema. Il tuo sistema potrebbe avere un'architettura
+  RAID diversa, perciò apporta le modifiche opportune. Leggi anche le
+  pagine di manuale e QuickStart.RAID che è incluso nei raidtools-0.42.
+
+  66..11..  //eettcc//rraaiidd55..ccoonnff
+
+
+
+          # raid-5: configurazione
+          raiddev                 /dev/md0
+          raid-level              5
+          nr-raid-disks           4
+          chunk-size              32
+
+          # Parity placement algorithm
+          parity-algorithm        left-symmetric
+
+          # Spare disks for hot reconstruction
+          #nr-spare-disks         0
+
+          device                  /dev/sda3
+          raid-disk               0
+
+          device                  /dev/sdb3
+          raid-disk               1
+
+          device                  /dev/sdc3
+          raid-disk               2
+
+          device                  /dev/sdd3
+          raid-disk               3
+
+
+
+  66..22..  //eettcc//rraaiidd11..ccoonnff
+
+
+          # raid-1 configurazione
+          raiddev                 /dev/md0
+          raid-level              1
+          nr-raid-disks           2
+          nr-spare-disks          0
+
+          device                  /dev/hda4
+          raid-disk               0
+
+          device                  /dev/hdc4
+          raid-disk               1
+
+
+
+  66..33..  PPrroocceedduurree ppeerr llaa ccoossttrruuzziioonnee ppaassssoo aa ppaassssoo ddii uunn ffiillee ssyysstteemm
+  RRAAIIDD..
+
+  Per il mio sistema RAID5 ho fatto un'installazione completa di:
+
+          Slackware-3.4   qualsiasi distribuzione recente dovrebbe andare bene
+          linuxthreads-0.71
+          raidtools-0.42
+          linux-2.0.33 con la patch raid145 e la patch di Gadi
+
+
+
+  Crea e formatta il dispositivo raid.
+
+          mkraid /etc/raid5.conf
+          mdcreate raid5 /dev/md0 /dev/sda3 /dev/sdb3 /dev/sdc3 /dev/sdd3
+          mdadd -ar
+          mke2fs /dev/md0
+          mkdir /md
+          mount -t ext2 /dev/md0 /md
+
+
+
+  Crea i file di riferimento che verranno usati da reboot, ci potrebbero
+  essere delle differenze sul tuo sistema.
+
+          cat /proc/mdstat | grep md0 > /dosa/raidboot/raidgood.ref
+          cat /proc/mdstat | grep md0 > /dosb/raidboot/raidgood.ref
+
+
+  Usa Slackware-3.4 o un'altra distribuzione per costruire il tuo SO
+
+          setup
+
+
+  Specifica '/md' come target, e il sorgente che usi normalmente. Scegli
+  ed installa i diskset che ti interessano tranne il kernel. Configura
+  il sistema, ma salta la sezione su lilo e sul boot del kernel. Esci da
+  setup.
+
+  Installa 'pthreads'
+
+          cd /usr/src/linuxthreads-0.71
+
+
+  modifica il Makefile e specifica
+
+          BUILDIR=/md
+
+          make
+          make install
+
+
+  Installa 'raidtools'
+
+          cd /usr/src/raidtools-0.42
+          configure --sbindir=/md/sbin --prefix=/md/usr
+
+
+  correggi l'errore dei raidtools che si verifica al make install
+
+          cd /md/sbin
+          rm mdrun
+          rm mdstop
+          ln -s mdadd mdrun
+          ln -s mdadd mdstop
+
+
+  Crea /dev/mdx
+
+          cp -a /dev/md* /md/dev
+
+
+  Aggiungi la configurazione del sistema dal sistema corrente (ignora
+  gli errori).
+
+          cp -dp /etc/* mnt/etc
+          cp -dp /etc/rc.d/* mnt/etc/rc.d         (include il nuovo rc.6)
+          mkdir  mnt/lib/modules
+          cp -a  /lib/modules/2.x.x mnt/lib/modules <--- il 2.x.x corrente
+
+
+  Adatta i file seguenti al tuo file system
+
+
+
+          cd /md
+
+  Non-network
+          etc/fstab       inserisci i dispositivi di root e raid corretti.
+          etc/mdtab       dovrebbe funzionare
+  Network
+          etc/hosts
+          etc/resolv.conf
+          etc/hosts.equiv         e file correlati
+          etc/rc.d/rc.inet1       correggi il numero ip#, mask, gateway, ecc...
+          etc/rc.d/rc.S           togli tutta la sezione sullo
+                                  stato del file system
+                  da:
+                          # Test to see if the root partition isread-only
+                  a, ma non incluso:
+                          # remove /etc/mtab* so that mount will .....
+                                  Questo evita il fastidioso avvertimento
+                                  sul fatto che il ramdisk è montato rw.
+          etc/rc.d/rc.xxxxx       altri se necessario
+          root/.rhosts            se presente
+          home/xxxx/xxxx          altri se necessario
+
+   ATTENZIONE:    La procedura sopra muove i tuoi file password e shadow
+                  sul nuovo file system!!!!!
+
+   ATTENZIONE:    Puoi non volerlo fare per ragioni di sicurezza.
+
+
+  Crea le directory necessarie a montare /dev/disk... Queste sono speci­
+  fiche del sistema. Nel mio ho bisogno di:
+
+          cd /md          <--- nuovo root del file system
+          mkdir dosa                      punto di mount della partizione dos
+          mkdir dosb                      punto di mount del mirror dos
+
+
+  Il nuovo file system è completo. Assicurati di salvare lo stato di
+  riferimento di md sul 'vero' dispositivo di root e sei pronto ad
+  effettuare il boot.
+
+  monta le partizioni dos su dosa e dosb
+
+          cat /proc/mdstat | grep md0 > /dosa/raidboot/raidgood.ref
+          cat /proc/mdstat | grep md0 > /dosb/raidboot/raidgood.ref
+
+          mdstop /dev/md0
+
+
+
+  77..  UUnn''uullttiimmaa ccoossaa..
+
+  Ricorda che un esperto è una persona che ne sa almeno l'1% più di te
+  riguardo a un particolare soggetto. Tienilo in mente se decidi di
+  chiedermi aiuto per e-mail. Proverò, ma ho fatto queste cose solo una
+  volta per raid1 e una volta per raid5!
+
+  Michael Robinton Michael@bzs.org
+
+
+  88..  AAppppeennddiiccee AA.. -- LLoo sshhuuttddoowwnn ppeerr mmdd00 ddii BBoohhuummiill CChhaalluuppaa
+
+  Il post di Bohumil Chalupa sulla lista linux raid a proposito della
+  soluzione del problema di mdstop per raid1 e 5. La sua soluzione non
+  tiene conto della possibilità che il dispositivo raid venga corrotto
+  allo shutdown.  Così ho aggiunto un semplice confronto di stato
+  effettuato al boot con un buono stato di riferimento. Questo permette
+  all'operatore di intervenire se un disco nell'array ha dei problemi.
+  Una descrizione di tutto ciò si trova nella parte principale di questo
+  stesso documento.
+
+
+
+  > From: Bohumil Chalupa <bochal@apollo.karlov.mff.cuni.cz>
+  > Sono riuscito ad eseguire il boot di initrd e ad usare linuxrc per far
+  > partire l'array RAID1, per poi far diventare root /dev/md0.
+  >
+  > Non conosco, però, un modo per _fermare_ in modo pulito l'array.
+
+  Beh, dovrò rispondermi da solo :-)
+
+  > Date: Mon, 29 Dec 1997 02:21:38 -0600 (CST)
+  > From: Edward Welbon <welbon@bga.com>
+  > Subject: Re: smontare il dispositivo raid di root
+  >
+  > Per dispositivi md diversi da raid0, lo stato che deve essere salvato
+  > è noto probabilmente solo una volta che tutte le operazioni di scrittura
+  > sono state completate. Un tale stato non può essere naturalmente salvato
+  > sulla directory root una volta montata in sola lettura. In tal caso,
+  > dovresti poter montare un filesystem scrivibile "X" sul root in sola
+  > lettura e poter scrivere su "X" (ricordo di aver fatto una cosa del
+  > genere durante le operazioni di "recupero", ma non come procedura
+  > automatica)
+  >
+  > Il filesystem "X" sarà presumibilmente un dispositivo di boot da cui
+  > il raid (durante l'esecuzione di linuxrc via initrd) prenderà il suo
+  > stato iniziale. Fortunatamente raid0 non deve scrivere nessuno stato
+  > (anche se sarebbe piacevole poter scrivere i checksum su mdtab dopo
+  > un mdstop). Giocherò un po' con queste cose che non sembrano troppo
+  > difficili, anche se il "diavolo" è sempre nei "dettagli".
+
+  Già, è così.
+  Ho già avuto questa idea, ma non ho avuto tempo per provare. L'ho
+  fatto ieri, e funziona.
+
+  Con il mio RAID1 (mirror), non salvo nessun dato di checksum o
+  superblock raid.  Salvo solo un'informazione sulla "vera" partizione
+  di boot, che il volume di root md è stato rimontato in sola lettura
+  durante lo shutdown. Poi, durante il boot, lo script linuxrc esegue
+  mkraid --only-superblock se trova questa informazione, altrimenti
+  esegue ckraid.
+  Questo significa che le informazioni del superblock raid non vengono
+  aggiornate durante lo shutdown; sono aggiornate a tempo di boot.  Non
+  è una cosa molto pulita, temo, :-( ma funziona.
+
+  Uso Slackware e initrd.md di Edward Welbon per eseguire il boot del
+  dispositivo raid di root.
+  Per quanto mi ricordo ora, gli unici file modificati sono mkdisk e
+  linuxrc, e lo script di shutdown /etc/rc.d/rc.6 E lilo.conf,
+  naturalmente.
+
+  Seguono le parti più importanti.
+
+  Bohumil Chalupa
+
+  --------------- segue mio.linuxrc  -----------------
+  #!/bin/sh
+  # ci serve /proc
+  /bin/mount /proc
+  # avvia il dispositivo md0. Lascia fare il resto agli script /etc/rc.d
+  # Si dovrebbe fare il meno possibile qui
+  # ________________________________________
+  # shutdown test e ricreazione di root raid1
+  # /start deve essere creato sull'immagine rd in my.mkdisk
+  echo "preparing md0: mounting /start"
+  /bin/mount /dev/sda2 /start -t ext2
+  echo "reading saved md0 state from /start"
+  if [ -f /start/root.raid.ok ]; then
+   echo "raid ok, modyfying superblock"
+   rm /start/root.raid.ok
+   /sbin/mkraid /etc/raid1.conf -f --only-superblock
+  else
+   echo "raid not clean, runing ckraid --fix"
+   /sbin/ckraid --fix /etc/raid1.conf
+  fi
+  echo "unmounting /start"
+  /bin/umount /start
+  # _________________________________________
+  #
+  echo "adding md0 for root file system"
+  /sbin/mdadd /dev/md0 /dev/sda1 /dev/sdb1
+  echo "starting md0"
+  /sbin/mdrun -p1 /dev/md0
+  # dì al kernel che vogliamo far diventare /dev/md0 il dispositivo di root
+  # arriviamo al valore 0x900 come 256*numero_di_dispositivo_major + numero_minor
+  echo "setting real-root-dev"
+  /bin/echo 0x900>/proc/sys/kernel/real-root-dev
+  #  smonta /proc in modo da poter deallocare il ram disk
+  echo "unmounting /proc"
+  /bin/umount /proc
+  /bin/echo "We are hopefully ready to mount /dev/md0 (major 9, minor 0) as
+  root"
+  exit
+  --------------- fine di mio.linuxrc ----------------------------------
+
+
+  ----------- segue un estratto da /etc/rc.d/rc.6  -----------------
+    # Disattiva lo swap poi smonta i file system locali.
+    echo "Turning off swap."
+    swapoff -a
+    echo "Unmounting local file systems."
+    umount -a -tnonfs
+    # Non rimontare i volumi root UMSDOS:
+    if [ ! "`mount | head -1 | cut -d ' ' -f 5`" = "umsdos" ]; then
+      mount -n -o remount,ro /
+    fi
+
+    # Salva lo stato raid
+    echo "Saving RAID state"
+    /bin/mount -n /dev/sda2 /start -t ext2
+    touch /start/root.raid.ok
+    /bin/umount -n /start
+
+  -------------- fine dell'estratto da rc.6 ------------------------
+
+
+  ------------------ segue una parte di mio.mkdisk ----------------------
+  #
+  #  adesso abbiamo un filesystem pronto da riempire, e dobbiamo metterci
+  #  alcune directory importanti. Ho avuto tantissimi guai finché non ho
+  #  creato un mtab intatto.  Nel mio caso, è conveniente sovrascrivere
+  #  /etc/mdtab, in questo modo posso attivare md con un semplice
+  #  "/sbin/mdadd -ar" in linuxrc.
+  cp -a $ROOT/etc $MOUNTPNT 2>cp.stderr 1>cp.stdout
+  rm -rf $MOUNTPNT/etc/mtab
+  rm -rf $MOUNTPNT/etc/ppp*
+  rm -rf $MOUNTPNT/etc/termcap
+  rm -rf $MOUNTPNT/etc/sendmail*
+  rm -rf $MOUNTPNT/etc/rc.d
+  rm -rf $MOUNTPNT/etc/dos*
+  cp -a $ROOT/sbin $ROOT/dev $ROOT/lib $ROOT/bin $MOUNTPNT 2>>cp.stderr
+  1>>cp.stdout
+  # _____________________________________________________________________
+  #  RAID: servono mkraid e ckraid
+  cp -a $ROOT/usr/sbin/mkraid $ROOT/usr/sbin/ckraid $MOUNTPNT/sbin
+  2>>cp.stderr 1>>cp.stdout
+  # ---------------------------------------------------------------------
+  #  sembra che init non funzioni se non ha utmp. Forse ci si può lavorare
+  #  molto. Non dirò qual è il vero problema 8-).
+  #
+  mkdir $MOUNTPNT/var $MOUNTPNT/var/log $MOUNTPNT/var/run $MOUNTPNT/initrd
+  touch $MOUNTPNT/var/run/utmp $MOUNTPNT/etc/mtab
+  chmod a+r $MOUNTPNT/var/run/utmp $MOUNTPNT/etc/mtab
+  ln -s /var/run/utmp $MOUNTPNT/var/log/utmp
+  ln -s /var/log/utmp $MOUNTPNT/etc/utmp
+  ls -lstrd $MOUNTPNT/etc/utmp $MOUNTPNT/var/log/utmp $MOUNTPNT/var/run/utmp
+  #
+  #  poiché voglio cambiare il punto di mount, ho bisogno di questo
+  #  nonostante avessi potuto fare un "mkdir /proc" in linuxrc.
+  #
+  mkdir $MOUNTPNT/proc
+  chmod 555 $MOUNTPNT/proc
+  #
+  #  ------------------------------------------------------
+  #  monteremo il vero dispositivo di boot in /start temporaneamente
+  #  per verificare lo stato del root raid salvato durante lo shutdown
+  #
+  mkdir $MOUNTPNT/start
+  #  -------------------------------------------------------
+  #
+  #  ci serve linuxrc  (dopo tutto, è il punto focale di questo esercizio).
+  #
+  if [ -x ./my.linuxrc ]; then
+    cp -a ./my.linuxrc $MOUNTPNT/linuxrc
+    chmod 777 $MOUNTPNT/linuxrc
+  else
+     ln -s /bin/sh $MOUNTPNT/linuxrc
+  fi
+  #
+  ----------------- fine di parte di mio.mkdisk -----------------
+
+
+
+  99..  AAppppeennddiiccee BB.. -- SSccrriipptt ddii SSHHUUTTDDOOWWNN ddii eesseemmppiioo
+
+
+  ·  ``Slackware''
+
+  ·  ``Debian''
+
+
+  99..11..  SSllaacckkwwaarree -- //eettcc//rrcc..dd//rrcc..66
+
+
+
+  #! /bin/sh
+  #
+  # rc.6          This file is executed by init when it goes into runlevel
+  #               0 (halt) or runlevel 6 (reboot). It kills all processes,
+  #               unmounts file systems and then either halts or reboots.
+  #
+  # Version:      @(#)/etc/rc.d/rc.6      1.50    1994-01-15
+  #
+  # Author:       Miquel van Smoorenburg <miquels@drinkel.nl.mugnet.org>
+  # Modified by:  Patrick J. Volkerding, <volkerdi@ftp.cdrom.com>
+  #
+  # Modified by:  Michael A. Robinton < michael@bizsystems.com >
+  #               to add call to rc.raidown
+    # Set the path.
+    PATH=/sbin:/etc:/bin:/usr/bin
+
+    # Set linefeed mode to avoid staircase effect.
+    stty onlcr
+
+    echo "Running shutdown script $0:"
+
+    # Find out how we were called.
+    case "$0" in
+          *0)
+                  message="The system is halted."
+                  command="halt"
+                  ;;
+          *6)
+                  message="Rebooting."
+                  command=reboot
+                  ;;
+          *)
+                  echo "$0: call me as \"rc.0\" or \"rc.6\" please!"
+                  exit 1
+                  ;;
+    esac
+
+  ##### Salva informazioni sul boot e sullo stato raid #####
+  #
+  if [ -x /etc/rc.d/rc.raidown ]; then
+     /etc/rc.d/rc.raidown
+  fi
+  ################## fine raid boot ########################
+
+    # Kill all processes.
+    # INIT is supposed to handle this entirely now, but this didn't always
+    # work correctly without this second pass at killing off the processes.
+    # Since INIT already notified the user that processes were being killed,
+    # we'll avoid echoing this info this time around.
+    if [ "$1" != "fast" ]; then # shutdown did not already kill all processes
+      killall5 -15
+      killall5 -9
+    fi
+
+    # Try to turn off quota and accounting.
+    if [ -x /usr/sbin/quotaoff ]
+    then
+          echo "Turning off quota."
+          /usr/sbin/quotaoff -a
+    fi
+    if [ -x /sbin/accton ]
+    then
+          echo "Turning off accounting."
+          /sbin/accton
+    fi
+
+    # Before unmounting file systems write a reboot or halt record to wtmp.
+    $command -w
+
+    # Save localtime
+    [ -e /usr/lib/zoneinfo/localtime ] && cp /usr/lib/zoneinfo/localtime /etc
+
+    # Asynchronously unmount any remote filesystems:
+    echo "Unmounting remote filesystems."
+    umount -a -tnfs &
+
+    # Turn off swap, then unmount local file systems.
+    echo "Turning off swap."
+    swapoff -a
+    echo "Unmounting local file systems."
+    umount -a -tnonfs
+    # Don't remount UMSDOS root volumes:
+    if [ ! "`mount | head -1 | cut -d ' ' -f 5`" = "umsdos" ]; then
+      mount -n -o remount,ro /
+    fi
+
+  ################ per gli array raid #########################
+  # Ferma tutti gli array raid conosciuti (tranne root)
+  if [ -x /sbin/mdstop ]; then
+    echo "Stopping raid"
+    /sbin/mdstop -a
+  fi
+  ##########################################################
+
+    # See if this is a powerfail situation.
+    if [ -f /etc/powerstatus ]; then
+      echo "Turning off UPS, bye."
+      /sbin/powerd -q
+      exit 1
+    fi
+
+    # Now halt or reboot.
+    echo "$message"
+    [ ! -f /etc/fastboot ] && echo "On the next boot fsck will be FORCED."
+    $command -f
+  ############### end rc.6 #################################
+
+
+
+  99..22..  DDeebbiiaann bboo -- //eettcc//iinniitt..dd//hhaalltt aanndd //eettcc//iinniitt..dd//rreebboooott
+
+  Le modifiche mostrate di seguito per i file bo halt e reboot di Debian
+  NON SONO TESTATE. Se le testate, per favore inviatemi una e-mail in
+  modo che io possa togliere questo commento.
+
+
+  99..22..11..  //eettcc//iinniitt..dd//hhaalltt
+
+
+
+  #! /bin/sh
+  #
+  # halt          The commands in this script are executed as the last
+  #               step in runlevel 0, ie halt.
+  #
+  # Version:      @(#)halt  1.10  26-Apr-1997  miquels@cistron.nl
+  #
+
+  PATH=/sbin:/bin:/usr/sbin:/usr/bin
+
+  ##### Salva informazioni sul boot e sullo stato raid #####
+  #
+  if [ -x /etc/rc.d/rc.raidown ]; then
+     /etc/rc.d/rc.raidown
+  fi
+  ################## fine raid boot ########################
+
+  # Kill all processes.
+  echo -n "Sending all processes the TERM signal... "
+  killall5 -15
+  echo "done."
+  sleep 5
+  echo -n "Sending all processes the KILL signal... "
+  killall5 -9
+  echo "done."
+
+  # Write a reboot record to /var/log/wtmp.
+  halt -w
+
+  # Save the random seed between reboots.
+  /etc/init.d/urandom stop
+
+  echo -n "Deactivating swap... "
+  swapoff -a
+  echo "done."
+
+  echo -n "Unmounting file systems... "
+  umount -a
+  echo "done."
+
+  mount -n -o remount,ro /
+
+  ################ per gli array raid #########################
+  # Ferma tutti gli array raid conosciuti (tranne root)
+  if [ -x /sbin/mdstop ]; then
+    echo "Stopping raid"
+    /sbin/mdstop -a
+  fi
+  ##########################################################
+
+  # See if we need to cut the power.
+  if [ -x /etc/init.d/ups-monitor ]
+  then
+          /etc/init.d/ups-monitor poweroff
+  fi
+
+  halt -d -f
+  ############# end halt ####################
+
+
+
+  99..22..22..  //eettcc//iinniitt..dd//rreebboooott
+
+
+
+  #! /bin/sh
+  #
+  # reboot        The commands in this script are executed as the last
+  #               step in runlevel 6, ie reboot.
+  #
+  # Version:      @(#)reboot  1.9  02-Feb-1997  miquels@cistron.nl
+  #
+
+  PATH=/sbin:/bin:/usr/sbin:/usr/bin
+
+  ##### Salva informazioni sul boot e sullo stato raid #####
+  #
+  if [ -x /etc/rc.d/rc.raidown ]; then
+     /etc/rc.d/rc.raidown
+  fi
+  ################## fine raid boot ########################
+
+  # Kill all processes.
+  echo -n "Sending all processes the TERM signal... "
+  killall5 -15
+  echo "done."
+  sleep 5
+  echo -n "Sending all processes the KILL signal... "
+  killall5 -9
+  echo "done."
+
+  # Write a reboot record to /var/log/wtmp.
+  halt -w
+
+  # Save the random seed between reboots.
+  /etc/init.d/urandom stop
+
+  echo -n "Deactivating swap... "
+  swapoff -a
+  echo "done."
+
+  echo -n "Unmounting file systems... "
+  umount -a
+  echo "done."
+
+  mount -n -o remount,ro /
+
+  ################ per gli array raid #########################
+  # Ferma tutti gli array raid conosciuti (tranne root)
+  if [ -x /sbin/mdstop ]; then
+    echo "Stopping raid"
+    /sbin/mdstop -a
+  fi
+  ##########################################################
+
+  echo -n "Rebooting... "
+  reboot -d -f -i
+
+
+
+  1100..  AAppppeennddiiccee CC.. -- aallttrrii ffiillee ddii sseettuupp
+
+
+  1100..11..  lliinnuuxxrrcc````lliinnuuxxrrcc ffiillee''''
+
+
+  1100..22..  llooaaddlliinn ---- lliinnuuxx..bbaatt ffiillee -- bboooott..ppaarr````lliinnuuxx..bbaatt ffiillee --
+  bboooott..ppaarr''''
+
+
+  1100..33..  lliinnuuxxtthhrreeaaddss MMaakkeeffiillee..ddiiffff````lliinnuuxxtthhrreeaaddss MMaakkeeffiillee..ddiiffff''''
+
+
+  1100..44..  rraaiidd11..ccoonnff````rraaiidd11..ccoonnff''''
+
+
+  1100..55..  rraaiidd55..ccoonnff````rraaiidd55..ccoonnff''''
+
+
+  1100..66..  rraaiiddbboooott..ccoonnff````rraaiiddbboooott..ccoonnff''''
+
+
+  1100..77..  rrcc..rraaiiddoowwnn````rrcc..rraaiiddoowwnn''''
+
+  1111..  AAppppeennddiiccee DD.. -- ssccrriipptt lliinnuuxxrrcc ee sshhuuttddoowwnn oobbssoolleettii
+
+
+  1111..11..  LLaavvoorroo oobbssoolleettoo -- lliinnuuxxrrcc
+
+  Questo file linuxrc funziona benissimo con la procedura di shutdown
+  mostrata di seguito.
+
+
+
+   ---------------------- linuxrc --------------------
+  #!/bin/sh
+  # ver 1.07 2-12-98
+  # linuxrc - for raid1 using small dos partition and loadlin
+  #
+
+  # mount the proc file system
+  /bin/mount /proc
+
+  # This may vary for your system.
+  # Mount the dos partitions, try both
+  # in case one disk is dead
+  /bin/mount /dosa
+  /bin/mount /dosc
+
+  # Set a flag in case the raid status file is not found
+  # then check both drives for the status file
+  RAIDOWN="raidstat.ro not found"
+  /bin/echo "Reading md0 shutdown status."
+  if [ -f /dosa/raidboot/raidstat.ro ]; then
+    RAIDOWN=`/bin/cat /dosa/raidboot/raidstat.ro`
+    RAIDREF=`/bin/cat /dosc/raidboot/raidgood.ref`
+  else
+    if [ -f /dosc/raidboot/raidstat.ro ]; then
+      RAIDOWN=`/bin/cat /dosc/raidboot/raidstat.ro`
+      RAIDREF=`/bin/cat /dosc/raidboot/raidgood.ref`
+    fi
+  fi
+
+  # Test for a clean shutdown with all disks operational
+  if [ "${RAIDOWN} != ${RAIDREF}" ]; then
+    echo "ERROR ${RAIDOWN}"
+  #  Use the next 2 lines to BAIL OUT and leave rescue running
+     /bin/echo 0x100>/proc/sys/kernel/real-root-dev
+     exit                 # leaving the error files in dosa/raidboot,etc...
+  fi
+
+  # The raid array is clean, proceed by removing
+  # status file and writing a clean superblock
+  /bin/rm /dosa/raidboot/raidstat.ro
+  /bin/rm /dosc/raidboot/raidstat.ro
+  /sbin/mkraid /etc/raid1.conf -f --only-superblock
+
+  /bin/umount /dosa
+  /bin/umount /dosc
+
+  # Mount raid array
+  echo "Mounting md0, root filesystem"
+  /sbin/mdadd -ar
+
+  #  If there are errors - BAIL OUT and leave rescue running
+  if [ $? -ne 0 ]; then
+     echo "RAID device has errors"
+  #  Use the next 3 lines to BAIL OUT
+     /bin/rm /etc/mtab            # remove bad mtab
+     /bin/echo 0x100>/proc/sys/kernel/real-root-dev
+     exit
+  fi
+
+  # else tell the kernel to switch to /dev/md0 as the /root device
+  # The 0x900 value the device number calculated by:
+  #  256*major_device_number + minor_device number
+  /bin/echo 0x900>/proc/sys/kernel/real-root-dev
+
+  # umount /proc to deallocate initrd device ram space
+  /bin/umount /proc
+  /bin/echo "/dev/md0 mounted as root"
+  exit
+  #------------------ end linuxrc ----------------------
+
+
+
+  1111..22..  LLaavvoorroo oobbssoolleettoo -- ssccrriipptt ddii sshhuuttddoowwnn
+
+  Questa procedura di shutdown funziona benissimo con lliinnuuxxrrcc indicato
+  in precedenza
+
+  Per catturare lo stato di shutdown dell'array raid, inserisci subito
+  prima che i file system vengano smontati:
+
+          RAIDSTATUS=`/bin/cat /proc/mdstat | /usr/bin/grep md0`
+
+
+  Dopo che tutti i file system sono smontati (il file system di root non
+  verrà smontato) aggiungi:
+
+          # il dispositivo di root rimane montato RO
+          # monta i file system dos RW
+          mount -n -o remount,ro /
+          echo "Writing RAID read-only boot FLAG(s)."
+          mount -n /dosa
+          mount -n /dosc
+          # create raid mounted RO flag in duplicate
+          # containing the shutdown status of the raid array
+          echo ${RAIDSTATUS} > /dosa/raidboot/raidstat.ro
+          echo ${RAIDSTATUS} > /dosc/raidboot/raidstat.ro
+
+          umount -n /dosa
+          umount -n /dosc
+
+          # Ferma tutti gli array raid (tranne root)
+          echo "Stopping raid"
+          mdstop -a
+
+
+  Questo fermerà in modo pulito tutti i dispositivi raid eccetto root.
+  Lo stato di root viene passato al prossimo boot in rraaiiddssttaatt..rroo.
+
+  Quello che segue è l'intero script di shutdown preso dal mio vecchio
+  sistema raid1 Slackware, ho aggiornato raid1 alla nuova procedura con
+  il file /etc/raidboot.conf
+
+
+
+  #! /bin/sh
+  #
+  # rc.6          This file is executed by init when it goes into runlevel
+  #               0 (halt) or runlevel 6 (reboot). It kills all processes,
+  #               unmounts file systems and then either halts or reboots.
+  #
+  # Version:      @(#)/etc/rc.d/rc.6      1.50    1994-01-15
+  #
+  # Author:       Miquel van Smoorenburg <miquels@drinkel.nl.mugnet.org>
+  # Modified by:  Patrick J. Volkerding, <volkerdi@ftp.cdrom.com>
+  # Modified by:  Michael A. Robinton, <michael@bzs.org> for RAID shutdown
+
+    # Set the path.
+    PATH=/sbin:/etc:/bin:/usr/bin
+
+    # Set linefeed mode to avoid staircase effect.
+    stty onlcr
+
+    echo "Running shutdown script $0:"
+
+    # Find out how we were called.
+    case "$0" in
+          *0)
+                  message="The system is halted."
+                  command="halt"
+                  ;;
+          *6)
+                  message="Rebooting."
+                  command=reboot
+                  ;;
+          *)
+                  echo "$0: call me as \"rc.0\" or \"rc.6\" please!"
+                  exit 1
+                  ;;
+    esac
+
+    # Kill all processes.
+    # INIT is supposed to handle this entirely now, but this didn't always
+    # work correctly without this second pass at killing off the processes.
+    # Since INIT already notified the user that processes were being killed,
+    # we'll avoid echoing this info this time around.
+    if [ "$1" != "fast" ]; then # shutdown did not already kill all processes
+      killall5 -15
+      killall5 -9
+    fi
+
+    # Try to turn off quota and accounting.
+    if [ -x /usr/sbin/quotaoff ]
+    then
+          echo "Turning off quota."
+          /usr/sbin/quotaoff -a
+    fi
+    if [ -x /sbin/accton ]
+    then
+          echo "Turning off accounting."
+          /sbin/accton
+    fi
+
+    # Before unmounting file systems write a reboot or halt record to wtmp.
+    $command -w
+
+    # Save localtime
+    [ -e /usr/lib/zoneinfo/localtime ] && cp /usr/lib/zoneinfo/localtime /etc
+
+    # Asynchronously unmount any remote filesystems:
+    echo "Unmounting remote filesystems."
+    umount -a -tnfs &
+
+    # you must have issued
+    # 'cat /proc/mdstat | grep md0 > {your boot vol}/raidboot/raidgood.ref'
+    # before linuxrc will execute properly with this info
+    RAIDSTATUS=`/bin/cat /proc/mdstat | /usr/bin/grep md0 # capture raid status`
+
+    # Turn off swap, then unmount local file systems.
+    # clearing mdtab as well
+    echo "Turning off swap."
+    swapoff -a
+    echo "Unmounting local file systems."
+    umount -a -tnonfs
+
+    # Don't remount UMSDOS root volumes:
+    if [ ! "`mount | head -1 | cut -d ' ' -f 5`" = "umsdos" ]; then
+      mount -n -o remount,ro /
+    fi
+
+    # root device remains mounted
+    # mount dos file systems RW
+    echo "Writing RAID read-only boot FLAG(s)."
+    mount -n /dosa
+    mount -n /dosc
+    # create raid mounted RO flag in duplicate
+    # containing the shutdown status of the raid array
+    echo ${RAIDSTATUS} > /dosa/raidboot/raidstat.ro
+    echo ${RAIDSTATUS} > /dosc/raidboot/raidstat.ro
+
+    umount -n /dosa
+    umount -n /dosc
+
+    # Stop all the raid arrays (except root)
+    echo "Stopping raid"
+    mdstop -a
+
+    # See if this is a powerfail situation.
+    if [ -f /etc/power_is_failing ]; then
+      echo "Turning off UPS, bye."
+      /sbin/powerd -q
+      exit 1
+    fi
+
+    # Now halt or reboot.
+    echo "$message"
+    [ ! -f /etc/fastboot ] && echo "On the next boot fsck will be FORCED."
+    $command -f
+
+
+
+  1122..  AAppppeennddiiccee EE.. -- LLaa ppaattcchh ddii GGaaddii ppeerr iill rraaiidd ssttoopp ppeerr iill kkeerrnneell
+  lliinnuuxx
+
+
+
+  --- linux/drivers/block/md.c.old        Fri Nov 21 13:37:11 1997
+  +++ linux/drivers/block/md.c    Sat Dec  6 13:34:28 1997
+  @@ -622,8 +622,13 @@
+         return do_md_run (minor, (int) arg);
+
+       case STOP_MD:
+  -      return do_md_stop (minor, inode);
+  -
+  +      err = do_md_stop(minor, inode);
+  +      if (err) {
+  +        printk("md: enabling auto mdstop for %s\n",
+  kdevname(inode->i_rdev));
+  +        md_dev[minor].auto_mdstop = 1;
+  +      }
+  +      return err;
+  +
+       case BLKGETSIZE:   /* Return device size */
+       if  (!arg)  return -EINVAL;
+       err=verify_area (VERIFY_WRITE, (long *) arg, sizeof(long));
+  @@ -692,6 +697,10 @@
+
+     sync_dev (inode->i_rdev);
+     md_dev[minor].busy--;
+  +  if (!md_dev[minor].busy && md_dev[minor].auto_mdstop) {
+  +       do_md_stop(minor, inode);
+  +       md_dev[minor].auto_mdstop = 0;
+  +  }
+   }
+
+   static int md_read (struct inode *inode, struct file *file,
+  --- linux/include/linux/md.h~   Fri Nov 21 13:29:14 1997
+  +++ linux/include/linux/md.h    Fri Nov 21 13:29:14 1997
+  @@ -260,6 +260,7 @@
+     int                  repartition;
+     int                  busy;
+     int                  nb_dev;
+  +  int                  auto_mdstop;
+     void                 *private;
+   };
+
+
+
+  1133..  AAppppeennddiiccee FF.. -- rrcc..rraaiiddoowwnn
+
+  Copia il testo che segue nello script rrcc..rraaiiddoowwnn e salvalo in
+  //eettcc//rrcc..dd.
+
+
+
+  #! /bin/sh
+  #
+  # rc.raidown    This file is executed by init when it goes into runlevel
+  #               0 (halt) or runlevel 6 (reboot). It saves the status of
+  #               a root mounted raid array for subsequent re-boot
+  #
+  # Version:      1.08    3-25-98 Michael A. Robinton < michael@bizsystems.com >
+  #
+  ############ Save raid boot and status info ##############
+  if [ -f /etc/raidboot.conf ]
+  then
+    {
+    read RaidBootDevs
+    read RaidStatusPath
+    read RaidConfigEtc
+    } < /etc/raidboot.conf
+
+  # you must have issued
+  #       cat /proc/mdstat | grep md0 >
+  #               {your boot vol mnt(s)}/{RaidStatusPath}/raidgood.ref
+  # before linuxrc will execute properly with this info
+  #
+  #       capture raid status
+    RAIDSTATUS=`/bin/cat /proc/mdstat | /usr/bin/grep md0`
+    mkdir /tmp/raid$$
+    echo "Writing RAID read-only boot FLAG(s)."
+    for Device in ${RaidBootDevs}
+    do
+  # get mount point for raid boot device or use tmp
+      RBmount=$( cat /proc/mounts | /usr/bin/grep ${Device} )
+      if [ -n ${RBmounts} ]; then
+        RBmount=$( echo ${RBmount} | cut -f 2 -d ' ' )
+      else
+        RBmount="/tmp/raid$$"
+        mount ${Device} ${RBmount}
+      fi
+    if [ -d ${RBmount}/${RaidStatusPath} ]; then
+  # Create raid mounted RO flag = shutdown status of raid array
+      echo ${RAIDSTATUS} > ${RBmount}/${RaidStatusPath}/raidboot.ro
+  # Don't propagate 'fstab' from ramdisk
+      if [ -f /linuxrc ]; then
+        FSTAB=
+      else
+        FSTAB=fstab
+      fi
+      pushd /etc
+  # Save etc files for rescue system
+      /bin/tar --ignore-failed-read \
+          -cf ${RBmount}/${RaidStatusPath}/raidboot.etc \
+          raid*.conf mdtab* ${FSTAB} lilo.conf
+      popd
+  # Create new raidboot.cfg
+      {
+      /bin/echo ${RaidBootDevs}
+      /bin/echo ${RaidStatusPath}
+      /bin/echo ${RaidConfigEtc}
+      } > ${RBmount}/${RaidStatusPath}/raidboot.cfg
+      /bin/umount ${RBmount}
+    fi
+    done
+    rmdir /tmp/raid$$
+    echo "Raid boot armed"
+  fi
+  ################## end raid boot #########################
+
+
+  1144..  AAppppeennddiiccee GG.. -- tteeoorriiaa ddeell ffuunnzziioonnaammeennttoo ddii lliinnuuxxrrcc
+
+  Questa è la forma complessa del file linuxrc per raid montato come
+  root.  Deve essere elaborato con 'bash' o una shell che riconosce le
+  funzioni di shell.
+
+  Il vantaggio sta nel fatto che è generico e non dipende dai file di
+  startup e dai parametri che si trovano nell'immagine iinniittrrdd
+
+  Un parametro RRaaiidd__CCoonnff passato a lliinnuuxxrrcc dal kernel al boot da lilo o
+  loadlin contiene un puntatore ai dispositivi di boot e alla posizione
+  dei 2 file raidboot necessari per lliinnuuxxrrcc (_r_a_i_d_b_o_o_t_._e_t_c _e _r_a_i_d_b_o_o_t_._c_f_g
+  _s_c_r_i_t_t_i _d_a_l_l_o _s_c_r_i_p_t _d_i _s_h_u_t_d_o_w_n).
+
+       rraaiiddbboooott..eettcc contenente i file 'tar'-ati:
+
+               raid*
+               mdtab*
+               fstab
+               lilo.conf               ( se applicabile )
+
+
+       del sistema primario che vengono trasferiti sulla directory
+       initrd //eettcc durante lo startup. Con cura, questo file può
+       essere modificato, se necessario, quando il tuo sistema ha
+       dei guai seri.
+
+       rraaiiddbboooott..ccffgg contiene il nome della partizione di boot in
+       uso e i backup applicabili, così come il percorso per il
+       resto del file di startup di raid usato da lliinnuuxxrrcc.  Questo
+       file viene normalmente creato dal file di shutdown e può
+       essere creato manualmente se necessario.
+
+       rraaiiddbboooott..ccffgg è della forma: 3 linee - nessun commento
+
+               /dev/bootdev1 /dev/bootdev2 [/dev/bootdev3 ... e così via]
+               percorso_di/raid-status
+               nome_del_file_raidX.conf
+
+
+
+       ppeerrccoorrssoo__ddii//rraaiidd--ssttaattuuss non comprende il nome del punto di
+       mount
+
+       nnoommee__ddeell__ffiillee__rraaiiddXX..ccoonnff è quello che si trova in /etc ed è
+       normalmente usato per cckkrraaiidd e mmkkrraaiidd.
+
+
+
+  I seguenti file addizionali si trovano sulle partizioni di boot raid
+  permanenti. Questo è solitamente lo stesso di sopra, ma nelle situ­
+  azioni di emergenza può essere caricato da dovunque sia disponibile,
+  come da un floppy di boot.
+
+  ·  rraaiiddggoooodd..rreeff creato dal comando cat /proc/mdstat | grep md0 >
+     /{raid_status_path}/raidgood.ref
+
+
+     vedi ``script di shutdown'' per salvare questo file ed il prossimo
+
+
+  ·  rraaiiddssttaatt..rroo creato ad ogni shutdown dal file di shutdown rc,
+     salvando lo stato di uscita dell'array raid.
+
+
+

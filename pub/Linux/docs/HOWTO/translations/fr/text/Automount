@@ -1,0 +1,185 @@
+
+                             Automount mini-Howto
+
+don@sabotage.org
+Traduction française par Mathieu Arnold, arn@mygale.org
+
+   v0.2, 7 Septembre 1998
+     _________________________________________________________________
+
+   _Ce fichier décrit autofs, le monteur automatique de systèmes de
+   fichiers, comment le configurer, et met en évidences quelques
+   problèmes à éviter._
+     _________________________________________________________________
+
+1. Introduction
+
+1.1 Automount - Qu'est ce que c'est, et à quoi ça sert ?
+
+   Un monteur automatique est un processus qui automatise le montage (et
+   le démontage) de certains systèmes de fichiers grâce à un démon. Si le
+   système de fichiers n'est pas monté, et qu'un utilisateur essaye d'y
+   accéder, il sera automatiquement (re)monté. Ceci est très utile,
+   surtout dans les grands réseaux et pour partager des systèmes de
+   fichiers entre plusieurs machines, spécialement lors qu'elles ne sont
+   pas toujours allumées. Cela peut aussi être très utile pour les
+   disques amovibles, ou quelques autres utilisations, tels le
+   basculement entre un système MS-DOS monté en mode ASCII forcé activé,
+   et le même système MS-DOS avec le mode ASCII forcé désactivé.
+
+1.2 Types de monteurs automatiques
+
+   Il y a deux types de monteurs automatiques sous Linux : _AMD_ et
+   _autofs_. AMD est le démon automount, et fonctionne normalement comme
+   l'AMD de SunOS. Il est réalisé en tant que programme utilisateur,
+   c'est à dire qu'il ne fait pas partie du noyau. Autofs est un système
+   plus récent qui est assisté par le noyau, cela signifie que le code du
+   noyau gérant les systèmes de fichiers sait que les points de montages
+   sont sur un autre système de fichiers, et c'est là que le programme
+   automount prend le relais. Seul autofs sera décrit dans ce Mini-HowTo.
+
+2. Installation
+
+   Comme autofs fonctionne dans l'espace noyau, vous devez avoir compilé
+   votre noyau avec le support pour autofs. Dans les 2.0.xx, c'est une
+   option expérimentale, mais ça à l'air d'être stable. Dans les 2.1.xx
+   (et certainement dans les 2.2.xx) il n'est plus expérimental.
+
+   Le programme automount et ses fichiers de configuration sont aussi
+   nécessaires. L'utilisation des rpms (depuis votre miroir préféré) est
+   une très bonne manière pour commencer. Le programme automount devrait
+   être démarré par l'un des scripts placé dans le répertoire
+   /etc/rc.d/init.d. Le rpm installe tout ça, mais vous aurez à vous
+   assurer qu'il est lancé, soit en le liant dans vos répertoire rc?.d,
+   en utilisant le panneau de contrôle de la Redhat, soit pour une autre
+   distribution en le faisant démarrer de la manière qu'il vous plaît. Ne
+   regardez pas trop ce que le script rc fait; car si vous lisez ce
+   HowTo, vous ne voulez certainement pas savoir.
+
+3. Configuration
+
+   L'installation du rpm est très facile, mais voici le morceau que vous
+   risquez de rejouer une ou deux fois si vous ne l'avez jamais tenté.
+
+   Il y a deux fichiers dans /etc, un appelé auto.master, et l'autre
+   appelé auto.misc. Mon fichier auto.master ressemble à ça :
+     _________________________________________________________________
+
+/auto   /etc/auto.misc  --timeout 60
+     _________________________________________________________________
+
+   La première entrée n'est pas le point de montage, c'est en fait là où
+   se trouveront les points de montage (que l'on trouve dans la deuxième
+   entrée). La troisième option demande aux systèmes de fichiers
+   d'essayer de se démonter automatiquement au bout de 60 secondes
+   d'inutilisation. Ils ne peuvent bien sûr pas être démontés si ils sont
+   toujours utilisés.
+
+   Auto.misc est une table. Plusieurs fichiers similaires peuvent être
+   utilisés dans auto.master. Mon auto.misc ressemble à ceci :
+     _________________________________________________________________
+
+kernel          -ro,soft,intr           ftp.kernel.org:/pub/linux
+cd              -fstype=iso9660,ro      :/dev/cdrom
+zip             -fstype=auto            :/dev/hdd4
+floppy          -fstype=vfat            :/dev/fd0
+     _________________________________________________________________
+
+   La première colonne (la "_clé_") représente le point de montage. Dans
+   ce cas, ce sera /auto/floppy, /auto/cd, etc. La colonne du milieu
+   représente les options; parcourez la page man de mount pour plus de
+   détails. Et la dernière colonne spécifie d'où provient le système de
+   fichiers. L'entrée "kernel" est supposée être un montage NFS. Le
+   symbole ":" sur les autres lignes signifient que c'est un disque
+   local.
+
+4. Qu'est ce que c'est long à se démonter !
+
+   J'ai bien vu que certains d'entre vous regardaient ce timeout de 60
+   secondes de travers et pensaient "_C'est long pour attendre avant
+   l'éjection d'une disquette... Je vais juste faire un sync des disques
+   et puis l'éjecter sans qu'elle soit démontée, et personne ne s'en
+   apercevra._" Laissez moi vous suggérer une meilleure alternative. Tout
+   d'abord, vous pouvez changer le timeout. Mais cela pourrait être peu
+   efficace de dire au système de démonter tout après 15 secondes
+   d'inactivité. Il y a bien une manière de demander à automount de
+   démonter. Si vous envoyez (avec kill) le signal SIGUSR1 au processus
+   automount, il démontera tout ce qu'il peut. Mais avant que vous
+   commenciez tous à faire un chtit bouton "Démonter" dans votre
+   gestionnaire de fenêtres, il y a un petit problème.
+
+   Le processus automount est lancé par root, et il n'acceptera que les
+   signaux venant de root. Pour une bonne part, vous voulez utiliser le
+   montage automatique pour éviter d'avoir à monter et démonter les
+   partitions en étant root. Il serait bien sur facile de faire un petit
+   programme C suid-root qui ferait le sale boulot, ce qui le meilleur
+   moyen de régler le problème si les utilisateurs ne vous inspirent pas
+   confiance.
+
+   Si les utilisateurs sont sérieux, un compromis serait d'utiliser sudo,
+   en l'installant avec la ligne suivante :
+     _________________________________________________________________
+
+ALL     ALL=NOPASSWD:/bin/kill -SIGUSR1 [0-9]*
+     _________________________________________________________________
+
+   Vous avez autorisé tout le monde sur le système à envoyer un signal
+   SIGUSR1 à _n'importe quel_ processus. Ceci pourra avoir plusieurs
+   effets sur différents programmes; il recyclera afterstep, mais tuera
+   xemacs. Par conséquent, si vous n'avez pas entièrement confiance en
+   vos utilisateurs, vous pouvez leur restreindre l'accès au seul daemon
+   automount (grâce à pidof par exemple) la ligne suivante pourra donc
+   démonter les trucs. Cela serait réalisé grâce à :
+
+   /usr/bin/sudo /bin/kill -SIGUSR1 `/sbin/pidof automount`
+
+5. Questions
+
+5.1 Je ne trouve pas /auto/floppy, ou n'importe quel point de montage que je
+cherche.
+
+   Si vous avez configuré automount correctement, les points de montage
+   que vous cherchez apparaîtront lorsque vous essayerez de les utiliser.
+   Si vous utilisez un utilitaire graphique pour vous déplacer dans les
+   répertoire, vous aurez peut être besoin de taper le répertoire à la
+   main. Malheureusement, le fait de ne pas pouvoir choisir parmi les
+   points de montages invisibles est certainement le pire défaut
+   d'autofs. Si cela vous ennuie tant que ça, éditez les fichiers de
+   configuration (Astuce, ils se terminent par .c pour "configuration").
+
+5.2 Comment je sais ce qui est monté ?
+
+   Grâce à la commande df. mount sans arguments fera de même, et montrera
+   en plus les options de montage.
+
+5.3 J'ai mis une disquette Win95 ("vfat") et elle est détectée comme étant une
+disquette MS-DOS normale.
+
+   Cela n'est pas un problème d'automount. A l'heure ou j'écris ces
+   lignes, le type de système de fichier "auto" ne tente pas de monter
+   une partition vfat si il a réussi à monter une partition MS-DOS. VFAT
+   est le système de fichiers avec noms longs utilisé par Win95/WinNT et
+   est incrusté dans une FAT MS-DOS. Ceci signifie que vous ne pouvez
+   monter du vfat que si vous laissez tomber tous les autres types de
+   systèmes de fichiers. Heureusement, cela sera bientôt réparé. D'ici
+   là, vous pouvez toujours créer plusieurs points de montage.
+
+5.4 Mon système de fichiers /trucchose est monté et kill -SIGUSR1 ne le démonte
+pas.
+
+   Il est utilisé par autre chose. Root ne peut probablement pas le
+   remonter non plus. Si vous êtes celui qui l'a monté (il n'y a personne
+   d'autre qui l'utilise) vérifiez qu'aucun shell qui pourrait être dans
+   ce répertoire. Si il n'y en a pas, cherchez encore (particulièrement
+   quelque chose qui pourrais être passé par là comme un gestionnaire de
+   fichiers) qui pourrais avoir laissé un pied invisible sur le pas de la
+   porte...
+
+5.5 Qui est ce que je remercie pour autofs ?
+
+   Pas moi. Je n'y suis pour rien. J'ai juste voulu attirer l'attention
+   de tout le monde sur l'excellent travail qui a été fait sur autofs, et
+   sa facilité d'utilisation. Comparé à l'AMD d'origine (Astuce, ils
+   vendent une version hors de prix d'UNIX avec des outils gratuits
+   préhistoriques) l'autofs est très bien documenté et les auteurs ont
+   tous mes remerciements.

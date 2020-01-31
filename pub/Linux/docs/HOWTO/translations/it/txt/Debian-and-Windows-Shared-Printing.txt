@@ -1,0 +1,506 @@
+
+Debian and Windows Shared Printing mini-HOWTO
+
+Ian Ward
+
+   <ian at excess dot org>
+
+   01-07-2005
+   Diario delle Revisioni
+   Revisione 1.6 01-07-2005 Revisionato da: iw
+   chiarito il requisito hpijs, aggiunti i comandi lpinfo e
+   lpoptions
+   Revisione 1.5 19-06-2005 Revisionato da: iw
+   aggiunta nota sul diventare superutente per eseguire comandi
+   Revisione 1.4 05-01-2004 Revisionato da: iw
+   correzioni ortografiche
+   Revisione 1.3 18-11-2003 Revisionato da: iw
+   rimosso uso non corretto di lpadmin -h
+   Revisione 1.2 03-10-2003 Revisionato da: iw
+   nota su woody e gs-esp, conflitto con il comando bash enable e
+   soluzione per client XP/2000
+   Revisione 1.1 26-06-2003 Revisionato da: iw
+   aggiunte password per le stampanti Windows condivise,
+   correzioni varie
+   Revisione 1.0 15-05-2003 Revisionato da: tmm
+   versione iniziale, revisionata dal LDP
+   Revisione 0.8 11-04-2003 Revisionato da: iw
+   conversione dal formato LaTeX
+     _________________________________________________________
+
+   Sommario
+   1. Introduzione
+   2. Iniziare
+
+        2.1. Componenti per la stampa in Linux
+        2.2. Pacchetti richiesti
+        2.3. Configurazione di una stampante locale con CUPS
+        2.4. Nozioni di base sulla stampa in Linux
+
+   3. Stampa verso PC Windows
+
+        3.1. Connettersi a Windows
+        3.2. Configurazione di CUPS
+
+   4. Condividere stampanti con PC Windows
+
+        4.1. Nozioni base sulla condivisione
+        4.2. Configurazione di Samba
+        4.3. Configurazione di CUPS
+
+   5. Risoluzione di problemi
+
+        5.1. Problemi nella connessione a stampanti Windows
+        5.2. Altri problemi
+
+   6. Licenza
+
+1. Introduzione
+
+   Debian GNU/Linux (http://www.debian.org) è la principale
+   distribuzione Linux basata sul lavoro di volontari.
+   Configurare le stampanti in Debian può essere purtroppo
+   difficile. Inoltre è difficile trovare semplici istruzioni
+   passo-passo per condividere stampanti tra Windows e Linux
+   usando gli strumenti più recenti. Questo HOWTO è stato scritto
+   per affrontare entrambi questi problemi.
+
+   Questo HOWTO mostra come usare strumenti a riga di comando per
+   configurare il proprio sistema Debian per la stampa. Spiega
+   come inviare documenti da Linux a stampanti Windows e come
+   condividere stampanti Linux con PC che usano Windows. Sono
+   forniti inoltre alcuni esempi di risoluzione di problemi.
+
+   L'URL principale per questo documento è
+   http://excess.org/docs/linux_windows_printing.html. I file
+   sorgenti Docbook/XML e EPS per questo documento possono essere
+   scaricati da http://excess.org/docs/src/. Si possono inviare
+   segnalazioni di errori, correzioni e suggerimenti riguardanti
+   questo documento a ian at excess dot org.
+
+   Traduzione italiana di Beatrice Torracca. Revisione di Giulio
+   Daprelà
+     _________________________________________________________
+
+2. Iniziare
+
+2.1. Componenti per la stampa in Linux
+
+   I principali strumenti che useremo includono:
+
+     * CUPS
+       Il Common UNIX Printing System (Sistema comune di stampa
+       in UNIX) (http://www.cups.org) è un gestore di spool di
+       stampa e un insieme di programmi di supporto per usare e
+       gestire stampanti.
+     * Samba
+       Samba (http://www.samba.org) è un software che permette a
+       computer non-Windows in una rete di comportarsi come
+       computer Windows, grazie all'implementazione di file e
+       protocolli Windows per la condivisione di stampa.
+     * Driver di stampa
+       LinuxPrinting.org (http://www.linuxprinting.org) offre il
+       più vasto numero di driver di stampa e mantiene un
+       database di stampanti supportate in Linux. È necessario
+       scaricare un driver di stampa per ogni modello di
+       stampante che si desidera usare in Linux. Un driver di
+       stampa consiste in un file PPD e un programma filtro
+       oppure, per le stampanti Postscript, solo in un file PPD.
+     _________________________________________________________
+
+2.2. Pacchetti richiesti
+
+   Tutti i programmi e le librerie necessarie fanno parte
+   dell'archivio Debian standard. I relativi pacchetti si possono
+   scaricare e installare con i normali strumenti di gestione dei
+   pacchetti Debian. Questa è una lista dei pacchetti necessari:
+
+   cupsys
+          server CUPS
+
+   cupsys-bsd
+          comandi CUPS BSD
+
+   cupsys-client
+          programmi client CUPS
+
+   foomatic-bin
+          programmi di supporto per la stampa da
+          LinuxPrinting.org
+
+   samba
+          server Samba SMB/CIFS per UNIX
+
+   smbclient
+          client Samba SMB/CIFS per UNIX
+
+   gs-esp
+          ESP Ghostscript ( http://www.cups.org/ghostscript.php)
+
+          Non disponibile come pacchetto per Debian GNU/Linux 3.0
+          (alias woody), si usi al suo posto "gs".
+
+   a2ps
+          GNU A2PS ( http://www.gnu.org/software/a2ps/)
+
+   Questi pacchetti vengono installati dai comandi che seguono.
+   Per eseguire questi comandi è necessario diventare superutente
+   o usare sudo:
+
+apt-get update
+apt-get install cupsys cupsys-bsd cupsys-client foomatic-bin samba smbc
+lient gs-esp a2ps
+
+   Possono essere necessari pacchetti aggiuntivi per stampanti
+   specifiche. Per esempio per far funzionare correttamente molte
+   stampanti HP InkJet, DeskJet e LaserJet è necessario
+   installare il pacchetto hpijs. I file PPD per queste stampanti
+   si riconoscono perché il loro nome contiene la stringa hpijs.
+     _________________________________________________________
+
+2.3. Configurazione di una stampante locale con CUPS
+
+   Per configurare le stampanti si usa il comando lpadmin. Il
+   seguente è un esempio di configurazione di una stampante laser
+   con CUPS. Per eseguire questi comandi è necessario diventare
+   superutente o usare sudo:
+/usr/sbin/lpadmin -p Laser -v parallel:/dev/lp0 -P /root/laser.ppd
+/usr/bin/enable Laser
+/usr/sbin/accept Laser
+/usr/sbin/lpadmin -d Laser
+
+   Si noti che bash ha un comando incorporato chiamato enable,
+   perciò gli utenti con bash dovranno inserire il percorso
+   completo (/usr/bin/enable) per abilitare le stampanti.
+
+   Il primo comando crea una nuova stampante chiamata "Laser"
+   connessa alla prima porta parallela e che usa il file PPD
+   /root/laser.ppd. Successivamente con i comandi enable e accept
+   la stampante "Laser" viene abilitata e impostata per accettare
+   compiti. L'ultimo comando imposta "Laser" come stampante
+   predefinita.
+
+   Se la propria stampante è connessa a una porta USB o non si
+   conosce il device-uri corretto per la propria stampante si
+   provi a eseguire /usr/sbin/lpinfo -v per ottenere un elenco
+   dei dispositivi di stampa disponibili.
+
+   Ci si assicuri che la dimensione della pagina della stampante
+   e le altre opzioni siano impostate in modo corretto eseguendo
+   /usr/bin/lpoptions -l. Nella documentazione di CUPS sono
+   disponibili ulteriori informazioni dettagliate sulla
+   configurazione delle stampanti.
+     _________________________________________________________
+
+2.4. Nozioni di base sulla stampa in Linux
+
+   Figura 1. Stampa in locale
+
+   [printing_basics.png]
+
+   I documenti vengono inseriti nello spool usando o lpr o lp
+   seguito dal nome file. Si può vedere la coda di stampa e
+   controllare lo stato della stampante con il comando lpstat -o
+   o lpstat -p. Per cancellare un compito di stampa si usi o
+   cancel o lprm seguito dall'identificativo del compito.
+
+   Il demone di spool di CUPS si chiama cupsd. Converte documenti
+   in formato PostScript e poi fa la conversione nel formato
+   nativo della stampante Figura 1. Le stampanti che non
+   gestiscono il PostScript usano per i documenti un formato
+   raster o bitmap. I formati raster possono essere molto più
+   grandi del PostScript originale e occorre più tempo per
+   inviarli alla stampante.
+
+   I filtri sono programmi usati per convertire documenti da un
+   formato a un altro. Il gestore di spool di CUPS fa del suo
+   meglio per trovare un filtro adatto al documento inviato. Se
+   non è installato un filtro adatto alla conversione del proprio
+   documento si riceverà un errore del tipo lpr: unable to print
+   file: client-error-document-format-not-supported.
+
+   Molte applicazioni non includono filtri per i formati dei
+   propri documenti. I documenti creati con tali applicazioni
+   possono essere stampati solo dall'interno dell'applicazione
+   stessa, a meno che il documento non venga esportato in formato
+   PostScript o in un altro formato standard.
+     _________________________________________________________
+
+3. Stampa verso PC Windows
+
+3.1. Connettersi a Windows
+
+   Figura 2. Stampa in rete
+
+   [to_windows.png]
+
+   SMB e CIFS sono i protocolli di condivisione di file e stampa
+   di Windows. Si usa Samba per comunicare con i PC Windows
+   utilizzando questi protocolli. Prima di configurare CUPS ci si
+   deve assicurare che sia possibile connettersi al PC Windows
+   con smbclient, il client Samba SMB/CIFS Figura 2.
+
+   Questo è un esempio di creazione di una connessione a un PC
+   Windows:
+/usr/bin/smbclient -L rice -U fred
+
+added interface ip=10.6.7.234 bcast=10.6.7.255 nmask=255.255.255.0
+Got a positive name query response from 10.6.7.8 ( 10.6.7.8 )
+Password: (not shown)
+
+Sharename  Type  Comment
+PRINTER$   Disk
+INKJET     Printer
+STUFF      Disk
+IPC$       IPC    Remote Inter Process Communication
+
+   Il comando mostrato richiede un elenco delle condivisioni su
+   un PC Windows chiamato "rice", con l'identificativo utente
+   "fred". Come risultato viene mostrata una stampante chiamata
+   "INKJET".
+
+   Se non è disponibile un name server in Windows è necessario
+   specificare l'indirizzo IP del PC Windows con l'opzione -I in
+   questo modo:
+/usr/bin/smbclient -I 10.6.7.8 -L rice -N
+
+   Si veda la documentazione di Samba per ulteriori informazioni
+   sull'uso di smbclient.
+     _________________________________________________________
+
+3.2. Configurazione di CUPS
+
+   Una volta che si sia trovata una stampante Windows si può
+   configurare CUPS. Si verifichi per prima cosa con il comando
+   seguente che la propria installazione di CUPS abbia il backend
+   smb:
+ls -l /usr/lib/cups/backend/smb
+
+   Se tale file non esiste lo si crei eseguendo ciò che segue:
+ln -s `which smbspool` /usr/lib/cups/backend/smb
+
+   Questo che segue è un esempio di impostazione della stampante
+   mostrata in precedenza. Per eseguire questi comandi è
+   necessario diventare superutente o usare sudo:
+/usr/sbin/lpadmin -p RicePrinter -v smb://fred:mypass@rice/INKJET -P /r
+oot/inkjet.ppd
+/usr/bin/enable RicePrinter
+/usr/sbin/accept RicePrinter
+/usr/sbin/lpadmin -d RicePrinter
+
+   Come già ricordato bash ha un comando incorporato chiamato
+   enable, perciò gli utenti con bash dovranno usare il percorso
+   completo (/usr/bin/enable) per abilitare le stampanti.
+
+   Il comando "lpadmin" configura la stampante Windows condivisa
+   fornendo nome utente, password, nome netbios e nome della
+   stampante come singolo parametro. Si veda la Sezione 2.3 per
+   una spiegazione ulteriore dei comandi sopra menzionati.
+
+   Si è ora pronti per provare la propria stampante. Si invii un
+   file alla stampante con il comando lp seguito da un nome file
+   o stampando un documento dall'interno di un'applicazione.
+     _________________________________________________________
+
+4. Condividere stampanti con PC Windows
+
+4.1. Nozioni base sulla condivisione
+
+   Figura 3. Condivisione di una stampante
+
+   [from_windows.png]
+
+   Samba usa i demoni nmbd e smbd per condividere file e
+   stampanti con PC Windows. nmbd agisce come un name server
+   Windows, comunicando il nome del proprio computer ai PC
+   Windows nella LAN. smbd accetta richieste relative a file e
+   stampa da PC Windows Figura 3.
+
+   È necessario scaricare ed installare driver di stampa Windows
+   per ognuna delle stampanti Linux che vengono condivise. Si
+   possono trovare i driver di stampa per Windows cercando nel
+   sito web del produttore della propria stampante.
+     _________________________________________________________
+
+4.2. Configurazione di Samba
+
+   Se si permette l'accesso anonimo alla propria stampante è
+   necessario creare un account utente per i compiti di stampa in
+   remoto:
+/usr/sbin/adduser --system --disabled-password smbprint
+
+   Questo comando aggiunge al proprio sistema un utente chiamato
+   "smbprint". Ci si assicuri che ci sia abbastanza spazio su
+   disco in /home/smbprint, la directory home dell'utente
+   "smbprint", per farvi lo spool dei file. Si controlli che
+   l'utente "smbprint" non abbia i permessi per leggere o
+   modificare file e directory delicati sul proprio sistema. Se
+   CUPS è stato configurato in modo da limitare la stampa a certi
+   utenti nel proprio sistema, si deve permettere all'utente
+   "smbprint" di accedere alle stampanti che si desidera
+   condividere.
+
+   Il file di configurazione di Samba è /etc/samba/smb.conf. Il
+   seguente è un esempio di file di configurazione impostato per
+   usare CUPS con l'utente "smbprint":
+[global]
+  printcap name = cups
+  printing = cups
+  security = share
+[printers]
+  browseable = yes
+  printable = yes
+  public = yes
+  create mode = 0700
+  guest only = yes
+  use client driver = yes
+  guest account = smbprint
+  path = /home/smbprint
+
+   Si noti che questa configurazione permette la stampa a
+   chiunque possa creare una connessione con il proprio computer
+   e non è raccomandata per computer su reti non sicure, quali
+   quelli con accesso diretto ad Internet. Se è necessario
+   implementare il controllo degli accessi, si imposti security =
+   user o security = domain e si leggano le pagine man di Samba
+   per ulteriori informazioni.
+
+   Una volta che si siano aggiunte le impostazioni suddette al
+   proprio file di configurazione di Samba, è necessario
+   riavviare Samba con il comando:
+/etc/init.d/samba restart
+     _________________________________________________________
+
+4.3. Configurazione di CUPS
+
+   I driver di stampa Windows formattano il loro output per la
+   stampante prima di inviarlo attraverso la rete. Si deve
+   configurare CUPS in modo che accetti l'output preformattato
+   decommentando nel file /etc/cups/mime.convs la seguente riga:
+application/octet-stream   application/vnd.cups-raw   0   -
+
+   Si decommenti inoltre nel file /etc/cups/mime.types la
+   seguente riga:
+application/octet-stream
+
+   Ora è necessario dire a CUPS di accettare connessioni da altre
+   macchine nella rete. Si aggiungano a /etc/cups/cupsd.conf
+   queste righe:
+<Location /printers>
+ AuthType None
+ Order Deny,Allow
+ Deny From None
+ Allow From All
+</Location>
+
+   Così come per quella di Samba, questa configurazione permette
+   a ogni computer di conettersi alle proprie stampanti e non è
+   raccomandata per computer in reti non sicure. Per informazioni
+   su come rendere più restrittivi i controlli sull'accesso alle
+   proprie stampanti, si veda la pagina di manuale di cupsd.conf
+   e la documentazione di CUPS.
+
+   Da ultimo, si riavvii CUPS con il comando seguente:
+/etc/init.d/cupsys restart
+
+   Ora la propria stampante Linux dovrebbe essere condivisa con i
+   PC Windows nella LAN. Si segua la prassi normale per
+   aggiungere una stampante di rete ai propri PC Windows e ci si
+   ricordi di stampare una pagina di prova.
+     _________________________________________________________
+
+5. Risoluzione di problemi
+
+5.1. Problemi nella connessione a stampanti Windows
+
+   Quando smbspool, l'utilità smbclient usata da CUPS, non riesce
+   a connettersi correttamente, restituisce messaggi di errore
+   che sono divertenti ma non molto utili. Uno di questi messaggi
+   è Unable to connect to SAMBA host: Success. (Impossibile
+   connettersi all'host SAMBA: Successo.) Un altro segno che
+   indica un fallimento della connessione si ha quando i
+   documenti sembrano rimanere bloccati nella coda quando si
+   stampa con stampanti Windows.
+
+   Si guardino le voci più recenti nel log di CUPS con il comando
+   seguente:
+/usr/bin/tail /var/log/cups/error_log
+
+   Se si vede un messaggio simile a cli_connect() failed...
+   allora smbspool non è riuscito a trovare il PC Windows a cui
+   sta cercando di connettersi. Si verifichi la correttezza del
+   nome host del PC Windows. Si controlli che il PC Windows sia
+   acceso e che la sua connessione di rete stia funzionando
+   correttamente. Ci si assicuri di potersi connettere ad esso
+   usando smbclient come mostrato in la Sezione 3.1.
+
+   Se si vede un messaggio simile a SMB tree connect failed:
+   ERRSRV - ERRinvnetname allora smbclient si è connesso al PC
+   Windows, ma non si è potuto connettere alla stampante
+   richiesta. Si verifichi la correttezza del nome della
+   stampante condivisa usando smbclient come mostrato in la
+   Sezione 3.1.
+     _________________________________________________________
+
+5.2. Altri problemi
+
+   Tra gli altri tipi di insuccesso sono inclusi l'incapacità di
+   stampare con una stampante locale e la sparizione dei propri
+   compiti di stampa dalla coda senza che siano stati stampati. È
+   inoltre possibile ottenere messaggi di errore vaghi quali
+   Child process 2384 exited with status 32.
+
+   Si aumenti il livello di log di CUPS a "debug" per vedere più
+   messaggi riguardanti ciò che è successo prima del fallimento
+   del compito di stampa.
+
+    1. Si apra in un editor di testi il file principale di
+       configurazione di CUPS, /etc/cups/cupsd.conf.
+    2. Si cambi la riga che riporta "LogLevel warn" in "LogLevel
+       debug".
+    3. Si salvi il file di configurazione e si esca dall'editor
+       di testi.
+    4. Si riavvii il server CUPS con il comando:
+/etc/init.d/cupsys restart
+
+   Si può seguire il log di CUPS con il comando seguente:
+/usr/bin/tail -f /var/log/cups/error_log
+
+   Si dovrebbe vedere una riga che riporta Scheduler shutting
+   down due to SIGTERM. Ciò indica che il server CUPS è stato
+   fermato con successo.
+
+   Si reinvii il proprio compito di stampa e si cerchi la
+   comparsa di messaggi di debug utili. Un esempio di un
+   messaggio di debug utile è GNU Ghostscript 7.05: Can't start
+   ijs server 'hpijs'. In questo caso la soluzione è quella di
+   installare il pacchetto "hpijs".
+
+   Se non si riesce a individuare la causa del fallimento, si
+   faccia una ricerca su Internet usando come chiavi le parole
+   contenute nei messaggi di errore ottenuti; è probabile che
+   qualcuno abbia risolto lo stesso problema in precedenza. Si
+   può anche provare ad aggiornare i pacchetti elencati in la
+   Sezione 2.2 alla versione più recente.
+     _________________________________________________________
+
+6. Licenza
+
+   Copyright © 2003 Ian Ward.
+
+   Questo manuale è software libero; è possibile ridistribuirlo o
+   modificarlo nei termini della GNU General Public License come
+   pubblicata dalla Free Software Foundation, nella versione 2 o
+   (se si preferisce) in qualsiasi versione successiva.
+
+   È distribuita nella speranza che sia utile, ma senza alcuna
+   garanzia; senza neanche garanzie implicite di commerciabilità
+   o di adeguatezza ad un particolare scopo. Per maggiori
+   dettagli si veda la GNU General Public License.
+
+   Una copia della GNU General Public License è disponibile nella
+   distribuzione Debian GNU/Linux come file
+   /usr/share/common-licenses/GPL o sul World Wide Web
+   all'indirizzo http://www.gnu.org/copyleft/gpl.html. È inoltre
+   possibile ottenerla scrivendo a Free Software Foundation,
+   Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.

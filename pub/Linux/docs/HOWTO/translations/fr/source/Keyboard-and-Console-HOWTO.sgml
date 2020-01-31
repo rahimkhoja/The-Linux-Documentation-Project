@@ -1,0 +1,1020 @@
+<!doctype linuxdoc system>
+
+<article>
+
+<title>The Linux Keyboard HOWTO
+<author>Andries Brouwer, <tt/aeb@cwi.nl/
+<!--<author>Andries Brouwer, <htmlurl ="mailto:<tt/aeb@cwi.nl/"
+name="<tt/aeb@cwi.nl/">
+-->
+<date>v2.1, 8 Novembre 1995 - version fran&ccedil;aise Bruno Viaris
+
+<abstract>
+Ce document traite de l'utilisation du clavier, de la console et de
+ caract&egrave;res non ASCII sous Linux.
+</abstract>
+
+<toc>
+
+<sect>
+Programmes utiles<p>
+
+Les paquetages suivants contiennent des programmes en rapport avec le
+clavier ou la console.
+<p>
+<tt/kbd-0.90.tar.gz/ contient <tt/loadkeys/, <tt/dumpkeys/, <tt/showkey/,
+<tt/setmetamode/, <tt/setleds/, <tt/setfont/, <tt/showfont/, <tt/mapscrn/,
+<tt/kbd_mode/, <tt/chvt/, <tt/resizecons/, <tt/disalloc/,
+<tt/getkeycodes/, <tt/setkeycodes/.
+<p>
+<tt/util-linux-2.5/ contient <tt/setterm/, <tt/kbdrate/.
+<p>
+<tt/shellutils-1.8/ (ou <tt/stty.tar.gz/) contient <tt/stty/.
+<p>
+<tt/open-1.1.tgz/ contient <tt/open/. (Voir aussi <tt/dynamic-vc-1.1.tar.gz/.)
+
+<tt/SVGATextMode-0.9.tar.gz/ contient <tt/SVGATextMode/.
+
+La distribution standard de X contient <tt/xmodmap/, <tt/xset/, <tt/kbd_mode/.
+(Voir aussi X386keybd(1).)
+
+<sect>Le clavier - g&eacute;n&eacute;ralit&eacute;s<p>
+
+Quand on appuie sur une touche, le contr&ocirc;leur clavier envoie des
+scancodes au pilote clavier du noyau. Certains claviers sont
+programmables, mais en g&eacute;n&eacute;ral les scancodes sont fixes.
+Quand le pilote clavier est en <em>mode scancode</em> (dit aussi
+<em>mode raw</em>), le noyau se contente 
+de transmettre les codes tels quels &agrave; l'application, c'est ce qui se
+passe sous <tt/X/. Sinon le flux de scancodes est d&eacute;compos&eacute; en
+keycodes correspondant &agrave; l'appui ou au rel&acirc;chement d'une touche. (Le
+simple fait d'appuyer sur une touche peut produire jusqu'&agrave; 6
+scancodes, r&eacute;duits ici en un seul keycode.) Si le pilote clavier est
+en <em>mode keycode</em> (ou
+<em>mode mediumraw</em>),
+l'application re&ccedil;oit les keycodes (ce mode est utilis&eacute;, par exemple,
+par <tt/showkey/).
+Sinon, les keycodes sont traduits d'apr&egrave;s une table (keymap), ensuite,
+soit un caract&egrave;re (ou un cha&icirc;ne) est envoy&eacute; &agrave; l'application, soit une
+action est d&eacute;clench&eacute;e.
+(Exemple: si on appuie et rel&acirc;che la touche <tt/q/, le clavier envoie
+les scancodes 0x1E et 0x9E, ce qui est converti en keycodes 30 et
+158, puis en la valeur 113, qui est le code ASCII ou Latin-1 de <tt/q/
+(avec un clavier Azerty et une keymap adapt&eacute;e).
+Si on appuie et rel&acirc;che la touche <tt/Suppr/, le clavier envoie les
+scancodes 0xE0 0x53 0xE0 0xD3, convertis en keycodes 111 et 239, ce
+qui donne finalement la s&eacute;quence ESC <tt/&lsqb 3 ~/. Ctrl-Alt-Suppr
+est une combinaison de touches qui d&eacute;clenche une action.)
+<P>
+La conversion de scancodes exotiques en keycodes peut &ecirc;tre programm&eacute;e
+avec l'utilitaire <tt/setkeycodes/, mais peu de gens ont besoin.
+La table de traduction des keycodes en caract&egrave;res, cha&icirc;nes ou
+actions, i.e. la keymap, se manipule gr&acirc;ce &agrave; <tt/loadkeys/.
+Pour plus de d&eacute;tails, voir getkeycodes(8), setkeycodes(8), dumpkeys(1), loadkeys(1).
+<P>
+Dans ce paragraphe, le terme `envoy&eacute; &agrave; l'application' signifie en
+fait `transmis au pilote du terminal'. Le texte est ensuite trait&eacute; de
+la m&ecirc;me fa&ccedil;on que s'il venait d'une ligne s&eacute;rie. Les d&eacute;tails de ce
+traitement sont ajust&eacute;s par le programme <tt/stty/. 
+
+<sect>La console - g&eacute;n&eacute;ralit&eacute;s<p>
+
+A l'inverse, quand on envoie des caract&egrave;res &agrave; la console, ils
+subissent un traitement standard (r&eacute;gl&eacute; par <tt/stty/), puis sont
+envoy&eacute;s au pilote de la console.
+Le pilote de la console &eacute;mule un terminal VT100, et scrute les donn&eacute;es
+re&ccedil;ues pour intercepter les s&eacute;quences escape (du genre d&eacute;placement du
+curseur, effacement de l'&eacute;cran, etc.). Les autres octets sont,
+apr&egrave;s une &eacute;ventuelle conversion par la table de conversion de la
+console, &eacute;crits dans la m&eacute;moire vid&eacute;o. La carte vid&eacute;o affiche ces
+caract&egrave;rs en utilisant une police stock&eacute;e dans sa m&eacute;moire. On peut
+changer cette police en utilisant <tt/setfont/, et la table de
+conversion de la console peut &ecirc;tre modifi&eacute;e avec <tt/mapscrn/.
+Pour plus de d&eacute;tails, voir plus bas.
+
+
+<sect>R&eacute;initialiser le terminal<p>
+
+L'&eacute;cran est plein de cochonneries, tout ce qu'on tape appara&icirc;t sous
+forme de petits dessins. Que faire ?
+
+De nombreux programmes retracent l'&eacute;cran quand on tape ^L, ce qui peut
+&ecirc;tre utile en cas de modem bruit&eacute; ou de messages intempestifs &agrave;
+l'&eacute;cran. La commande <tt/clear/ efface l'&eacute;cran.
+
+La commande <tt/reset/ r&eacute;initialise le pilote de la console. Elle est
+bien utile quand l'&eacute;cran est plein de ces jolis caract&egrave;res graphiques
+illisibles, ou quand l'affichage est r&eacute;duit &agrave; la ligne du bas.
+Si vous ne disposez pas de cette commande, ou si elle fait autre
+chose, voici le rem&egrave;de: mettez ces deux lignes dans un fichier
+ex&eacute;cutable <tt/reset/ quelque part dans votre PATH:
+<tscreen><verb>
+#!/bin/sh
+echo -e \\033c
+</verb></tscreen>
+ce qui envoie la s&eacute;quence ESC c &agrave; la console.
+Si vous avez charg&eacute; une police bizarre et que vous voulez revenir &agrave; la
+police par d&eacute;faut,
+<tscreen><verb>
+% setfont
+</verb></tscreen>
+fera l'affaire (&agrave; condition que la police par d&eacute;faut soit &agrave; sa place).
+Sur de vieux terminaux, l'utilisation de tabs peut demander un d&eacute;lai,
+ex&eacute;cuter alors
+<tscreen><verb>
+% stty tab3
+</verb></tscreen>
+(voir stty(1)). Pour changer de mode vid&eacute;o, utiliser <tt/resizecons/ ou
+<tt/SVGATextMode/.
+Ceci r&egrave;gle g&eacute;n&eacute;ralement la partie affichage.
+C&ocirc;t&eacute; clavier, il peut y avoir encore pas mal de probl&egrave;mes. Si <tt/X/,
+<tt/DOOM/ ou tout autre programme travaillant en mode raw (ou
+mediumraw) se plante, le clavier peut rester dans ce mode et il est
+alors difficile d'ex&eacute;cuter la moindre commande. (Voir <sq>Comment sortir
+du mode raw</sq> plus loin.)
+
+<sect1>Keyboard hardware reset<p>
+
+Le probl&egrave;me peut parfois se situer &agrave; un niveau encore plus bas.
+Il y a au moins deux niveaux (le clavier et le contr&ocirc;leur clavier) o&ugrave;
+l'on peut envoyer la commande <sq>d&eacute;sactiver le clavier</sq> au mat&eacute;riel.
+De plus les claviers ont souvent trois tables de scancodes utilisables
+au choix.
+<p>
+Je n'ai cependant jamais entendu parler de cas o&ugrave; cela ait pos&eacute; un
+probl&egrave;me.
+<p>
+Certains claviers ont une fonction de reprogrammation des touches.
+Stormy Henderson (<tt><htmlurl url="mailto:stromy@Ghost.Net" name="stormy@Ghost.Net"></tt>) &eacute;crit:
+<quote>
+`Si votre clavier a &eacute;t&eacute; accidentellement reprogramm&eacute;, vous pouvez
+(avec un clavier Gateway AnyKey) appuyer sur control-alt-suspend_macro
+pour remettre les choses en place.'
+</quote>
+<sect>Delete et Backspace<p>
+
+<sect1>Comment choisir le caract&egrave;re &agrave; utiliser pour effacer le dernier caract&egrave;re tap&eacute;<p>
+
+<tscreen><verb>
+% stty erase ^?
+</verb></tscreen>
+Si le caract&egrave;re est effac&eacute;, mais d'une mani&egrave;re bizarre, c'est que les
+param&egrave;tres du terminal sont mauvais. Si <tt/echoprt/ est activ&eacute;, les
+caract&egrave;res effac&eacute;s s'affichent entre <tt>&bsol;</tt> et <tt>/</tt>.
+Si <tt/echoe/ est d&eacute;sactiv&eacute;, les caract&egrave;res ne sont plus effac&eacute;s &agrave;
+l'&eacute;cran, mais leur effacement est signal&eacute; par l'affichage du caract&egrave;re
+d'effacement, exemple: <tt>Libux&num;&num;&num;nux</tt> (avec &num; comme
+caract&egrave;re d'effacement).
+
+On utilisera donc g&eacute;n&eacute;ralement <tt/stty echoe -echoprt/. La commande
+<tt/stty sane/ activera ces param&egrave;tres et bien d'autres. La commande
+<tt/stty -a/ affiche les param&egrave;tres actuels. Pourquoi ces param&egrave;tres ne
+sont pas activ&eacute;s par d&eacute;faut ? Il suffit d'utiliser le bon <tt/getty/.
+
+Il est &agrave; noter que beaucoup de programmes (comme <tt/bash/, <tt/emacs/
+etc.) ont leur propres assignations de touches (d&eacute;finis dans
+<tt>~/.inputrc</tt>, <tt>~/.emacs</tt>, etc.) et ne tiennent pas compte
+de ces param&egrave;tres de terminal.
+
+<sect2>`Getty comprenait bien DEL et BS, mais plus maintenant ?'<p>
+
+Jadis, la console traduisait DEL (<tt>&bsol;177</tt>) en BS Espace BS
+(<tt>&bsol;010&bsol;040&bsol;010</tt>).
+
+Les DEL sont d&eacute;sormais ignor&eacute;s (comme le devrait toute &eacute;mulation vt100
+fid&egrave;le). Choisissez un meilleur getty, i.e., qui n'affiche pas les DEL.
+
+<sect2>`Login ne fait pas la m&ecirc;me chose au premier et au deuxi&egrave;me essai?'<p>
+
+Au premier essai, on parle &agrave; <tt/getty/, au deuxi&egrave;me &agrave;
+<tt/login/, deux programmes distincts qui peuvent se comporter diff&eacute;remment.
+
+<sect1>Comment dire &agrave; Linux quel code g&eacute;n&eacute;rer &agrave; l'appui sur une touche<p>
+
+Quand on utilise la console, ou plus pr&eacute;cis&eacute;ment, quand le clavier
+n'est pas en mode (medium)raw, il faut utiliser:
+<tscreen><verb>
+% loadkeys monclavier.map
+</verb></tscreen>
+Sous X, utiliser:
+<tscreen><verb>
+% xmodmap monclavier.xmap
+</verb></tscreen>
+Remarque: depuis XFree86-2.1, X initialise son clavier &agrave; partir de la
+configuration du clavier de la console. Bien que les deux syst&egrave;mes ne
+soient pas 100% compatibles, cette technique rend g&eacute;n&eacute;ralement
+l'utilisation de <tt/xmodmap/ superflue.
+
+Si, par exemple, si vous voulez que la touche Backspace g&eacute;n&egrave;re le code
+BackSpace (^H), au lieu du code par d&eacute;faut (Delete), faites:
+<tscreen><verb>
+% loadkeys
+keycode 14 = BackSpace
+%
+</verb></tscreen>
+
+<sect2>`Pourquoi la touche BackSpace ne g&eacute;n&egrave;re pas BackSpace par d&eacute;faut ?'<p>
+
+(i) Parce que les terminaux VT100 ont une touche Delete au dessus de
+la touche Entr&eacute;e.
+<p>
+(ii) Parce que Linus en a d&eacute;cid&eacute; ainsi.
+
+<sect1>Comment dire &agrave; X d'&eacute;changer Delete et Backspace<p>
+
+<tscreen><verb>
+% xmodmap -e "keysym BackSpace = Delete" -e "keysym Delete = BackSpace"
+</verb></tscreen>
+Ou, si vous voulez juste que Backspace g&eacute;n&egrave;re le code BackSpace:
+<tscreen><verb>
+% xmodmap -e "keycode 22 = BackSpace"
+</verb></tscreen>
+Ou, si vous voulez juste que Delete g&eacute;n&egrave;re le code Delete:
+<tscreen><verb>
+% xmodmap -e "keycode 107 = Delete"
+</verb></tscreen>
+(mais g&eacute;n&eacute;ralement c'est d&eacute;j&agrave; la disposition par d&eacute;faut).
+
+<sect1>Comment dire &agrave; emacs ce qu'il doit faire des codes Delete et Backspace<p>
+
+Mettez dans votre <tt/.emacs/ les lignes:
+<tscreen><verb>
+  (global-set-key "\?" 'delete-backward-char)
+  (global-set-key "\C-h" 'help-command)
+</verb></tscreen>
+Bien s&ucirc;r, vous pouvez associer d'autres commandes &agrave; d'autres touches
+de la m&ecirc;me mani&egrave;re.
+
+<sect1>Comment dire &agrave; emacs de permuter Delete et Backspace<p>
+
+Mettez dans votre <tt/.emacs/ les lignes:
+<tscreen><verb>
+  (setq keyboard-translate-table (make-string 128 0))
+  (let ((i 0))
+  (while (< i 128)
+      (aset keyboard-translate-table i i)
+      (setq i (1+ i))))
+  (aset keyboard-translate-table ?\b ?\^?)
+  (aset keyboard-translate-table ?\^? ?\b)
+</verb></tscreen>
+
+<sect1>Comment dire &agrave; kermit d'&eacute;changer Delete et Backspace<p>
+
+Mettez dans votre <tt/.kermrc/ les lignes:
+<tscreen><verb>
+  set key \127 \8
+  set key \8 \127
+</verb></tscreen>
+
+<sect1>Comment r&eacute;gler xterm selon vos modes de terminal pr&eacute;f&eacute;r&eacute;s<p>
+
+Normalement xterm h&eacute;rite des modes de terminal du processus qui l'appelle.
+Pour <tt/xdm/, les caract&egrave;res erase et kill sont <tt/#/ et <tt/@/,
+comme sur les bons vieux Unix Version 6.
+Si &ccedil;a ne vous pla&icirc;t pas, vous pouvez mettre
+<tscreen><verb>
+  XTerm*ttymodes: erase ^? kill ^U intr ^C quit ^\ eof ^D susp ^Z start ^Q stop ^S eol ^@
+</verb></tscreen>
+dans <tt>/usr/lib/X11/app-defaults/XTerm</tt> ou dans
+<tt>&dollar;HOME/.Xresources</tt>, &agrave; condition d'ex&eacute;cuter la commande
+<tscreen><verb>
+  xrdb $HOME/.Xresources
+</verb></tscreen>
+dans votre <tt>&dollar;HOME/.xinitrc</tt>.
+
+<sect1>Comment dire &agrave; xmosaic que la touche Backspace g&eacute;n&egrave;re une DEL<p>
+
+Mettre
+<tscreen><verb>
+  *XmText.translations: #override\n\
+         <Key>osfDelete: delete-previous-character()
+  *XmTextField.translations: #override\n\
+          <Key>osfDelete: delete-previous-character()
+</verb></tscreen>
+dans votre <tt>&dollar;HOME/.Xresources</tt> devrait faire l'affaire.
+
+Cependant, la FAQ de netscape dit:
+<verb>
+	Pourquoi ma touche Backspace ne marche pas dans les boites texte ?
+	Par d&eacute;faut, Linux et XFree86 ont leur touches Backspace et Delete
+	mal configur&eacute;es. Tous les programmes Motif (y compris Netscape
+	Navigator) auront les m&ecirc;mes probl&egrave;mes.
+
+	Les sp&eacute;cifications Motif disent que Backspace doit effacer le
+	caract&egrave;re pr&eacute;c&eacute;dent et Delete le caract&egrave;re suivant. Par d&eacute;faut sous
+	Linux et XFree86 Backspace et Delete g&eacute;n&egrave;rent le code DEL.
+
+	Le probl&egrave;me peut &ecirc;tre r&eacute;solu en utilisant un programme tel que 
+	xmodmap, xkeycaps, ou loadkeys pour que la touche Backspace
+	g&eacute;n&egrave;re le code BackSpace au lieu de Delete.
+
+	Une autre solution consiste &agrave; avoir un fichier .motifbind;
+	voir la page de manuel de VirtualBindings(3).
+
+	Note: n'utilisez pas les ressources *XmText.translations ou
+	*XmTextField.translations pour essayer de r&eacute;soudre ce probl&egrave;me.
+	Si vous le faites, vous annulez toutes les autres programmations
+	de touches dans les boites textes de Netscape Navigator.
+</verb>
+
+<sect1>Et les fichier termcap et terminfo?<p>
+
+Les gens qui ont des probl&egrave;mes avec backspace ont tendance &agrave; aller
+voir dans leur fichier termcap (ou terminfo), et effectivement la
+ressource <tt/kb/ (ou <tt/kbs/) d&eacute;crit le code g&eacute;n&eacute;r&eacute; par la touche
+Backspace. Cependant peu de programmes utilisent ces bases de donn&eacute;es
+pour rechercher le code envoy&eacute; par backspace, donc,
+&agrave; moins de n'avoir des probl&egrave;mes qu'avec certains programmes, il faut
+en g&eacute;n&eacute;ral chercher ailleurs.
+Cela dit, il vaut mieux de toute fa&ccedil;on avoir un termcap (ou terminfo)
+correct. Voir aussi <sq>La variable TERM</sq> plus loin.
+
+<sect>Les tables de caract&egrave;res de la console<p>
+
+Le noyau a quatre tables de conversion des octets en symboles &eacute;cran:
+a) Latin1 -&gt; PC,  b) VT100 graphique -&gt; PC,
+c) PC -&gt; PC, d) utilisateur.
+
+Il y a deux tables de caract&egrave;res, appel&eacute;es G0 et G1, dont l'une est la
+table courante. (Initialement G0.)
+Taper ^N fait passer &agrave; la table G1, ^O &agrave; la table G0.
+
+Ces variables G0 et G1 pointent sur des tables de conversion et
+peuvent &ecirc;tres chang&eacute;es par l'utilisateur. Initialement, elles pointent
+respectivement sur les tables a) et b).
+Les s&eacute;quences ESC ( B , ESC ( 0 , ESC ( U et ESC ( K font
+respectivement pointer G0 sur les tables de conversion a), b), c) et d).
+Les s&eacute;quences ESC ) B , ESC ) 0 , ESC ) U et ESC ) K font
+respectivement pointer G0 sur les tables de conversion a), b), c) et d).
+
+La s&eacute;quence ESC c provoque une r&eacute;initialisation compl&egrave;te du terminal,
+ce qui peut &ecirc;tre n&eacute;cessaire si l'&eacute;cran est tout brouill&eacute;. La commande
+<tt/echo ^V^O/, souvent conseill&eacute;e, ne fera que rappeler la table G0,
+mais rien ne garantit que G0 pointe sur la table a).
+Certaines distributions ont un programme reset(1) qui fait juste un 
+<tt>echo ^&lsqb;c</tt>.
+Si votre termcap pour la console est correcte (et a une entr&eacute;e
+<tt>:rs=&bsol;Ec:</tt>), alors vous pouvez utiliser <tt/setterm -reset/.
+
+La table de conversion d) peut &ecirc;tre d&eacute;finie par mapscrn(8).
+Le r&eacute;sultat est que si un symbole c est affich&eacute;, c'est le
+symbole <tt>s = map[c]</tt> qui est mis dans la m&eacute;moire vid&eacute;o.
+L'image du caract&egrave;re <tt/s/ se trouve dans la m&eacute;moire de la carte
+vid&eacute;o et peut &ecirc;tre modifi&eacute;e avec setfont(8).
+
+<sect>Changer de console<p>
+
+Par d&eacute;faut, le changement de console se fait par Alt-Fn ou Ctrl-Alt-Fn.
+Sous <tt/X/ (ou les versions r&eacute;centes de <tt/dosemu/), seule la
+combinaison Ctrl-Alt-Fn marche.
+
+XFree86 1.3 ne sait pas que la touche Alt est enfonc&eacute;e quand on
+rappelle la fen&ecirc;tre X. Il faut donc rel&acirc;cher Alt avant de pouvoir
+rechanger de console.
+Pourtant, &ccedil;a pourrait marcher: le noyau m&eacute;morise toujours l'&eacute;tat
+appuy&eacute;/rel&acirc;ch&eacute; des touches. (Autant que faire se peut: certains
+clavier n'&eacute;mettent pas de scancode quand on appuie dessus (ex: les
+touches PFn d'un FOCUS 9000) ou quand on les rel&acirc;che (ex: la touche
+Pause de la plupart des claviers).)
+
+XFree86 1.3 sauve les polices charg&eacute;es sur la carte vid&eacute;o quand il est
+d&eacute;marr&eacute;, et les restaure lors d'un changement de console. Donc le
+r&eacute;sultat d'un <tt/setfont/ sur une console virtuelle est annul&eacute; par un
+aller retour dans la fen&ecirc;tre X.
+L'utilisation de <tt/setfont/ sous X donne des r&eacute;sultats bizarres...
+
+Le changement de console par programme est possible gr&acirc;ce &agrave; la
+commande <tt/chvt/.
+
+<sect1>Changer le nombre de Consoles Virtuelles<p>
+
+Cette question est toujours pos&eacute;e de temps en temps, mais la r&eacute;ponse
+est: il y en a d&eacute;j&agrave; suffisament.
+Depuis la version 1.1.54 du noyau, il y a entre 1 et 63 consoles
+virtuelles. Une nouvelle console est cr&eacute;&eacute;e d&egrave;s qu'elle est ouverte.
+Elle peut &ecirc;tre supprim&eacute;e avec <tt/disalloc/ (mais il faut que plus
+aucun processus ne lui soit associ&eacute;).
+
+Pour les vieux noyaux, changer la ligne
+<tscreen><verb>
+#define NR_CONSOLES     8
+</verb></tscreen>
+dans <tt>include/linux/tty.h</tt> (ne pas d&eacute;passer 63),
+et recompiler. Il est possible que vous ayez &agrave; cr&eacute;er le p&eacute;riph&eacute;rique correspondant
+avec <tt/MAKEDEV/ ou <tt/mknod tty/N <tt/c 4/ N o&ugrave; N est le num&eacute;ro du terminal.
+Si vous voulez avoir des <tt/getty/ sur ces nouvelles consoles,
+ajoutez des lignes dans <tt>/etc/inittab</tt>.
+
+Quand les consoles sont allou&eacute;es dynamiquement, il est g&eacute;n&eacute;ralement
+plus simple de n'avoir qu'un ou deux <tt/getty/. D'autres consoles
+sont ouvertes par 
+<tt>open -l -s bash</tt>. Les consoles inutilis&eacute;es (sans processus
+associ&eacute;) sont d&eacute;sallou&eacute;es par <tt/disalloc/.
+
+Si vous disposez de <tt/spawn_login/ (inclus dans
+<tt/kbd-0.90.tar.gz/) et que vous mettez
+<tscreen><verb>
+	loadkeys << EOF
+	alt keycode 103 = Spawn_Console
+	EOF
+	spawn_login &
+</verb></tscreen>
+dans <tt>/etc/rc.local</tt>, taper Alt-Fl&egrave;cheHaute cr&eacute;era (et
+affichera) une nouvelle console avec un <tt/login/. Voir aussi
+<tt>open-1.3.tgz</tt>. 
+
+Vous ne pouvez vous loger sous <sq>root</sq> que sur les terminaux list&eacute;s dans
+<tt>/etc/securetty</tt>.
+
+<sect>Ctrl-Alt-Del et autres combinaisons sp&eacute;ciales<p>
+
+<sect1>
+Ctrl-Alt-Del (Boot)<p>
+Quand on appuie sur Ctrl-Alt-Del (ou toute autre combinaison &agrave;
+laquelle loadkeys associe le keycode Boot), soit la machine reboote
+imm&eacute;diatement (sans sync), soit le signal SIGINT est envoy&eacute; &agrave;
+<tt/init/ (ce qui est le comportement par d&eacute;faut, changeable par
+l'appel syst&egrave;me reboot(), voir ctrlaltdel(8)).
+Certains <tt/init/ changent le d&eacute;faut. Ce qui se produit quand
+<tt/init/ re&ccedil;oit SIGINT d&eacute;pend de la version du <tt/init/ utilis&eacute;e et
+est souvent d&eacute;termin&eacute; par le ligne <tt/pf/ du fichier
+<tt>/etc/inittab</tt> (on peut dans ce cas lancer n'importe quel programme).
+Dans les versions actuelles du noyau Ctrl-AltGr-Del n'est plus assign&eacute;
+par d&eacute;faut &agrave; Boot.
+
+<sect1>Autres combinaisons<p>
+Combinaisons par d&eacute;faut avant utilisation de loadkeys, donc en qwerty.
+<verb>
+Nom du keycode	Combinaison
+-------------------------------
+Show_Memory	Shift-Scrollock		
+Show_Registers	AltGr-ScrollLock	
+Show_State	Ctrl-ScrollLock		
+Console_n	Alt-Fn and Ctrl-Alt-Fn	(1 <= n <= 12)
+Console_{n+12}	AltGr-Fn		(1 <= n <= 12)
+Incr_Console	Alt-Fl&egrave;cheDroite
+Decr_Console	Alt-Fl&egrave;cheGauche
+Last_Console	Alt[Gr]-ImprEcran
+Scroll_Backward	Shift-PgPrec
+Scroll_Forward	Shift-PgSuiv
+Compose		Ctrl-.		(Ctrl-: sur clavier azerty)
+Caps_On		<pas d&eacute;fini>	(Par d&eacute;faut CapsLock est un va-et-vient,
+Caps_Shift	<pas defini>	ces Keycodes servent &agrave; recr&eacute;er le d&eacute;sagr&eacute;able
+				comportement MS-Keyb Fr)
+</verb>
+
+<sect1>Combinaisons sous X<p>
+<verb>
+Ctrl-Alt-Fn		Affiche la console virtuelle n
+Ctrl-Alt-KP+		R&eacute;solution suivante
+Ctrl-Alt-KP-		R&eacute;solution pr&eacute;c&eacute;dente
+Ctrl-Alt-Backspace	Tue le serveur X
+</verb>
+Sur certaines cartes-m&egrave;res, Ctrl-Alt-KP- et Ctrl-Alt-KP+ &eacute;mulent le
+bouton Turbo. Ces s&eacute;quences produisent les scancodes
+1d 38 4a ca b8 9d et 1d 38 4e ce b8 9d, et toutes deux changent la vitesse
+de Turbo (&gt;= 25MHz) &agrave; non-Turbo (8 or 12 MHz) et vice-versa.
+(souvent ce comportement peut &ecirc;tre d&eacute;sactiv&eacute; par un cavalier sur la
+carte-m&egrave;re.)
+
+Perry F Nguyen (<tt><htmlurl url="mailto:pfnguyen@netcom22.netcom.com" name="pfnguyen@netcom22.netcom.com"></tt>) &eacute;crit:
+<quote>
+Les BIOS AMI permettent de bloquer le clavier et de faire clignoter
+les LEDs quand on appuie sur Ctrl-Alt-Backspace et qu'un mot de passe
+BIOS est d&eacute;fini, et ce jusqu'&agrave; ce que celui-ci soit tap&eacute;.
+</quote>
+
+<sect1>Combinaisons sous Dosemu<p>
+<verb>
+Ctrl-Alt-Fn	Rappelle la console n (versions &gt;0.50; avant Alt-Fn)
+Ctrl-Alt-PgDn	Tue dosemu (quand le calvier est en mode RAW)
+(et bien d'autres, voir la documentation de dosemu)
+</verb>
+
+<sect1>Composition de symboles<p>
+
+Un symbole peut &ecirc;tre construit en utilisant plusieurs frappes.
+<itemize>
+<item>
+En mode Ascii, taper un code Ascii en d&eacute;cimal sur le pav&eacute; num&eacute;rique,
+tout en maintenant la touche Alt enfonc&eacute;e, produit le caract&egrave;re en
+question quand on rel&acirc;che Alt. (En mode Unicode, il faut taper le
+code hexad&eacute;cimal &agrave; 4 chiffres du symbole)
+<item>
+L'appui sur un accent mort puis sur une lettre produit cette lettre
+accentu&eacute;e (si possible, sinon l'accent suivi de la lettre).
+Les touche mortes sont d&eacute;finissables par l'utilisateur (gr&acirc;ce &agrave;
+loadkeys(1)). Il y a cinq possibilit&eacute;s:
+<verb>
+accent			keycode mort		keycode normal
+------------------------------------------------------
+accent grave 		dead_grave		grave
+accent aigu 		dead_acute 		apostrophe
+accent circonflexe 	dead_circumflex		asciicircum
+tilde 			dead_tilde		asciitilde
+tr&eacute;ma			dead_diaeresis		diaeresis
+</verb>
+Par d&eacute;faut aucune touche du clavier n'est morte.
+Le r&eacute;sultat est celui de Compose + accent + lettre (et est donc
+red&eacute;finissable, cf plus bas).
+
+<quote>
+NDT: pour des francophones utilisant un clavier Azerty, il vaut
+g&eacute;n&eacute;ralement mieux se contenter de d&eacute;finir comme touches mortes
+l'accent circonflexe et le tr&eacute;ma de la touche &agrave; droite du `P'. Il est
+sinon fastidieux voire parfois impossible (en particulier sous X) de
+taper les symboles tilde et apostrophe, bien utiles sous Unix.
+Or les tables standard pour clavier Latin-1 activent en g&eacute;n&eacute;ral toutes les
+touches mortes possibles. Il faut donc pour ressusciter ces touches,
+remplacer le keycode mort par le keycode normal dans la table charg&eacute;e au
+d&eacute;marrage par loadkeys. 
+</quote>
+
+<item>
+Compose suivi de deux symboles produit une combinaison des deux. Cette
+combinaison est red&eacute;finissable. Il y a &agrave; ce jour 68 combinaisons par
+d&eacute;faut qui peuvent &ecirc;tre affich&eacute;es par <tt>dumpkeys | grep compose</tt>.
+<item>
+Depuis la version 1.3.33 du noyau, il est possible d'avoir des touches
+<sq>collantes</sq> (plus ou moins comme Escape) gr&acirc;ce aux codes SControl et
+SAlt. Par exemple, on peut taper ^C par Scontrol puis C et
+Ctrl-Alt-BackSpace  par SControl puis SAlt puis BackSpace.
+</itemize>
+
+Il est &agrave; noter qu'il existe au moins trois m&eacute;canismes de composition
+distincts:
+<enum>
+<item>
+Le pilote clavier de Linux, configur&eacute; par loadkeys.
+<item>
+Le m&eacute;canisme de X - voir X386keybd(1), ou XFree86kbd(1). <newline>
+Sous X11R6 : &eacute;diter <tt>/usr/X11R6/lib/X11/locale/iso8859-1/Compose</tt>.
+<item>
+Le m&eacute;canisme d'emacs, activ&eacute; en chargeant <tt>iso-insert.el</tt>.
+</enum>
+Pour X, l'ordre des deux symboles n'a pas d'importance: Compose-,-c et
+Compose-c-, donnent tous deux un c-c&eacute;dille; pour Linux et emacs, seule
+la premi&egrave;re combinaison est correcte. Les combinaisons de X sont
+fixes, celles de Linux et emacs sont reconfigurables.
+Les trois listes par d&eacute;faut sont assez similaires, mais il y a
+quelques diff&eacute;rences.
+
+<sect>Diverses propri&eacute;t&eacute;s de la console<p>
+
+Voir loadkeys(1), setleds(1), setmetamode(1) pour les codes g&eacute;n&eacute;r&eacute;s
+par les diverses touches et l'utilisation des leds quand on n'est pas
+sous X. Sous X, voir xmodmap(1).
+
+Voir setterm(1), kbdrate(8) pour les propri&eacute;t&eacute;s telles que les
+couleurs de l'&eacute;criture et du fond, l'&eacute;conomiseur d'&eacute;cran et la vitesse
+de r&eacute;p&eacute;tition des touches quand on n'est pas sous X.
+Sous X, voir xset(1), qui s'occupe aussi du clic des touches et du
+volume des bips.
+
+Le fichier <tt>/etc/termcap</tt> d&eacute;finit les s&eacute;quences escape
+utilis&eacute;es par de nombreux programmes utilisant la console (ou tout
+autre terminal). Une version plus moderne se trouve dans
+<tt>/usr/lib/terminfo</tt>. (voir terminfo(5). Les fichiers terminfo
+sont cr&eacute;&eacute;s par le compilateur terminfo <tt>/usr/lib/terminfo/tic</tt>,
+voir tic(1).)
+
+(Sur ma machine) <tt>/dev/console</tt> est lien symbolique sur
+<tt>/dev/tty0</tt>, et le noyau consid&egrave;re <tt>/dev/tty0</tt> comme un
+synonyme de la console virtuelle courante.
+XFree86 1.3 change le propri&eacute;taire de <tt>/dev/tty0</tt>, mais ne le
+restaure qu'&agrave; la sortie. Or dumpkeys risque de ne pas marcher si quelqu'un
+d'autre est propri&eacute;taire de <tt>/dev/console</tt>; dans ce cas, lancer
+X et en sortir peut arranger les choses.
+
+<sect>Comment sortir du mode RAW<p>
+
+Si un programme utilisant le mode <tt/K_RAW/ du clavier se termine sans
+remettre le calvier en mode <tt/K_XLATE/, alors il est tr&egrave;s difficile de
+faire quoi que ce soit - m&ecirc;me  Ctrl-Alt-Del. Cependant il est parfois
+possible d'&eacute;viter d'appuyer sur Reset (et m&ecirc;me souhaitable: vos
+utilisateurs risquent de ne pas appr&eacute;cier qu'on leur tue leur Nethack,
+et surtout il est possible d'endommager le syst&egrave;me de fichiers).
+Les solutions simples consistent &agrave; se loger &agrave; partir d'un autre
+terminal ou une autre machine et faire <tt>kbd_mode -a</tt>.
+La proc&eacute;dure suivante suppose que X ne tourne pas, que l'&eacute;cran est en
+mode texte, que vous &ecirc;tes &agrave; un prompt shell, que Ctrl-C est le
+caract&egrave;re d'interruption et que vous n'avez pas un clavier trop
+exotique (i.e. la touche `=' est 2 touches &agrave; droite de `0').
+
+1&egrave;re &eacute;tape: Lancer X.
+Appuyez sur la combinaison 2-F12-= : appuyez sur 2 puis F12 (sans
+l&acirc;cher 2) et puis = (sans l&acirc;cher les deux autres), le tout assez
+rapidement! &Ccedil;a lance X.
+(Explication: si l'appui sur une touche produit le keycode K, alors
+son rel&acirc;chement produit K+128. Votre shell risque de na pas appr&eacute;cier
+ces caract&egrave;res, donc on &eacute;vite de les lui envoyer en ne l&acirc;chant pas les
+touches. `2' produit un ^C qui annule tout ce qui a &eacute;t&eacute; tap&eacute;
+avant. F12 produit un X et `=' le code entr&eacute;e. Et tout &ccedil;a vite fait
+avant que la r&eacute;p&eacute;tition des touches ne commence...)
+
+Votre &eacute;cran est alors probablement gris, puisqu'aucun <tt/.xinitrc/
+n'a &eacute;t&eacute; sp&eacute;cifi&eacute;. Cependant Ctrl-Alt-Fn marche, et vous pouvez appeler
+une autre console. (Ctrl-Alt-Backspace marche aussi, mais &ccedil;a restaure
+l'&eacute;tat initial du clavier qui justement n'est pas bon.)
+
+2&egrave;me &eacute;tape: Programmer le changement de mode du clavier.
+(Par exemple, avec <tt>sleep 5; kbd_mode -a</tt>.)
+
+3&egrave;me &eacute;tape: Quitter X.
+Alt-Fx (souvent Alt-F7) retourne sous X, ensuite Ctrl-Alt-Backspace
+tue X. Dans les 5 secondes le clavier redevient utilisable.
+
+Si vous voulez vous pr&eacute;parer pour cette occasion, faites de
+<tt>&bsol;215A&bsol;301</tt> (3 symboles) un alias de <tt/kbd_mode -a/.
+D&eacute;sormais, l'appui sur F7 en mode RAW remettra tout en ordre.
+
+<sect>La variable TERM <p>
+
+De nombreux programmes utilisent la variable <tt/TERM/ et la base de
+donn&eacute;es <tt>/etc/termcap</tt> ou <tt>/usr/lib/terminfo/*</tt> pour
+trouver quelle cha&icirc;ne de commande efface l'&eacute;cran, d&eacute;place le curseur,
+etc., et parfois pour savoir quelle cha&icirc;ne est envoy&eacute;e par la touche
+backspace, ou les touches de fonction, etc. Cette variable est d'abord
+d&eacute;finie par le noyau (pour la console). G&eacute;n&eacute;ralement elle est
+red&eacute;finie par <tt/getty/, en utilisant <tt>/etc/ttytype</tt> ou
+l'argument sp&eacute;cifi&eacute; dans <tt>/etc/inittab</tt>.
+Parfois elle est encore chang&eacute;e par <tt>/etc/profile</tt>.
+
+Les anciens syst&egrave;mes utilisent <tt/TERM=console/ ou
+<tt/TERM=con80x25/. Les plus r&eacute;cents (avec ncurses 1.8.6) utilisent la
+valeur plus sp&eacute;cifique <tt/TERM=linux/ ou <tt/TERM=linux-80x25/.
+Cependant, les vieilles versions de <tt/setterm/ cherchent une valeur
+du type <tt/TERM=con*/ et ne marchent donc pas avec <tt/TERM=linux/.
+
+Depuis la version 1.3.2 du noyau, la valeur par d&eacute;faut est <tt/TERM=linux/.
+
+Si votre termcap n'a pas d'entr&eacute;e `linux', il suffit d'ajouter l'alias
+linux dans la description de `console':
+<tscreen><verb>
+	console|con80x25|linux:\
+</verb></tscreen>
+et de copier (ou faire un lien symbolique)
+<tt>/usr/lib/terminfo/c/console</tt> en <tt>/usr/lib/terminfo/l/linux</tt>.
+
+
+<sect1>Terminfo<p>
+
+Il manque, dans le fichier terminfo de la console linux fourni avec
+ncurses 1.8.6, la ligne:
+<tt>kich1=&bsol;E&lsqb;2~</tt>, n&eacute;cessaire &agrave; certains programmes.
+Editez ce fichier et compilez-le avec <tt/tic/.
+
+<sect>Comment faire pour que d'autres programmes acceptent les caract&egrave;res non-ASCII<p>
+
+C'&eacute;tait jadis un v&eacute;ritable calvaire. Il fallait convaincre
+individuellement chaque programme de travailler en 8 bits.
+Les choses ne sont pas encore id&eacute;ales, mais r&eacute;cemment de nombreux
+utilitaires GNU ont appris &agrave; reconna&icirc;tre les variables
+<tt/LC_CTYPE=iso_8859_1/ ou <tt/LC_CTYPE=iso-8859-1/.
+Essayez d'abord &ccedil;a, et si &ccedil;a ne suffit pas essayez les trucs ci-dessous.
+
+
+Tout d'abord, le huiti&egrave;me bit doit survivre au processus d'entr&eacute;e du
+noyau, assurez-vous-en donc avec <tt/stty cs8 -istrip -parenb/.
+
+A. Pour <tt/emacs/, mettez les lignes
+<tscreen><verb>
+	(standard-display-european t)
+	(set-input-mode nil nil 1)
+	(require 'iso-syntax)
+</verb></tscreen>
+et peut-&ecirc;tre aussi
+<tscreen><verb>
+	(load-library "iso-insert.el")
+	(define-key global-map [?\C-.] 8859-1-map)
+</verb></tscreen>
+dans votre <tt>&dollar;HOME/.emacs</tt>.
+(Cette derni&egrave;re ligne marche dans un <tt/xterm/, en utilisant <tt/emacs -nw/,
+mais il faut alors mettre
+<tscreen><verb>
+	XTerm*VT100.Translations:       #override\n\
+        Ctrl <KeyPress> . : string("\0308")
+</verb></tscreen> 
+dans votre <tt/.Xresources/.)
+NDT: fichiers pour clavier Qwerty, &agrave; v&eacute;rifier pour azerty.
+
+B. Pour <tt/less/, mettez <tt/LESSCHARSET=latin1/ dans l'environment.
+
+C. Pour <tt/ls/, mettez l'option <tt/-N/. (A priori en faisant un alias.)
+
+D. Pour <tt/bash/ (version 1.13.*), mettez
+<tscreen><verb>
+	set meta-flag on
+	set convert-meta off
+</verb></tscreen>
+et, selon le Danish-HOWTO,
+<tscreen><verb>
+	set output-meta on
+</verb></tscreen>
+dans votre <tt>&dollar;HOME/.inputrc</tt>.
+
+E. Pour <tt/tcsh/, d&eacute;finissez les variables:
+<tscreen><verb>
+	setenv LANG	fr_FR	(ou fr_CA, fr_CH, fr_BE...)
+	setenv LC_CTYPE iso_8859_1
+</verb></tscreen>
+Si <tt/nls/ est install&eacute;, les routines correspondantes sont utilis&eacute;es.
+Sinon <tt/tcsh/ agit en iso_8859_1, quelle que soit les valeurs donn&eacute;es &agrave; 
+LANG et LC_CTYPE. voir la section NATIVE LANGUAGE SYSTEM de tcsh(1).
+(d'apr&egrave;s le Danish-HOWTO: <tt>setenv LC_CTYPE ISO-8859-1; stty pass8</tt>)
+
+F. Pour <tt/flex/, donnez l'option <tt/-8/ si l'analyseur g&eacute;n&eacute;r&eacute; doit
+accepter les entr&eacute;es 8-bits. (Bien sur qu'il doit le faire !)
+
+G. Pour <tt/elm/, mettez <tt/displaycharset/ &agrave; <tt/ISO-8859-1/.
+(Danish HOWTO: <tt/LANG=C/ et <tt/LC_CTYPE=ISO-8859-1/)
+
+H. Pour les programmes utilisant curses (comme <tt/lynx/) David Sibley dit:
+<quote>
+La version standard de curses utilise le huiti&egrave;me bit pour la vid&eacute;o
+invers&eacute;e (voir le flag _STANDOUT d&eacute;fini dans
+<tt>/usr/include/curses.h</tt>).  Cependant <tt/ncurses/ semble
+fonctionner en 8-bits et affiche le iso-latin-8859-1 correctement.
+</quote>
+
+I. Pour les programmes utilisant <tt/groff/ (comme <tt/man/), utilisez
+le <tt/-Tlatin1/ au lieu de <tt/-Tascii/. Les vieilles versions de <tt/man/
+utilisent aussi <tt/col/, et le point suivant s'applique aussi.
+
+J. Pout <tt/col/, assurez-vous 1) qu'il a &eacute;t&eacute; corrig&eacute; et fait un
+<tt>setlocale(LC_CTYPE,"");</tt> et 2) de d&eacute;finir
+<tt>LC_CTYPE=ISO-8859-1</tt> dans l'environment.
+
+K. Pour <tt/rlogin/, utilisez l'option <tt/-8/.
+
+L. Pour <tt/joe/,
+<tt>sunsite.unc.edu:/pub/Linux/apps/editors/joe-1.0.8-linux.tar.gz</tt>
+devrait marcher apr&egrave;s &eacute;dition du fichier de configuration. J'ai aussi lu:
+<tt/joe/: mettez l'option <tt/-asis/ dans <tt>/usr/lib/joerc</tt> en
+premi&egrave;re colonne.
+
+M. Pour LaTeX: <tt>&bsol;documentstyle&lsqb;isolatin&rsqb;{article}</tt>.<newline>
+Pour LaTeX2e: <tt>&bsol;documentclass{article}&bsol;usepackage{isolatin}</tt>
+ou <tt>isolatin.sty</tt> est disponible &agrave; 
+<tt><url url="ftp://ftp.vlsivie.tuwien.ac.at/pub/8bit"></tt>.
+
+Une belle discussion sur le th&egrave;me de l'ISO-8859-1 et sur comment
+manipuler les caract&egrave;res 8-bits est disponible dans
+<tt><url url="ftp://grasp.insa-lyon.fr/pub/faq/fr/accents"></tt> (en fran&ccedil;ais).
+Une autre, en anglais, peut &ecirc;tre trouv&eacute;e &agrave;
+<tt><url url="ftp://rtfm.mit.edu/pub/usenet-by-group/comp.answers/character-sets/iso-8859-1-faq"></tt>.
+Encore une autre(?):<tt><url url="ftp://ftp.vlsivie.tuwien.ac.at/pub/8bit/FAQ-ISO-8859-1"></tt>.
+
+<sect>Que fait exactement XFree86-2.1 &agrave; l'initialisation de sa keymap?<p> 
+
+Depuis la version 2.1, XFree86 initialise sa keymap d'apr&egrave;s celle de
+Linux, dans les limites du possible. Linux a 16 entr&eacute;es par touches
+(une pour chaque combinaison de Shift, AltGr, Ctrl, Alt; en fait il en
+a m&ecirc;me 256), alors que X n'en a que 4 (une pour chaque combinaison de
+Shift et Mod), il y a donc forc&eacute;ment des informations perdues.
+
+D'abord <tt/X/ lit le fichier <tt/Xconfig/, o&ugrave; il trouve les
+correspondances entre les touches Control, Alt et ScrollLock avec les
+codes X Meta, ModeShift, Compose, ModeLock et ScrollLock - voir
+X386keybd(1), ou XFree86kbd(1).
+
+Par d&eacute;faut, c'est la colonne LeftAlt qui sert pour Mod, sauf si
+CtlDroit est d&eacute;fini comme ModeShift ou ModeLock, dans ce cas ce sont
+les entr&eacute;es RightCtl qui servent pour Mod. (Sauf si AltGr est d&eacute;fini
+comme Mod dans Xconfig, auquel cas c'est la colonne RightAlt qui sert.)
+Ceci d&eacute;termine comment les 4 entr&eacute;es de XFree86 sont choisies parmi
+les 16 de Linux. Notons que par d&eacute;faut Linux ne fait pas la diff&eacute;rence
+entre les deux touche Control ou Shift. <tt/X/ fait la duff&eacute;rence.
+
+Les touches <sq>action</sq> Show_Memory, Show_State,
+Show_Registers, Last_Console, Console_n, Scroll_Backward, Scroll_Forward,
+Caps_On et Boot sont ignor&eacute;es, de m&ecirc;me pour les touches mortes,
+NumLock, ScrollLock et Alt+code-ASCII.
+
+Ensuite, les d&eacute;finitions de <tt/Xconfig/ sont utilis&eacute;es. (Donc une
+d&eacute;finition de Compose dans <tt/Xconfig/ annulera celle trouv&eacute;e dans la
+keymap du noyau.)
+
+Que deviennent les cha&icirc;nes associ&eacute;es aux touches des fonctions ? Rien,
+ce concept n'existe pas sous X. (Mais il est possible de d&eacute;finir des
+cha&icirc;nes associ&eacute;es aux touches de fonction dans <tt/xterm/ - mais elles
+ne doivent pas &ecirc;tre intercept&eacute;es par le gestionnaire de fen&ecirc;tres.)
+
+Je ne sais pas comment convaincre <tt/xterm/ qu'il devrait utiliser la
+keymap de X quand Alt est enfonc&eacute;. Il semble qu'il ne r&eacute;agisse qu'en
+fonction de sa ressource <tt/eightBitInput/, et selon qu'elle est &agrave;
+vrai ou faux, soit il met &agrave; 1 le huiti&egrave;me bit, soit il g&eacute;n&egrave;re un
+caract&egrave;re escape devant le caract&egrave;re (comme le fait setmetamode(1)
+pour la console).
+
+<sect>Touches et claviers particuliers<p>
+
+Les deux touches ImprEcran/Syst et Pause/Attn sont sp&eacute;ciales car elles
+ont deux keycodes: la premi&egrave;re produit le keycode 84 quand Alt est
+enfonc&eacute; et 99 sinon; la seconde 101 si Ctrl est enfonc&eacute;, 119 sinon.
+(Il est donc inutile d'assigner des fonctions &agrave; Alt-Keycode99 ou
+Ctrl-Keycode119.)
+
+Si votre clavier a des touches &eacute;tranges qui ne g&eacute;n&egrave;rent aucun code
+sous Linux (ou g&eacute;n&egrave;rent des messages du genre <sq>unrecognized
+scancode</sq>), vous pouvez, &agrave; partir du noyau 1.1.63, utiliser
+setkeycodes(1) pour dire au noyau quel keycode assigner &agrave; ces
+touches. (Leur utilisation sous X sera cependant impossible.)
+Une fois qu'elles ont un keycode gr&acirc;ce &agrave; <tt/setkeycodes/, on peut
+leur associer une fonction avec <tt/loadkeys/.
+
+<sect>Exemples d'utilisation de loadkeys and xmodmap<p>
+
+Permuter ScrollLock et Control (en suposant que vous utilisez les
+keymaps 0-15; v&eacute;rifiez avec <tt>dumpkeys | head -1</tt>)
+<tscreen><verb>
+  % loadkeys
+  keymaps 0-15
+  keycode 58 = Control
+  keycode 29 = Caps_Lock
+  %
+</verb></tscreen>
+Les permuter sous X seulement:
+<tscreen><verb>
+  % xmodmap .xmodmaprc
+</verb></tscreen>
+o&ugrave; <tt/.xmodmaprc/ contient les lignes
+<tscreen><verb>
+  remove Lock = Caps_Lock
+  remove Control =  Control_L
+  keysym  Control_L  =  Caps_Lock
+  keysym  Caps_Lock  = Control_L
+  add Lock = Caps_Lock
+  add Control = Control_L
+</verb></tscreen>
+Qu'en est-il de la num&eacute;rotation des touches? Backspace a le num&eacute;ro 14
+sous Linux et 22 sous X... En fait, la num&eacute;rotation est plus ou moins
+arbitraire. Le num&eacute;ro sous Linux peut &ecirc;tre visualis&eacute; avec showkey(1), et le
+num&eacute;ro sous X avec xev(1). Souvent le num&eacute;ro sous X est 8 de plus que
+le num&eacute;ro sous Linux.
+
+<sect1>`Je ne peux taper qu'avec un seul doigt'<p>
+
+Les touches Shift, Ctrl et Alt peuvent-elles &ecirc;tre des commutateurs
+stables ?
+Oui, en faisant:
+<tscreen><verb>
+% loadkeys
+keycode 29 = Control_Lock
+keycode 42 = Shift_Lock
+keycode 56 = Alt_Lock
+%
+</verb></tscreen>
+les Control, Shift et Alt de gauche deviennent stables.
+Les num&eacute;ros &agrave; utiliser sont donn&eacute;s par showkey
+(et sont g&eacute;n&eacute;ralement 29 et 97 (Control), 42 et 54 (Shift), 56 et 100 (Alt))
+et les fonctions possibles sont Control_Lock, Shift_Lock, Alt_Lock,
+ALtGr_Lock. 
+
+Et le touches `collantes'?
+Il n'y a pas encore eu de nouvelle version du paquetage kbd depuis
+leur introduction dans le noyau 1.3.33, il faut donc utiliser leurs
+codes hexa, par example:
+<tscreen><verb>
+% loadkeys
+keymaps 0-15
+keycode 54 = 0x0c00
+keycode 97 = 0x0c02
+keycode 100 = 0x0c03
+%
+</verb></tscreen>
+rend les Shift, Ctrl et Alt de droite collantes.
+
+<sect>Changer le mode vid&eacute;o<p>
+
+Pour autant que je sache, il y a 6 mani&egrave;res de changer de mode r&eacute;solution:
+
+1. A la compilation: changer la ligne
+<tscreen><verb>
+        SVGA_MODE=      -DSVGA_MODE=NORMAL_VGA
+</verb></tscreen>
+dans <tt>/usr/src/linux/Makefile</tt>.
+
+1A. Apr&egrave;s la compilation: utiliser <tt>rdev -v</tt> - une affreuse
+magouille, mais bon, &ccedil;a marche.
+
+2. Au d&eacute;marrage: mettre <tt>vga=ask</tt> dans le fichier de config de
+lilo, qui demandera au boot le mode voulu. Une fois d&eacute;cid&eacute;, remplacer
+par <tt/vga=/LePlusJoliMode.
+
+3. En cours de route:
+A. Utiliser la commande <tt/resizecons/. (C'est un programme tr&egrave;s
+primitif utilisant l'ioctl VT_RESIZE.)
+B. Utiliser <tt/SVGATextMode/. (C'est une version moins primitive)
+
+4. Pas <sq>sur la console</sq>:
+Sous <tt/dosemu/, ou avec svgalib etc. on peut changer le mode vid&eacute;o
+de la carte &eacute;cran sans que le pilote de la console s'en
+aper&ccedil;oive. C'est parfois utile pour configurer <tt/resizecons/ ou
+<tt/SVGATextMode/:sous <tt/dosemu/ se mettre dans le mode vid&eacute;o voulu
+gr&acirc;ce &agrave; un programme DOS utilisant ce mode, puis dans une autre
+console, r&eacute;cup&eacute;rer les param&egrave;tres de ce mode. Il ne reste plus qu'&agrave;
+utiliser ces donn&eacute;es pour l'initialisation de <tt/resizecons/ et
+<tt/SVGATextMode/. Dans certains cas la carte vid&eacute;o se retrouve dans
+un mode inutilisable, le moyen le plus simple pour se sortir de l&agrave; est
+de lancer <tt/dosemu/, laisser le BIOS mettre un mode vid&eacute;o correct,
+puis tuer <tt/dosemu/ (avec <tt/kill -9/).
+
+<sect1>Instructions pour l'utilisation de resizecons<p>
+
+R&eacute;cup&eacute;rer svgalib et compiler le programme <tt/restoretextmode/.
+Booter la machine dans tous les modes vid&eacute;o possibles
+(en mettant <tt/vga=ask/ dans le fichier config de lilo), et
+sauvegarder les registres vid&eacute;o dans des fichiers CxL
+(C=Colonnes, L=Lignes), par exemple 80x25, 132x44, etc.
+Placer ces fichiers dans <tt>/usr/lib/kbd/videomodes</tt>.
+D&eacute;sormais <tt>resizecons 132x44</tt> changera le mode vid&eacute;o
+(et enverra le signal SIGWINCH &agrave; tous les processus qui ont besoin de
+savoir que la r&eacute;solution a chang&eacute;, et chargera une nouvelle police si
+n&eacute;cessaire). 
+
+A pr&eacute;sent, <tt/resizecons/ ne change de mode que s'il y a assez de
+m&eacute;moire pour contenir &agrave; la fois l'ancienne et la nouvelle console.
+
+<sect>Changer la vitesse de r&eacute;p&eacute;tition du clavier<p>
+
+Au d&eacute;marrage, le noyau met la vitesse de r&eacute;p&eacute;tition &agrave; sa valeur
+maximale. Pour la plupart des claviers c'est raisonnable, mais sur
+certains il devient quasiment impossible d'effleurer une touche sans
+avoir trois fois le m&ecirc;me caract&egrave;re. Dans ce cas utiliser le programme
+kbdrate(8) pour changer la vitesse de r&eacute;p&eacute;tition ou si &ccedil;a ne suffit pas
+supprimer la section:
+<code>
+     ! set the keyboard repeat rate to the max
+
+         mov     ax,#0x0305
+         xor     bx,bx           ! clear bx
+         int     0x16
+</code>
+de <tt>/usr/src/linux/&lsqb;arch/i386/&rsqb;boot/setup.S</tt>.
+
+<sect>Economiseur d'&eacute;cran<p>
+
+<tt>setterm -blank</tt> <it/nn/ r&egrave;gle le d&eacute;lai d'extinction de l'&eacute;cran
+&agrave;  <it/nn/ minutes d'inactivit&eacute;. (Avec <it/nn/ = 0, l'&eacute;conomiseur
+d'&eacute;cran est d&eacute;sactiv&eacute;.)
+
+L'option <tt/s/ de xset(1) r&egrave;gle les param&egrave;tres de l'&eacute;conomiseur
+d'&eacute;cran de X.
+
+Les modes d'&eacute;conomie d'&eacute;nergie du moniteur peuvent &ecirc;tre
+activ&eacute;s/d&eacute;sactiv&eacute;s par le programme <tt/setvesablank/ donn&eacute; dans les
+commentaires au d&eacute;but du fichier
+<tt>/usr/src/linux/drivers/char/vesa_blank.c</tt>.
+
+<sect>Quelques propri&eacute;t&eacute;s du VT100 - mode application<p>
+
+: Parfois les touches de curseur produisent des codes bizarres?
+
+Quand le terminal est en <tt>mode application</tt>, les touches de curseur
+produisent les codes Esc O x et sinon Esc &lsqb x, avec x = A,B,C ou D.
+Certains programmes mettent le termnial en mode application et si
+on les tue avec un <tt/kill -9/, ou s'il se plantent, le terminal
+restera dans ce mode.
+<verb>        % echo -e '\033c'  </verb>
+r&eacute;initialise les propri&eacute;t&eacute;s du terminal courant. 
+Si on veut passer en mode application:
+<verb>        % echo -e '\033[?1h' </verb>
+et si on veut en sortir:
+<verb>        % echo -e '\033[?1l' </verb>
+
+<sect>Incompatibilit&eacute; mat&eacute;rielle<p>
+
+Quelques personnes ont not&eacute; des pertes de caract&egrave;res tap&eacute;s lors
+d'un acc&egrave;s disquette. Il semblerait que ce soit un probl&egrave;me avec les
+cartes m&egrave;res Uni-486WB. (SVP envoyez moi un mail pour confirmer
+&lsqb;Oui, j'ai le m&ecirc;me probl&egrave;me&rsqb;, infirmer
+&lsqb;Non, tout va bien avec ma carte Uni-486WB&rsqb;, ou modifier
+&lsqb;Ma machine Xyzzy a le m&ecirc;me probl&egrave;me&rsqb;.)
+
+Certaines personnes ont eu des blocages al&eacute;atoires du clavier -
+parfois associ&eacute;s &agrave; une activit&eacute; disque dur ou une autre entr&eacute;e/sortie.
+
+<htmlurl url="mailto:ulf@rio70.bln.sni.de" name="ulf@rio70.bln.sni.de">
+(Ulf Tietz) &eacute;crit:
+<quote>
+`J'avais ce genre de probl&egrave;mes quand ma carte m&egrave;re avait des r&eacute;glages
+trop rapides. En remettant les d&eacute;lais (CLK, wait-states, etc.) &agrave; des
+valeurs plus raisonnables, tout est rentr&eacute; dans l'ordre.'
+</quote>
+
+<htmlurl url="mailto:bhogan@crl.com" name="bhogan@crl.com"> (Bill Hogan) &eacute;crit:
+<quote>
+`Si vous avez un BIOS AMI, vous pouvez essayer de mettre le param&egrave;tre
+Gate A20 emulation sur 'chipset' (si cette option existe). Quand cette
+option &eacute;tait sur n'importe quoi d'autre ('fast', 'both', 'disabled')
+j'avais souvent des blocages du clavier.'
+</quote>
+--------------------------------------------------------------------
+
+Additions et corrections sont les bienvenues.
+
+Andries Brouwer - <htmlurl url="mailto:aeb@cwi.nl" name="aeb@cwi.nl">
+
+(Bruno Viaris - Viaris@Yoko.ENS-Cachan.Fr pour la traduction)
+</article>

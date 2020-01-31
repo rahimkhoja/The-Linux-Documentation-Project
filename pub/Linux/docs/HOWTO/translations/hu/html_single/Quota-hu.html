@@ -1,0 +1,391 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+<HEAD>
+ <META NAME="GENERATOR" CONTENT="LinuxDoc-Tools 0.9.21">
+<meta http-equiv="content-type" content="text/html; charset=ISO-8859-2">
+
+ <TITLE>Kvóta mini-HOGYAN</TITLE>
+</HEAD>
+<BODY>
+<H1>Kvóta mini-HOGYAN</H1>
+
+<H2>Ralf van Dooren <CODE>r.vdooren@snow.nl</CODE></H2>v0.5, 2003.08.09<P>FIGYELEM: a dokumentumot nem sikerült tökéletesen PDF formátumba  konvertálni!
+Gyakorlatilag UHU-Linux alatt mégnem tökéletesen kompatibilis nyelvünkkel a
+linuxdoc-tools programcsomag (ez nem az UHU-Linux hibája). Aki segíteni akar
+(időmilliomosok előnyben :-) kérem írjon a dacas@freemail.hu címre.</P>
+<P>
+<HR>
+<EM>Előszó: ezt a dokumentumot Ralf van Dooren (r.vdooren@snow.nl) írta.
+Az eredeti szöveg és a dokumentum összeállítása Albert M.C. Tam copyleft-je,
+nagyon sok köszönet illeti az eredeti mini-HOGYANért.
+Erre a dokumentumra a GNU Free Documentation License előírásai érvényesek.
+A jelen dokumentum változatlan formában szabadon használható,
+másolható és terjeszthető nem kereskedelmi célból, amennyiben
+minden másolatban és ahhoz tartozó dokumentumokban feltüntetik
+a szerző/szerkesztő nevét. A dokumentumot annak reményében terjesztjük, hogy
+hasznosnak bizonyul, de a szerző SEMMILYEN GARANCIÁT, sem kifejezett, sem beleértett
+formában nem vállal. Bár mindent megtettünk a jelen dokumentumban található információk
+pontosságának biztosításáért,  a szerző/szerkesztő/karbantartó NEM VÁLLAL FELELŐSSÉPGET
+az itt előforduló hibákért, vagy az itt szereplő információk alkalmazásából eredő esetleges
+károkért.</EM>
+<HR>
+</P>
+<P>A dokumentum leírja, hogyan engedélyezzük a fájlrendszer-kvótát egy Linuxot futtató
+gépen, hogyan rendeljünk kvótát a felhasználókhoz és csoportokhoz, valamint bemutatja
+a különböző kvóta-parancsok használatát. A leírás a 2.x verziójú (legutóbb a 2.4.21-esen teszteltük) kernelt
+használók részére készült.</P>
+<P>Ha  hibát találsz, vagy ha bármilyen információ hiányzik, nyugodtan küldj visszajelzéseket
+vagy megjegyzéseket az r.vdooren@snow.nl címre. Méltányolni fogom.
+</P>
+
+<H2><A NAME="s1">1. Mi a kvóta?</A></H2>
+
+<H2><A NAME="ss1.1">1.1 Miért kell a kvóta?</A>
+</H2>
+
+<P>A kvóta lehetővé teszi, hogy két szempontból is meghatározhass korlátokat a
+lemezhasználatra vonatkozóan: az inode-ok számában, amiket egy felhasználó vagy
+felhasználói csoport birtokolhat; ezen felül a lemezblokkok számában, amit egy
+felhasználóhoz vagy csoporthoz rendelni lehet.</P>
+<P>A kvóta lényege az, hogy a felhasználók arra vannak kényszerítve, hogy
+maradjanak a lemezhasználati korlátjuk alatt, megfosztva őket attól a lehetőségtől,
+hogy tetszőleges méretű helyet foglalhassanak el a rendszeren. A kvótát felhasználói és
+fájlrendszer alapon kezeljük. Ha több mint egy fájlrendszer van ahol a felhasználó
+várhatóan létrehozhat fájlokat, akkor a kvótát egyenként mindegyik fájlrendszerre
+be kell állítani. Különböző programeszközök léteznek, amelyekkel adminisztrálni
+és automatizálni lehet a kvóta beállításokat egy adott rendszeren.</P>
+
+<H2><A NAME="ss1.2">1.2 A kvóta jelenlegi állapota a Linuxon</A>
+</H2>
+
+<P>Jelenleg több jelentős változás is folyamatban van a kvóta működésével kapcsolatban.
+Két különböző módszer létezik. Az eszközök ugyanúgy működnek, a különbség csak
+a használt fájlokban van. Ez a dokumentum az _új_ kvóta-beállítást taglalja. Mivel ez az új beállítás
+nincs benne a hagyományos kernel-forrásban, szükség van néhány "foltra" (patch).
+A dokumentumban leírjuk a foltozás módját, és a linuxquota csomag telepítését. Ha már telepítve van
+kvóta-szoftver a gépeden, akkor nem biztos, hogy fel kell raknod ezt a foltot és csomagot.
+Ha kérdésed van ezzel kapcsolatban, nyugodtan írhatsz nekem e-mailt. A jelen dokumentum egy
+későbbi verziójában megpróbálok majd áttekintést adni a disztribúciókról, és kvótakezelés különböző
+megvalósításairól.</P>
+
+<H2><A NAME="s2">2. Követelmények a kvóta használatához</A></H2>
+
+
+<H2><A NAME="ss2.1">2.1 Kernel</A>
+</H2>
+
+
+<P>A 2.x-es kernel-forrás megtalálható a
+<A HREF="http://www.kernel.org">http://www.kernel.org</A>  webhelyen.
+Válassz egy hozzád közeli tükörszervert, hogy takarékoskodj a sávszélességgel.
+Ha a tar program legújabb változatát használod, letöltheted a .bz2 tömörített fájlt</P>
+<P>Csomagold ki a kernelt:
+<HR>
+<PRE>
+cd /usr/src
+tar jxvf /path/to/linux-2.4.21-tar.bz2      - for bzip2 kernel -
+tar zxvf /path/to/linux-2.4.21-tar.gz       - for gzip kernel -
+ln -s /usr/src/linux-2.4.21 /usr/src/linux
+</PRE>
+<HR>
+</P>
+
+<H2><A NAME="ss2.2">2.2 Kvóta szoftver</A>
+</H2>
+
+
+<P>Attól függően, hogy milyen Linux-disztribúciót használsz elképzelhető, hogy a kvóta-szoftver már
+telepítve van  a rendszeren. A legfrissebb verzió a SourceForge honlapjáról érhető el, és aktív
+fejlesztés alatt áll. A fejlesztők honlapját a 
+<A HREF="http://www.sourceforge.net/project/linuxquota">http://www.sourceforge.net/projects/linuxquota</A> webhelyen találod meg.</P>
+
+<H2><A NAME="s3">3. A kvóta telepítése és beállítása</A></H2>
+
+<H2><A NAME="ss3.1">3.1 A kernel foltozása</A>
+</H2>
+
+<P>Töltsd le a szükséges kernel-foltot az
+<A HREF="ftp://atrey.karlin.mff.cuni.cz/pub/local/jack/quota/">ftp::/atrey.karlin.mff.cuni.cz/pub/local/jack/quota/</A> webhelyről.</P>
+
+<P>Válaszd ki az általad használt kernel verzióját, majd töltsd le a foltot. A "patch" parancs segítségével foltozd meg a kernelt.
+Amennyiben egynél több folt szükséges a kerneledhez, figyelj arra, hogy a megfelelő sorrendben rakd fel azokat.
+Ehhez használhatod ezt a szkriptet (feltételezem, hogy a letöltött foltok a /tmp/quota/ , a kicsomagolt kernel pedig az  /usr/src/linux könyvtárban van) :
+<HR>
+<PRE>
+#!/bin/sh
+
+gunzip /tmp/quota/*.gz
+cd /usr/src/linux
+COUNT=`ls -1 /tmp/quota/*.diff | wc -l`
+for I in `seq 1 $COUNT`
+do
+   patch -p1 &lt; /tmp/quota/quota-2.4.21-$I-*.diff
+done
+</PRE>
+<HR>
+</P>
+
+<H2><A NAME="ss3.2">3.2 A kernel ismételt beállítása</A>
+</H2>
+
+
+<P>A kernel újrafordítása során a kapcsold be a kvóta-támogatást.</P>
+
+<P>A "make menuconfig" vagy "make xconfig" használatakor a Filesystems menü alatt található meg
+a szükséges választási lehetőség. Ha szükséged van különleges szolgáltatásokra, itt beállíthatod azokat
+(mint például 32 bites UID támogatás)</P>
+
+<P>Mentsd el a beállításokat és fordítsd újra a kernelt. Bizonyosodj meg róla, hogy az új kernel indul el a rendszerindításkor.</P>
+
+<H2><A NAME="ss3.3">3.3 A kvóta-szoftver lefordítása és telepítése</A>
+</H2>
+
+<P>Az összes szolgáltatás használatához szükség lehet az új kvóta csomag (quota-package) letöltésére.
+A fent említett helyről töltheted le azt.</P>
+
+<P>A letöltés után végezd el a következő műveleteket:</P>
+<P>
+<HR>
+<PRE>
+$ gzip -dc &lt;letöltött file> | tar xvf
+$ cd quota-tools  (vagy abba a könyvtárba, ahova letöltötted)
+$ ./configure
+$ make
+$ su
+# make install
+</PRE>
+<HR>
+</P>
+
+<H2><A NAME="ss3.4">3.4 A rendszerindító szkriptek módosítása a kvóta indításkori ellenőrzésére és bekapcsolására</A>
+</H2>
+
+
+<P>Íme egy példa:</P>
+<P>
+<HR>
+<PRE>
+# Check quota and then turn quota on.
+if [ -x /usr/sbin/quotacheck ]
+        then
+               echo "Checking quotas. This may take some time."
+               /usr/sbin/quotacheck -avug
+               echo " Done."
+        fi
+         if [ -x /usr/sbin/quotaon ]
+        then
+                echo "Turning on quota."
+                /usr/sbin/quotaon -avug
+        fi
+</PRE>
+<HR>
+</P>
+<P>Aranyszabály, hogy mindig kapcsold be a kvótát, miután az /etc/fstab-beli fájlrendszert becsatoltad,
+különben nem fog működni. Ajánlom, hogy kapcsold be a kvótát rögtön azután, hogy a fájlrendszereket
+becsatolja a rendszerindító szkripted.</P>
+
+<H2><A NAME="ss3.5">3.5 Az /etc/fstab módosítása</A>
+</H2>
+
+
+<P>Azok a partíciók, amelyeken nem engedélyeztük a kvótát, normál esetben valahogy így
+néznek ki:
+<HR>
+<PRE>
+/dev/hda1       /       ext2    defaults        1       1
+/dev/hda2       /usr    ext2    defaults        1       1
+</PRE>
+<HR>
+</P>
+<P>A felhasználói kvóta-támogatás egy fájlrendszeren való engedélyezéséhez írd be a "usrquota" opciót a
+negyedik mezőbe, ami a "defaults" szót tartalmazza (a részletekért lásd "man fstab").</P>
+<P>
+<HR>
+<PRE>
+/dev/hda1       /       ext2    defaults        1       1
+/dev/hda2       /usr    ext2    defaults,usrquota       1       1
+</PRE>
+<HR>
+</P>
+<P>Cseréld le a "usrquota" szót "grpquota"-ra, ha csoportkvótára van szükséged.</P>
+<P>
+<HR>
+<PRE>
+/dev/hda1       /       ext2    defaults        1       1
+/dev/hda2       /usr    ext2    defaults,grpquota       1       1
+</PRE>
+<HR>
+</P>
+<P>Mind felhasználói, mind csoportkvótára szükséged van?</P>
+<P>
+<HR>
+<PRE>
+/dev/hda1       /       ext2    defaults        1       1
+/dev/hda2       /usr    ext2    defaults,usrquota,grpquota       1   1
+</PRE>
+<HR>
+</P>
+
+<H2><A NAME="ss3.6">3.6 A kvóta rendszer bekapcsolása</A>
+</H2>
+
+<P>A kvóta szoftver aktiválásához újra kell indítani a rendszert azért, hogy az elvégzett változtatások
+érvényessé váljanak. Ekkor betöltődik az új, kvótát támogató kernel, majd az elkészített rendszerindító szkripteket
+is végrehajtja a gép. Az első futásnál a "quotacheck" készíti el a megfelelő fájlokat a kvóta-adatbázis
+karbantartásához.</P>
+
+<H2><A NAME="ss3.7">3.7 A "quotacheck" hozzáadása a crontab-hoz</A>
+</H2>
+
+<P>Bár a kvóta működik rendszeres ellenőrzés nélkül is, néha hasznos lehet, ha rendszeres időközönként,
+mondjuk hetente lefuttatjuk a "quotacheck"-et. Ehhez add hozzá a következő bejegyzést a rendszergazda crontab-jához:
+<HR>
+<PRE>
+0 3 * * 0 /sbin/quotacheck -avug
+</PRE>
+<HR>
+</P>
+
+<H2><A NAME="s4">4. A kvóta telepítése: programeszközök</A></H2>
+
+
+<P>Ezt a műveletet az "edquota" paranccsal tudjuk végrehajtani ("man edquota", ha a részletekre vagy kíváncsi).</P>
+
+<H2><A NAME="ss4.1">4.1 Kvóta megadása egy adott felhasználóhoz</A>
+</H2>
+
+
+<P>Lássunk egy példát. Van egy bob nevű felhasználó a rendszeremen. Az "edquota -u bob" parancs
+kiadásával a vi (vagy az $EDITOR környezeti változóban beállított) szövegszerkesztőben találom magam,
+ahol be tudom állítani bob kvótáját mindegyik olyan partíción, ahol az engedélyezett:</P>
+<P>
+<HR>
+<PRE>
+Quotas for user bob:
+/dev/hda3: blocks in use: 2594, limits (soft = 5000, hard = 6500)
+         inodes in use: 356, limits (soft = 1000, hard = 1500)
+</PRE>
+<HR>
+</P>
+<P>A "blocks in use" a felhasználó által egy partíción elfoglalt összes blokkok száma (kilobájtban).</P>
+<P>Az "inodes in use" az inode-ok száma, melyeket a felhasználó lefoglal a partíción.</P>
+
+<H2><A NAME="ss4.2">4.2 Kvóta hozzárendelése egy adott csoporthoz</A>
+</H2>
+
+
+<P>Most van egy games nevű csoport a rendszeremen. Az "edquota -g games" ismét a vi-ba léptet,
+ahol a games csoport kvótáját tudom beállítani:
+<HR>
+<PRE>
+        Quotas for group games:
+        /dev/hda4: blocks in use: 5799, limits (soft = 8000, hard = 10000)
+                inodes in use: 1454, limits (soft = 3000, hard = 4000)
+</PRE>
+<HR>
+</P>
+<H2><A NAME="ss4.3">4.3 Kvóta hozzárendelése felhasználók csoportjához, ugyanazzal az értékkel</A>
+</H2>
+
+
+<P>Ahhoz, hogy gyorsan tudjak a rendszeremen lévő bob nevű felhasználóval azonos beállításokkal
+kvótát hozzárendelni mondjuk 100 felhasználóhoz, először kézzel szerkesztem bob adatait, majd
+kiadom a következő parancsot:</P>
+<P>
+<HR>
+<PRE>
+edquota -p bob `awk -F: '$3 &gt; 499 {print $1}' /etc/passwd`
+</PRE>
+<HR>
+</P>
+<P>Feltételezem, hogy csh-t használsz, és a felhasználók UID-jei 500-al kezdődnek.</P>
+<P>A kvótához kapcsolódóan 3 olyan fogalom van, amikkel meg kell barátkoznod: lágy korlát (soft limit), 
+kemény korlát (hard limit) és türelmi idő (grace period).</P>
+
+<H2><A NAME="ss4.4">4.4 Lágy korlát (Soft Limit)</A>
+</H2>
+
+
+<P>A lágy korlát jelenti azt a maximális mennyiségű lemezterületet, amit egy felhasználó elfoglalhat egy 
+partíción. Amikor a türelmi idővel kombináljuk, úgy viselkedik, mint egy határvonal, ami a felhasználót 
+üzenetekkel látja el a kvóta-beállítás közelgő megsértéséről, ha azt túllépi.</P>
+
+<H2><A NAME="ss4.5">4.5 Kemény korlát (Hard Limit)</A>
+</H2>
+
+
+<P>A kemény korlát csak akkor működik, ha a türelmi időt is beállítjuk. Ez az abszolút korlátot jelenti a
+lemezfelhasználás szempontjából, amit a felhasználó semmiképpen sem léphet túl.</P>
+
+<H2><A NAME="ss4.6">4.6 Türelmi idő (Grace Period)</A>
+</H2>
+
+
+<P>A türelmi idő az az időhatár, melynek leteltéig érvényes a lágy korlát a
+kvótát engedélyező fájlrendszereken. Az időértékek lehetnek másodpercben (sec), percben (min), órában
+(hour), napban (day), hétben (week) és hónapban (month) megadva. Ezt látod az "edquota -t" parancs kiadásakor:</P>
+<P>
+<HR>
+<PRE>
+Time units may be: days, hours, minutes, or seconds
+Grace period before enforcing soft limits for users:
+/dev/hda2: block grace period: 0 days, file grace period: 0 days
+</PRE>
+<HR>
+</P>
+<P>Változtasd meg a "0 days" részt bármely általad megfelelőnek vélt időtartamra.  Személy szerint én 7 napot
+(vagyis egy hetet) választottam.</P>
+
+<H2><A NAME="s5">5. Egyéb kvótaparancsok</A></H2>
+
+
+<H2><A NAME="ss5.1">5.1 Quotacheck</A>
+</H2>
+
+
+<P>A "quotacheck" átvizsgálja a fájlrendszert a lemezhasználat megállapításához, és frissíti az
+"aquota.user" adatfájlt a dolgok legfrissebb állása szerint. Azt ajánlom, hogy a parancsot minden
+rendszerindításkor, és egy cron-feladaton keresztül időközönként (mondjuk, minden héten?) futtasd le.</P>
+
+<H2><A NAME="ss5.2">5.2 Repquota</A>
+</H2>
+
+
+<P>A "repquota" összesített kvóta-információkat ad egy fájlrendszerről. Az alábbiakban egy minta található
+a parancs kimenetéről:
+<HR>
+<PRE>
+# repquota -a
+                                Block limits               File limits
+        User            used    soft    hard  grace    used  soft  hard  grace
+        root      --  175419       0       0          14679     0     0
+        bin       --   18000       0       0            735     0     0
+        uucp      --     729       0       0             23     0     0
+        man       --      57       0       0             10     0     0
+        user1     --   13046   15360   19200            806  1500  2250
+        user2     --    2838    5120    6400            377  1000  1500
+</PRE>
+<HR>
+</P>
+<H2><A NAME="ss5.3">5.3 Quotaon és Quotaoff</A>
+</H2>
+
+
+<P>A "quotaon" használatos a kvóta bekapcsolására; a "quotaoff" kikapcsolja azt. Jelenleg mindkét fájl hasonló.
+A rendszerindításkor- és leállításkor hajtjuk őket végre.</P>
+
+<H2><A NAME="s6">6. Magyar fordítás</A></H2>
+
+
+<P>A magyar fordítást 
+<A HREF="mailto:laca@janus.gimsz.sulinet.hu_NO_SPAM">Szijjártó László</A> készítette (2002.11.27).
+A lektorálást 
+<A HREF="mailto:tech.translation@axelero.hu_NO_SPAM">Varga Zsolt</A> végezte el (2003.04.09).
+Utoljára 
+<A HREF="mailto:dacas@freemail.hu_NO_SPAM">Daczi László</A> frissítette (2003.08.26).
+Bármilyen fordítással kapcsolatos észrevételt a 
+<A HREF="mailto:linuxhowto@sch.bme.hu_NO_SPAM">linuxhowto@sch.bme.hu</A> címre küldjetek.
+A dokumentum legfrissebb változata megtalálható a 
+<A HREF="http://tldp.fsf.hu/index.html">Magyar Linux Dokumentációs Projekt</A> honlapján.</P>
+</BODY>
+</HTML>

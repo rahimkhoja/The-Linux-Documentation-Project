@@ -1,0 +1,1420 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+<HEAD>
+ <META NAME="GENERATOR" CONTENT="LinuxDoc-Tools 0.9.21">
+ <TITLE>Utilisation de MILO (Alpha Miniloader Howto)</TITLE>
+</HEAD>
+<BODY>
+<H1>Utilisation de MILO (Alpha Miniloader Howto)</H1>
+
+<H2>David A. Rusling, <CODE>david.rusling@reo.mts.dec.com</CODE></H2>v0.84, 6 D&eacute;cembre 1996
+<HR>
+<EM>Ce document expose le fonctionnement du Miniloader, un
+programme pour les machines Alpha qui sert &agrave; initialiser le
+syst&egrave;me et d&eacute;marrer Linux. Le "Alpha Linux Miniloader" (pour
+&ecirc;tre exact) est &eacute;galement d&eacute;nomm&eacute; MILO.</EM>
+<HR>
+<H2><A NAME="intro-section"></A> <A NAME="s1">1. Introduction </A></H2>
+
+<P>Ce document expose le fonctionnement du logiciel MILO (Miniloader) pour Alpha
+AXP. Ce logiciel de console a pour fonction d'initialiser le syst&egrave;me
+Alpha AXP, de charger et d&eacute;marrer Linux et, pour finir, il met un PALcode
+&agrave; disposition de Linux.</P>
+
+<H2><A NAME="ss1.1">1.1 Droits d'auteurs (Copyright)</A>
+</H2>
+
+<P>Ce document a &eacute;t&eacute; r&eacute;alis&eacute; en 1995, 1996,
+1997 par David A Rusling. (c) Copyright 1995, 1996, 1997.</P>
+<P>Document traduit de l'anglais en 1997 par Fr&eacute;d&eacute;ric Aime
+(fred@castor.unice.fr) et "Les &Eacute;ditions du Soleil" (c) Copyright "Les
+&Eacute;ditions du Soleil" 1997. Maintenance de la version SGML par Miodrag
+Vallat (miodrag@multimania.com).</P>
+
+<P><B>Copyright.</B> Comme il en est de tous les documents HOWTO pour
+Linux, cette documentation peut &ecirc;tre reproduite, distribu&eacute;e
+int&eacute;gralement ou en partie seulement sur n'importe quel m&eacute;dia,
+physique ou &eacute;lectronique, du moment que cet avertissement sur les droits
+d'auteur est pr&eacute;sent sur toutes les copies. L'utilisation commerciale
+est autoris&eacute;e et encourag&eacute;e&nbsp;; cependant l'auteur est
+<EM>d&eacute;sireux</EM> d'&ecirc;tre averti de ces utilisations. Vous pouvez
+traduire ce document dans n'importe quelle langue &agrave; partir du moment
+o&ugrave; cette note ainsi que la d&eacute;charge de responsabilit&eacute;  sont
+conserv&eacute;es intacte et qu'une notice pr&eacute;sentant le traducteur y
+figure.</P>
+
+<P><B>D&eacute;charge de responsabilit&eacute;.</B> Bien qu'ayant essay&eacute;
+d'inclure les informations les plus pr&eacute;cises et correctes &agrave; ma
+disposition, je ne peux garantir que l'utilisation faite de ce document
+n'aboutisse pas &agrave; des pertes de donn&eacute;es ou de mat&eacute;riels. Je
+n'apporte ABSOLUMENT AUCUNE GARANTIE quant aux informations contenues dans ce
+document&nbsp;; de ce fait je ne pourrais &ecirc;tre tenu, en aucun cas, pour
+responsable des cons&eacute;quences de son utilisation.</P>
+
+<H2><A NAME="ss1.2">1.2 Nouvelles versions de ce document</A>
+</H2>
+
+<P>La derni&egrave;re version de ce document est disponible &agrave; l'adresse
+suivante&nbsp;:
+<A HREF="ftp://gatekeeper.dec.com/pub/Digital/Linux-Alpha/Miniloader/docs">ftp://gatekeeper.dec.com/pub/Digital/Linux-Alpha/Miniloader/docs</A> et
+David Mosberger-Tang a eu l'amabilit&eacute; de l'inclure sous la forme d'une
+page Web sur l'excellent site Linux pour Alpha&nbsp;:
+<A HREF="http://www.azstarnet.com/axplinux">http://www.azstarnet.com/axplinux</A>.</P>
+
+<H2><A NAME="what-section"></A> <A NAME="s2">2. Qu'est-ce que MILO ? </A></H2>
+
+<P>Sur machines Intel, le BIOS configure le syst&egrave;me et ensuite charge,
+depuis le secteur d'amor&ccedil;age d'un disque DOS, une image &agrave;
+ex&eacute;cuter. Cela est en quelque sorte la fonction principale de MILO sur
+un syst&egrave;me Alpha. Il existe toutefois un certain nombre de
+diff&eacute;rences entre BIOS et MILO, notamment le fait que MILO
+int&egrave;gre certains pilotes de p&eacute;riph&eacute;riques Linux
+inchang&eacute;s. MILO est un logiciel appel&eacute; FirmWare, &agrave;
+l'inverse de LILO qui d&eacute;pend du logiciel FirmWare BIOS responsable de
+son chargement et de son ex&eacute;cution en m&eacute;moire centrale. Les
+principales fonctions de MILO sont&nbsp;:</P>
+<P>
+<OL>
+<LI> PALcode&nbsp;;</LI>
+<LI> Initialisation du gestionnaire de m&eacute;moire. (construction des
+tables de pages et mise en service de l'adressage virtuel)&nbsp;;</LI>
+<LI> Logiciel d'affichage (Code d'&eacute;mulation BIOS et TGA (21030))&nbsp;;</LI>
+<LI> Une partie du noyau Linux. Incluant, par exemple, un gestionnaire
+d'interruption qui fait office de noyau Linux&nbsp;;</LI>
+<LI> Gestionnaires de p&eacute;riph&eacute;riques en mode bloc (par exemple
+le pilote de disquettes)&nbsp;;</LI>
+<LI> Un support des syst&egrave;mes de fichiers (ext2, MS-DOS et ISO9660)&nbsp;;</LI>
+<LI> Un logiciel d'interface utilisateur (MILO)&nbsp;;</LI>
+<LI> Une interface avec le noyau (configure le HWRPB et la cartographie de la
+m&eacute;moire sp&eacute;cifiques &agrave; linux)&nbsp;;</LI>
+<LI> Configuration de la NVRAM (m&eacute;moire non volatile) pour la gestion
+de variables d'environnement.</LI>
+</OL>
+</P>
+
+<P>Les paragraphes suivants d&eacute;crivent ces fonctionnalit&eacute;s plus en
+d&eacute;tail.</P>
+
+<P>Le PALcode peut &ecirc;tre per&ccedil;u comme une minuscule couche logicielle
+qui pr&eacute;pare le processeur Alpha en vue de l'utilisation d'un
+syst&egrave;me d'exploitation sp&eacute;cifique. Il fonctionne dans un mode
+sp&eacute;cial du processeur (PALmode) qui a certaines limitations mais utilise
+les instructions standard des processeurs Alpha,  plus cinq instructions
+suppl&eacute;mentaires. De cette mani&egrave;re le processeur Alpha peut
+ex&eacute;cuter une grande diversit&eacute; de syst&egrave;mes d'exploitation
+tels que Windows NT, OpenVMS, Digital Unix et bien s&ucirc;r Linux. Le PALcode
+que MILO utilise (et in extenso Linux lui-m&ecirc;me) est, comme le reste de
+MILO un freeware. Il est inspir&eacute; d'un exemple de PALcode pour Digital
+Unix que Digital fournissait avec ses premi&egrave;res cartes
+d'&eacute;valuation. Les diff&eacute;rences entre les PALcode sont dues
+&agrave; des diff&eacute;rences qui existent dans la cartographie de la
+m&eacute;moire, dans la gestion des interruptions entre les diff&eacute;rentes
+versions du processeur Alpha (par exemple le 21066 poss&egrave;de une
+cartographie des entr&eacute;es-sorties diff&eacute;rente de l'association du
+21064 avec les contr&ocirc;leurs E/S de la famille 2107x, en effet le 21066
+int&egrave;gre un &eacute;quivalent de ce contr&ocirc;leur sur son support).</P>
+
+<P>Pour que MILO fonctionne correctement il lui faut savoir quelle est la
+quantit&eacute; de m&eacute;moire disponible, &agrave; quel endroit Linux peut
+&eacute;ventuellement &ecirc;tre charg&eacute; en m&eacute;moire, et il doit, de
+plus, &ecirc;tre capable d'allouer temporairement de la m&eacute;moire pour les
+pilotes de p&eacute;riph&eacute;riques Linux. Le code contient une cartographie
+de la m&eacute;moire qui comporte des espaces disponibles pour une allocation
+de pages m&eacute;moire permanentes ou temporaires. Lorsqu'il d&eacute;marre,
+MILO se d&eacute;compresse &agrave; l'emplacement m&eacute;moire
+ad&eacute;quat. Lorsqu'il transf&egrave;re le contr&ocirc;le au noyau Linux, il
+r&eacute;serve un espace pour une instance compress&eacute;e de
+lui-m&ecirc;me, pour le PALcode (indispensable au fonctionnement du noyau)
+ainsi que quelques structures de donn&eacute;es. Cela laisse <CODE>la
+quasi-totalit&eacute;</CODE> de la m&eacute;moire centrale libre pour Linux.</P>
+
+<P>L'op&eacute;ration finale du gestionnaire m&eacute;moire est de configurer et
+d'activer l'adressage virtuel afin que les structures de donn&eacute;es
+attendues par Linux soient &agrave; leur place en m&eacute;moire virtuelle.</P>
+
+<P>MILO contient du code d'initialisation de l'affichage qui pr&eacute;pare le
+syst&egrave;me graphique &agrave; l'utilisation de Linux.
+Il d&eacute;tectera et utilisera un adaptateur VGA s'il est pr&eacute;sent,
+sinon il essaiera d'utiliser le pilote TGA (21030). S'il y a &eacute;chec de
+cette initialisation, MILO consid&egrave;rera qu'il n'y a aucun
+p&eacute;riph&eacute;rique graphique sur le syst&egrave;me. L'&eacute;mulation
+BIOS incluse dans MILO est en fait celle de Digital qui est capable de
+supporter la plupart, voire la totalit&eacute;, des cartes graphiques
+disponibles.</P>
+
+<P>Les pilotes de p&eacute;riph&eacute;riques de Linux r&eacute;sident dans le
+noyau dont ils attendent un certain nombre de services. Certains de ces
+services sont directement fournis par le code du noyau Linux inclus dans MILO.
+Par exemple la gestion des interruptions est r&eacute;alis&eacute;e par un
+ensemble de fonctions similaires &agrave; celles du vrai noyau Linux.</P>
+
+<P>La fonctionnalit&eacute; la plus puissante de MILO est de permettre
+l'inclusion de n'importe quel pilote Linux sans apporter de modifications.
+Cela lui offre la possibilit&eacute; d'&ecirc;tre compatible avec n'importe
+quel p&eacute;riph&eacute;rique compatible avec Linux. MILO contient, en
+standard, tous les pilotes de p&eacute;riph&eacute;riques en mode bloc du noyau
+Linux.</P>
+
+<P>MILO charge le noyau Linux depuis un vrai syst&egrave;me de fichiers
+plut&ocirc;t que depuis un secteur d'amor&ccedil;age ou d'autres emplacements
+&eacute;tranges. Il supporte les syst&egrave;mes de fichiers MSDOS, EXT2 et
+ISO9660. Les fichiers GZIPp&eacute;s sont &eacute;galement reconnus et
+recommand&eacute;s, en particulier lors d'un chargement &agrave; partir d'une
+disquette qui reste un support relativement lent. MILO les reconna&icirc;t
+gr&acirc;ce &agrave; leur suffixe <EM>.gz</EM>.</P>
+
+<P>Un gestionnaire de clavier rudimentaire est inclus dans MILO si bien
+qu'avec un pilote de p&eacute;riph&eacute;rique vid&eacute;o d'une
+simplicit&eacute; &eacute;gale il dispose d'une interface utilisateur simple.
+Cette interface permet de lister les syst&egrave;mes de fichiers disponibles
+par le biais de pilotes de p&eacute;riph&eacute;riques configur&eacute;s, de
+d&eacute;marrer Linux ou des utilitaires de mises &agrave; jour de la
+m&eacute;moire flash, de d&eacute;finir des variables d'environnement agissant
+sur le d&eacute;marrage du syst&egrave;me. Comme avec LILO vous pouvez
+transmettre des arguments au noyau.</P>
+
+<P>MILO doit renseigner le noyau Linux sur la nature du mat&eacute;riel
+sous-jacent (type de carte m&egrave;re, quantit&eacute; de m&eacute;moire RAM
+totale et quantit&eacute; libre). Il effectue cela en utilisant les
+informations contenues dans le HWRPB.
+Celles-ci sont dispos&eacute;es aux emplacements appropri&eacute;s en
+m&eacute;moire virtuelle juste avant que le contr&ocirc;le du syst&egrave;me ne
+soit transf&eacute;r&eacute; au noyau Linux.</P>
+
+<H2><A NAME="s3">3. Images pr&eacute;compil&eacute;es de MILO</A></H2>
+
+<P>Si vous envisagez d'utiliser Linux sur un syst&egrave;me Alpha standard, un
+ensemble d'images pr&eacute;compil&eacute;es "standard" est &agrave;
+votre disposition. Celles-ci ainsi que leurs sources et bien d'autres choses
+int&eacute;ressantes sont disponibles &agrave; l'adresse suivante&nbsp;:
+<A HREF="ftp://gatekeeper.dec.com/pub/Digital/Linux-Alpha/Miniloader">ftp://gatekeeper.dec.com/pub/Digital/Linux-Alpha/Miniloader</A>.</P>
+
+<P>Le sous-r&eacute;pertoire images contient un r&eacute;pertoire par type de
+syst&egrave;me standard (ex&nbsp;: AlphaPC64) adoptant les conventions de
+nomenclatures suivantes&nbsp;:</P>
+<P>
+<OL>
+<LI> <CODE>MILO</CODE> - Image de MILO, celle-ci peut &ecirc;tre
+d&eacute;marr&eacute;e de diverses mani&egrave;res&nbsp;;</LI>
+<LI> <CODE>fmu.gz</CODE> - Utilitaire de gestion de la m&eacute;moire flash&nbsp;;</LI>
+<LI> <CODE>MILO.dd</CODE> - Image d'une disquette bootable de MILO, pouvant
+&ecirc;tre reproduite gr&acirc;ce &agrave; rawrite.exe sous DOS ou <CODE>dd</CODE>
+sous Linux.</LI>
+</OL>
+</P>
+
+<P>Le sous-r&eacute;pertoire <CODE>test-images</CODE> contient un ensemble d'images
+exp&eacute;rimentales sous la m&ecirc;me forme que les
+pr&eacute;c&eacute;dentes. Bien qu'exp&eacute;rimentales, ces images tendent
+&agrave; contenir les derni&egrave;res fonctionnalit&eacute;s.</P>
+
+<H2><A NAME="build-section"></A> <A NAME="s4">4. Comment compiler MILO ? </A></H2>
+
+<P>La compilation de MILO s'effectue de mani&egrave;re ind&eacute;pendante du
+noyau. &Eacute;tant donn&eacute; qu'il requiert des parties du noyau pour
+fonctionner, vous devrez, en premier lieu, configurer un noyau qui corresponde
+au syst&egrave;me auquel MILO est destin&eacute;. Cela correspond &agrave;
+attribuer le m&ecirc;me num&eacute;ro de version &agrave; MILO que celui du
+noyau utilis&eacute; pour le construire. Ainsi MILO-2.0.25.tar.gz sera
+compil&eacute; &agrave; l'aide de linux-2.0.25.tar.gz. MILO <CODE>peut</CODE> &ecirc;tre
+compil&eacute; correctement avec une version plus r&eacute;cente du noyau, mais
+avec celle-ci ce ne sera pas le cas. &Eacute;tant donn&eacute; que les
+librairies dynamiques sont compl&egrave;tement fonctionnelles, il existe deux
+versions des sources de MILO. Pour effectuer la compilation de MILO dans sa
+version ELF vous devez premi&egrave;rement extraire les sources standard puis
+appliquer un patch &agrave; ces derni&egrave;res, correspondant au
+num&eacute;ro de version du patch ELF. Je consid&eacute;rerai, dans la suite
+de ce document, que les sources et les fichiers objets du noyau sont
+situ&eacute;s dans le r&eacute;pertoire <CODE>/usr/src/linux</CODE>, et que le
+noyau a &eacute;t&eacute; correctement compil&eacute; &agrave; l'aide de la
+commande <CODE>make boot</CODE>.</P>
+
+<P>Pour compiler MILO, allez dans le r&eacute;pertoire contenant les sources de
+MILO et faites appel &agrave; la commande <CODE>make</CODE> de la mani&egrave;re
+suivante&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+$ make KSRC=/usr/src/linux config
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>De m&ecirc;me que pour la compilation du noyau, le syst&egrave;me vous posera
+un certain nombre de questions.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+Echo output to the serial port (MINI_SERIAL_ECHO) [y]
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Il est utile d'utiliser le port s&eacute;rie comme redirection de la fonction
+du noyau printk&nbsp;; celle-ci est effectu&eacute;e vers le port
+<CODE>/dev/ttyS0</CODE>. Si vous pouvez (et souhaitez) le faire, entrez 'y', sinon
+'n'. Toutes les versions pr&eacute;compil&eacute;es de MILO utilisent le port
+COM1 comme &eacute;cho.</P>
+<P> </P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+Use Digital's BIOS emulation code (not free) \
+                   (MINI_DIGITAL_BIOS_EMU) [y]
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Ce code est inclus en tant que biblioth&egrave;que de fonctions dont la
+distribution est gratuite si elle est utilis&eacute;e sur une machine &agrave;
+base de processeur Alpha. Les sources n'en sont pas disponibles. Si vous
+r&eacute;pondez <CODE>'n'</CODE>, l'&eacute;mulation BIOS &eacute;quivalente
+freeware sera compil&eacute;e. Sachez que vous ne pouvez pas encore choisir le
+syst&egrave;me de Digital utilisant le syst&egrave;me ELF (la
+biblioth&egrave;que n'est pas encore pr&ecirc;te). Vous devrez donc
+r&eacute;pondre 'n' &agrave; cette question.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+Build PALcode from sources (Warning this is dangerous) \
+                   (MINI_BUILD_PALCODE_FROM_SOURCES) [n]
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Vous ne devrez utiliser cette option que si vous avez chang&eacute; les
+sources du PALcode ; dans tous les autres cas, utilisez la version standard
+pr&eacute;compil&eacute;e du PALcode fourni avec MILO.</P>
+
+<P>Tout est d&eacute;sormais pr&ecirc;t, vous pouvez lancer la compilation&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+$ make KSRC=/usr/src/linux
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Lorsque la compilation s'est achev&eacute;e avec succ&egrave;s, l'image de
+MILO est &eacute;crite dans le fichier <CODE>milo</CODE>. Il y a un grand nombre de
+fichiers appel&eacute;s <CODE>milo.*</CODE>, ceux-ci devront &ecirc;tre ignor&eacute;s.</P>
+
+<H2><A NAME="load-section"></A> <A NAME="s5">5. Comment charger MILO ?</A></H2>
+
+<P>La mani&egrave;re la plus courante et la plus simple pour charger MILO est de
+le faire &agrave; partir de la console ARC. Cependant il est possible de
+r&eacute;aliser cette op&eacute;ration de diverses mani&egrave;res&nbsp;:
+<UL>
+<LI> une disquette bootable dite failsafe&nbsp;;</LI>
+<LI> firmware ARC pour Windows NT&nbsp;;</LI>
+<LI> Windows NT AlphaBlOS&nbsp;;</LI>
+<LI> Console SRM de Digital&nbsp;;</LI>
+<LI> un Debug Monitor existant sur les cartes d'&eacute;valuations de Digital,</LI>
+<LI> flash/ROM.</LI>
+</UL>
+</P>
+
+<H2><A NAME="arc-section"></A> <A NAME="ss5.1">5.1 Chargement de MILO depuis la console ARC pour Windows NT</A>
+</H2>
+
+<P>La plupart, sinon la totalit&eacute;, des syst&egrave;mes &agrave; base
+d'Alpha AXP int&egrave;grent le firmware ARC pour Windows NT et cela est la
+m&eacute;thode recommand&eacute;e pour d&eacute;marrer MILO et de
+surcro&icirc;t Linux. Une fois que vous disposez de ce firmware et de la
+version ad&eacute;quate de MILO, la m&eacute;thode est compl&egrave;tement
+g&eacute;n&eacute;rique.</P>
+
+<P>Le firmware ARC pour Windows NT offre un environnement dans lequel les
+programmes peuvent demander &agrave; celui-ci d'effectuer des
+op&eacute;rations. Le programme OSLoader de Windows NT r&eacute;alise
+exactement cela. Linload.exe est comparable mais beaucoup plus simple, il
+fait juste ce qui est n&eacute;cessaire au chargement et &agrave;
+l'ex&eacute;cution de MILO. Il charge le fichier image ad&eacute;quat en
+m&eacute;moire &agrave; l'adresse 0x00000000 puis il ex&eacute;cute les deux
+instructions swap-PAL puis PALcall &agrave; cette adresse. MILO, comme
+Linux, utilise un PALcode diff&eacute;rent de celui utilis&eacute; par Windows
+NT, cela expliquant pourquoi l'instruction swap est n&eacute;cessaire.
+MILO se reloge lui-m&ecirc;me &agrave; l'adresse 0x200000 puis poursuit la
+r&eacute;initialisation du PALcode &agrave; cette nouvelle adresse.</P>
+
+<P>Avant d'ajouter des options de d&eacute;marrage pour Linux, vous devrez
+copier linload.exe et MILO &agrave; un endroit que la console ARC pourra lire.
+Dans l'exemple suivant on suppose que le d&eacute;marrage s'effectue &agrave;
+partir d'une disquette au format DOS.</P>
+<P>
+<OL>
+<LI> Choisissez <CODE>"Supplementary menu..."</CODE></LI>
+<LI> Au <CODE>"Supplementary menu"</CODE> choisissez <CODE>"Set up the system..."</CODE></LI>
+<LI> Au <CODE>"Setup menu"</CODE> choisissez <CODE>"Manage boot selection menu..."</CODE></LI>
+<LI> Dans <CODE>"Boot selections menu"</CODE> choisissez <CODE>"Add a boot selection"</CODE></LI>
+<LI> Choisissez <CODE>"Floppy Disk 0"</CODE></LI>
+<LI> Entrez <CODE>"linload.exe"</CODE> dans la rubrique OSLOADER</LI>
+<LI> R&eacute;pondez "yes" &agrave; la question suivante (qui stipule que
+linload.exe est au m&ecirc;me endroit que le syst&egrave;me d'exploitation&nbsp;;
+pour la console ARC, MILO est vu comme un syst&egrave;me d'exploitation &agrave;
+part enti&egrave;re)</LI>
+<LI> Entrez '\' ensuite (stipulant que la racine du syst&egrave;me est la
+racine de notre disquette)</LI>
+<LI> Entrez le nom de ce choix de d&eacute;marrage (<CODE>Linux</CODE> par exemple&nbsp;!)</LI>
+<LI> R&eacute;pondez 'No' &agrave; la question 'Initialize debugger at boot
+time&nbsp;?'</LI>
+<LI> Vous vous retrouvez maintenant dans la section <CODE>"Boot selections
+menu"</CODE>&nbsp;: choisissez <CODE>"Change a boot selection option"</CODE> et s&eacute;lectionnez
+le nom que vous avez choisi ci-dessus dans le but de l'&eacute;diter.</LI>
+<LI> Avec les fl&egrave;ches, s&eacute;lectionnez <CODE>"OSLOADFILENAME"</CODE> puis
+saisissez le nom de l'image MILO que vous souhaitez utiliser. Par exemple
+<CODE>noname.arc</CODE> ou <CODE>milo</CODE> suivi de Entr&eacute;e.</LI>
+<LI> Retournez &agrave; la section <CODE>"Boot Selections menu"</CODE> &agrave;
+l'aide de la touche Esc</LI>
+<LI> Tapez la touche Esc de nouveau et choisissez <CODE>"Supplementary menu,
+and save changes"</CODE></LI>
+<LI> Retournez au <CODE>"Boot menu"</CODE> et vous pouvez alors essayer de
+d&eacute;marrer MILO.</LI>
+</OL>
+</P>
+
+<P>Apr&egrave;s avoir r&eacute;alis&eacute; cela, vous devriez avoir un 'boot
+selection' de la forme&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+LOADIDENTIFIER=Linux
+SYSTEMPARTITION=multi(0)disk(0)fdisk(0)
+OSLOADER=multi(0)disk(0)fdisk(0)\linload.exe
+OSLOADPARTITION=multi(0)disk(0)fdisk(0)
+OSLOADFILENAME=\noname.arc
+OSLOADOPTIONS=
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Vous pouvez d&eacute;sormais d&eacute;marrer MILO (puis Linux). Vous pouvez
+aussi charger linload.exe et MILO depuis un syst&egrave;me de fichiers que
+Windows NT comprend. Par exemple NTFS ou DOS sur un disque dur.</P>
+
+<P>Le contenu de la variable <CODE>OSLOADOPTIONS</CODE> est pass&eacute; &agrave; MILO
+qui l'interpr&egrave;te comme une commande. Donc, pour d&eacute;marrer Linux
+sans attente, il faudra fournir une valeur du type&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+boot sda2:vmlinux.gz root=/dev/sda2
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Reportez-vous &agrave; la section 
+<A HREF="#MILO-if-section">L'interface utilisateur de MILO</A>
+pour de plus amples renseignements sur les commandes disponibles.</P>
+
+<P>Une autre m&eacute;thode de d&eacute;marrage de MILO via la console ARC (bien
+que tortueuse) est d'appeler MILO <CODE>fwupdate.exe</CODE> puis de choisir
+l'option 'Upgrade Firmware'.</P>
+
+<H2><A NAME="ss5.2">5.2 D&eacute;marrage de MILO depuis l'AlphaBIOS Windows NT</A>
+</H2>
+
+<P>Avec l'apparition des machines de la s&eacute;rie XLT, Digital a
+chang&eacute; la console ARC pour ses syst&egrave;mes Windows NT et l'a
+remplac&eacute;e par l'AlphaBIOS. Cette nouvelle console offre l'avantage d'une
+plus grande convivialit&eacute;. Ce changement d'interface implique un
+changement de proc&eacute;dure de configuration pour ceux qui souhaitent
+d&eacute;marrer Linux pour Alpha dans ce contexte.</P>
+<P>La premi&egrave;re chose &agrave; faire est d'installer la derni&egrave;re
+version de l'AlphaBIOS sur votre syst&egrave;me. Celle-ci est disponible
+&agrave; l'adresse suivante&nbsp;:
+<A HREF="http://www.windows.digital.com/support/sysoft.htp">http://www.windows.digital.com/support/sysoft.htp</A>.</P>
+<P>T&eacute;l&eacute;chargez le fichier ZIP, d&eacute;compactez-le et
+installez-le comme suit :
+<OL>
+<LI>Copiez le fichier sur une disquette DOS&nbsp;;</LI>
+<LI>Allumez l'ordinateur et ins&eacute;rez la disquette. Lors de l'affichage
+des premi&egrave;res informations &agrave; l'&eacute;cran, enfoncez la touche
+F2 pour entrer dans le setup&nbsp;;</LI>
+<LI>Choisissez <CODE>"Upgrade AlphaBIOS"</CODE>&nbsp;;</LI>
+<LI>Suivez les instructions.</LI>
+</OL>
+</P>
+<P>Une fois que l'AlphaBIOS est mis &agrave; jour, vous pouvez d&eacute;marrer
+votre machine comme suit&nbsp;:
+<OL>
+<LI>Cr&eacute;ez une disquette DOS contenant les fichiers linload.exe et
+milo&nbsp;;</LI>
+<LI>Allumez le syst&egrave;me et entrez dans le setup&nbsp;;</LI>
+<LI>Choisissez <CODE>"Utilities->OS Selection Setup"</CODE>&nbsp;;</LI>
+<LI>Appuyez sur INSERT pour ajouter une nouvelle entr&eacute;e&nbsp;;</LI>
+<LI>Pour <CODE>"Boot Name"</CODE> entrez un nom de votre choix (ici Linux) puis
+pressez Tab pour changer de champ&nbsp;;</LI>
+<LI>Avec les fl&egrave;ches, choisissez 'A:' pour la variable <CODE>"Boot File
+is"</CODE>, passez au champ suivant&nbsp;;</LI>
+<LI>Entrez "linload.exe".  Deux fois TAB&nbsp;;</LI>
+<LI>Entrez "\" pour la variable <CODE>"OS Path load file"</CODE>&nbsp;;</LI>
+<LI>Pressez ENTREE pour valider.</LI>
+</OL>
+</P>
+<P>&Agrave; ce moment l'AlphaBIOS devrait afficher une bo&icirc;te de dialogue
+angoissante indiquant&nbsp;: "Warning: Operating System Selection not valid!".  Ne
+tenez pas compte de cette erreur (cela ne pose de probl&egrave;me qu'&agrave;
+NT), pressez Entr&eacute;e pour valider.
+<OL>
+<LI>Pressez F10 puis Entr&eacute;e pour valider ces changements&nbsp;;</LI>
+<LI>Pressez Esc jusqu'&agrave; arriver &agrave; l'&eacute;cran d'accueil&nbsp;;</LI>
+<LI>Choisissez, &agrave; l'aide des fl&egrave;ches, l'entr&eacute;e que vous
+venez de saisir, pressez Entr&eacute;e pour lancer MILO.</LI>
+</OL>
+</P>
+<P>Si la premi&egrave;re partition de votre disque dur est un syst&egrave;me de
+fichiers DOS de petite taille destin&eacute; au d&eacute;marrage (ainsi que la
+proc&eacute;dure d'installation le recommande), lorsque Linux sera
+install&eacute;, vous devrez y copier linload.exe et MILO. Au d&eacute;marrage
+suivant, vous devrez configurer votre firmware de telle sorte qu'il aille
+chercher ces programmes &agrave; l'emplacement voulu. Pour ce faire je vous
+recommande d'utiliser la d&eacute;marche suivante&nbsp;:
+<OL>
+<LI>Entrez dans le setup (F2 &agrave; l'&eacute;cran de d&eacute;marrage)&nbsp;;</LI>
+<LI>Choisissez <CODE>"Utilities->OS Selection setup"</CODE>&nbsp;;</LI>
+<LI>S&eacute;lectionnez l'entr&eacute;e correspondant &agrave; Linux, puis
+pressez F6 pour la modifier&nbsp;;</LI>
+<LI>Placez le curseur sur l'entr&eacute;e correspondant &agrave; la partie
+p&eacute;riph&eacute;rique de la ligne <CODE>"Boot File"</CODE> (<CODE>device</CODE> pour les
+versions en Anglais).  Avec les fl&egrave;ches, choisissez la partition sur
+laquelle r&eacute;sident linload.exe et MILO. Appuyez sur Entr&eacute;e pour
+valider.</LI>
+<LI>Si vous souhaitez que votre syst&egrave;me d&eacute;marre
+automatiquement apr&egrave;s le chargement de MILO positionnez-vous (&agrave;
+l'aide de la touche TAB) sur la variable <CODE>"OS Options"</CODE> puis
+sp&eacute;cifiez ici quelle est la ligne de commande &agrave; fournir &agrave;
+MILO, par exemple&nbsp;: "boot sda2:vmlinux.gz". Pressez Entr&eacute;e pour valider&nbsp;;</LI>
+<LI>Utilisez la touche F10 pour sauvegarder les modifications.</LI>
+</OL>
+</P>
+<P>Cela fait que l'utilisation de Linux sur une plate-forme utilisant AlphaBIOS
+devient quasiment identique &agrave; celles utilisant la console ARC.</P>
+
+<H2><A NAME="dbm-section"></A> <A NAME="ss5.3">5.3 D&eacute;marrage de MILO depuis le Debug Monitor des cartes</A>
+d'&eacute;valuation</H2>
+
+<P>Les cartes d'&eacute;valuation (et souvent les cartes con&ccedil;ues &agrave;
+partir de leur exemple) proposent un logiciel appel&eacute; "debug
+monitor". Reportez-vous &agrave; la documentation de votre syst&egrave;me
+avant d'envisager cette possibilit&eacute;. Les syst&egrave;mes suivants
+<EM>proposent</EM> cette fonctionnalit&eacute;&nbsp;:
+<UL>
+<LI>AlphaPC64 (Section 
+<A HREF="#pc64-section">AlphaPC64 (Cabriolet)</A>)</LI>
+<LI>EB64+ (Section 
+<A HREF="#eb64p-section">EB 64+</A>)</LI>
+<LI>EB66+ (Section 
+<A HREF="#eb66p-section">EB 66+</A>)</LI>
+<LI>EB164 (Section 
+<A HREF="#eb164-section">EB 164</A>)</LI>
+<LI>PC164 (Section 
+<A HREF="#pc164-section">PC164</A>)</LI>
+</UL>
+</P>
+
+<P>Sachez avant toute chose que, sur certaines anciennes versions, ce logiciel
+n'inclut pas de gestionnaire &eacute;cran / clavier. Vous devrez donc vous
+pr&eacute;parer &agrave; connecter un terminal s&eacute;rie &agrave; votre
+syst&egrave;me. Son interface est tr&egrave;s simple et une commande d'aide
+(help) documente une grande quantit&eacute; de commandes. Les plus
+int&eacute;ressantes de ces commandes incluent les mots <CODE>boot</CODE> et <CODE>load</CODE>.</P>
+
+<P>Le debug monitor peut charger une image &agrave; partir du r&eacute;seau
+(netboot) ou d'une disquette (flboot). Dans tous les cas, l'image doit
+&ecirc;tre charg&eacute;e &agrave; l'adresse 0x200000 (utilisez la commande
+<CODE>bootadr 200000</CODE>).</P>
+
+<P>Si l'image se trouve sur une disquette (notez que le seul format de disquette
+reconnu est DOS) vous devrez utiliser la commande suivante&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+AlphaPC64> flboot &lt;MILO-image-name>
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H2><A NAME="bootblock-section"></A> <A NAME="ss5.4">5.4 Chargement de MILO depuis une disquette de d&eacute;marrage failsafe</A>
+</H2>
+
+<P>D'apr&egrave;s les informations <EM>dont je dispose</EM>, seul l'AXPpci33
+propose la reconnaissance de secteur d'amor&ccedil;age de type failsafe
+floppy (Section 
+<A HREF="#noname-section">AXPpci33 (Noname)</A>).</P>
+
+<P>Si vous ne disposez pas d'une image MILO standard pr&eacute;compil&eacute;e,
+vous devrez confectionner une disquette au format SRM. Une fois MILO
+compil&eacute;, vous devrez ex&eacute;cuter les instructions suivantes sous
+Digital Unix&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+fddisk -fmt /dev/rfd0a
+cat mboot bootm > /dev/rfd0a
+disklabel -rw rfd0a lrx231 mboot bootm
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Ou bien les commandes suivantes sous Linux&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+cat mboot bootm > /dev/fd0
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Si vous disposez d'une image MILO pr&eacute;compil&eacute;e vous pourrez
+construire la disquette de la mani&egrave;re suivante&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+dd if=MILO.dd of=/dev/fd0
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H2><A NAME="flash_section"></A> <A NAME="ss5.5">5.5 D&eacute;marrage de MILO &agrave; partir de la m&eacute;moire Flash</A>
+</H2>
+
+<P>Il existe certains syst&egrave;mes qui permettent d'int&eacute;grer MILO
+directement dans la PROM Flash, permettant ainsi le d&eacute;marrage direct de
+Linux (sans avoir &agrave; utiliser de console du type ARC) :
+<UL>
+<LI>AlphaPC64 (Section 
+<A HREF="#pc64-section">AlphaPC64 (Cabriolet)</A>)</LI>
+<LI>EB64+ (Section 
+<A HREF="#eb64p-section">EB 64+</A>)</LI>
+<LI>EB66+ (Section 
+<A HREF="#eb66p-section">EB 66+</A>)</LI>
+<LI>EB164 (Section 
+<A HREF="#eb164-section">EB 164</A>)</LI>
+<LI>PC164 (Section 
+<A HREF="#pc164-section">PC164</A>)</LI>
+</UL>
+</P>
+
+<H2><A NAME="srm_section"></A> <A NAME="ss5.6">5.6 D&eacute;marrage de MILO par le biais de la console SRM</A>
+</H2>
+
+<P>La console SRM (abr&eacute;viation de System Reference
+Manual) ne reconna&icirc;t aucun syst&egrave;me de fichiers ni m&ecirc;me
+aucune partition disque. Elle s'attend tout simplement &agrave; trouver le
+logiciel d'amor&ccedil;age &agrave; une position physique d&eacute;marrant
+&agrave; un emplacement donn&eacute; (il s'agit d'un offset ou position
+relative). L'information d&eacute;crivant ce logiciel d'amor&ccedil;age (sa
+taille et sa position relative) est d&eacute;crite dans le premier bloc de 512
+octets du disque. Pour charger MILO depuis la SRM vous devez
+g&eacute;n&eacute;rer cette structure de donn&eacute;es en bonne et due forme
+sur un support que la console peut atteindre. Cela explique l'existence des
+fichiers <CODE>mboot</CODE> et <CODE>bootm</CODE>.</P>
+
+<P>Pour charger MILO depuis un p&eacute;riph&eacute;rique de d&eacute;marrage,
+compilez <CODE>mboot</CODE> et <CODE>bootm</CODE> puis &eacute;crivez-les sur disque &agrave;
+l'aide de la commande suivante&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+$ cat mboot bootm > /dev/fd0
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>ou bien t&eacute;l&eacute;chargez une image appropri&eacute;e de MILO
+&agrave; partir d'un site Web, puis utilisez soit <CODE>RAWRITE.EXE</CODE> soit
+<CODE>dd</CODE> pour l'inscrire sur disque.</P>
+
+<P>Cela fait, vous pouvez envisager de d&eacute;marrer MILO depuis la console
+SRM, puis d'utiliser une de ses nombreuses commandes pour d&eacute;marrer.
+Par exemple, pour d&eacute;marrer depuis une disquette, vous devrez effectuer
+l'op&eacute;ration suivante&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+>>>boot dva0
+(boot dva0.0.0.0.1 -flags 0)
+block 0 of dva0.0.0.0.1 is a valid boot block
+reading 621 blocks from dva0.0.0.0.1
+bootstrap code read in 
+base = 112000, image-start = 0, image-bytes 4da00
+initializing HWRPB at 2000
+initializing page table at 104000
+ initializing machine state
+setting affinity to the primary CPU
+jumping to bootstrap code
+MILO Stub: V1.1
+Unzipping MILO into position
+Allocating memory for unzip
+####...
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Les syst&egrave;mes suivants sont compatibles avec la console SRM&nbsp;:
+<UL>
+<LI>Noname (Section 
+<A HREF="#noname-section">AXPpci33 (Noname)</A>)</LI>
+<LI>AlphaPC64 (Section 
+<A HREF="#pc64-section">AlphaPC64 (Cabriolet)</A>)</LI>
+<LI>EB164 (Section 
+<A HREF="#eb164-section">EB 164</A>)</LI>
+<LI>PC164 (Section 
+<A HREF="#pc164-section">PC164</A>)</LI>
+</UL>
+</P>
+
+<H2><A NAME="specific-section"></A> <A NAME="ss5.7">5.7 Informations sp&eacute;cifiques &agrave; certains syst&egrave;mes</A>
+</H2>
+
+<H3><A NAME="noname-section"></A> AXPpci33 (Noname)</H3>
+
+<P>La carte Noname est capable de charger MILO depuis une console ARC ou SRM ou
+depuis une disquette failsafe. Un utilitaire de gestion de la m&eacute;moire
+PROM flash, ex&eacute;cutable depuis MILO permet de copier ce dernier en
+m&eacute;moire flash. En revanche, nous tenons &agrave; vous avertir
+que cette manipulation est tr&egrave;s p&eacute;rilleuse car la Noname ne
+comportant que 256 Ko de m&eacute;moire flash, elle ne peut contenir qu'une
+image en PROM. Si l'image que vous copiez en flash est corrompue, votre
+syst&egrave;me ne d&eacute;marrera plus.</P>
+
+<P>La m&eacute;thode de d&eacute;marrage des cartes Noname est
+contr&ocirc;l&eacute;e par les jumpers J29 et J28. Ils sont dispos&eacute;s
+comme suit&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+Num&eacute;ro de broche   4
+     J29       2 x x x 6              
+               1 x x x 5              
+                                                                                          
+     J28       2 x x x 6              
+               1 x x x 5              
+                   3                                      
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Les deux options de configuration qui nous int&eacute;ressent sont sur J28,
+dont les plots 1-3, qui d&eacute;marrent la console depuis la flash et J29,
+dont les plots 1-3 permettent de d&eacute;marrer la console depuis une
+disquette. La seconde option est celle dont vous avez besoin pour
+d&eacute;marrer MILO la premi&egrave;re fois.
+Une fois que les jumpers auront &eacute;t&eacute; configur&eacute;s pour
+l'utilisation d'une disquette de d&eacute;marrage, ins&eacute;rez la disquette
+contenant MILO en version bootable dans le lecteur puis relancez
+l'ordinateur. En l'espace de quelques secondes (apr&egrave;s l'extinction de la
+lumi&egrave;re du lecteur), vous devrez constater que l'&eacute;cran passe du
+noir au blanc et y lire les informations relatives &agrave; l'ex&eacute;cution
+de MILO.
+Si les aspects techniques vous int&eacute;ressent, sachez que la carte Noname
+charge le contenu de la disquette &agrave; l'adresse 0x104000 et les images
+provenant de la m&eacute;moire flash en 0x100000. Pour cette raison, MILO
+int&egrave;gre son PALcode &agrave; l'adresse 0x200000. Lors de son
+d&eacute;marrage, il se reloge lui-m&ecirc;me &agrave; l'adresse correcte.</P>
+
+<H3><A NAME="pc64-section"></A> AlphaPC64 (Cabriolet)</H3>
+
+<P>L'AlphaPC64 est dot&eacute;, en standard, du Firmware Windows NT (Section
+<A HREF="#arc-section">Chargement de MILO depuis la console ARC pour Windows NT</A>), de la console SRM (Section 
+<A HREF="#srm_section">D&eacute;marrage de MILO par le biais de la console SRM</A>)
+et du Debug Monitor (Section 
+<A HREF="#dbm-section">D&eacute;marrage de MILO depuis le debug monitor des cartes d'&eacute;valuation</A>).
+Ces images sont en flash et il reste de la place dans
+cette m&eacute;moire pour ajouter l'image de MILO de mani&egrave;re &agrave;
+pouvoir d&eacute;marrer MILO directement depuis la PROM. Un utilitaire de
+gestion de la m&eacute;moire flash est disponible sous MILO, ainsi il est
+possible d'int&eacute;grer MILO &agrave; la m&eacute;moire flash lorsque
+celui-ci s'ex&eacute;cute (Section 
+<A HREF="#MILO-fmu-section">Ex&eacute;cution du gestionnaire de m&eacute;moire flash</A>).
+Ce proc&eacute;d&eacute; accepte l'utilisation de variables d'environnement
+MILO.</P>
+
+<P>Il est possible de choisir parmi les options de d&eacute;marrage (ARC, SRM,
+MILO) en utilisant une combinaison de jumpers et de d&eacute;finir des options
+de d&eacute;marrage qui seront sauvegard&eacute;es dans la NVRAM de l'horloge
+TOY ("CMOS").</P>
+<P>Il s'agit du jumper J2&nbsp;; les bits 6 et 7 ont la fonction suivante&nbsp;:
+<UL>
+<LI>SP Bit 6 doit toujours &ecirc;tre ouvert (pas de jumper)&nbsp;; dans le cas
+contraire le mini-debugger sera ex&eacute;cut&eacute;.</LI>
+<LI>SP Bit 7 ferm&eacute;&nbsp;: Ex&eacute;cuter l'image d&eacute;finie dans la
+NVRAM</LI>
+<LI>SP Bit 7 ouvert&nbsp;: Ex&eacute;cuter la premi&egrave;re image.</LI>
+</UL>
+</P>
+
+<P>Donc, si le SP Bit 7 est ouvert, le Debug Monitor sera
+ex&eacute;cut&eacute; car il est <CODE>toujours</CODE> positionn&eacute; en
+premi&egrave;re place dans la PROM. Et si le SP Bit 7 est ferm&eacute;, l'image
+ex&eacute;cut&eacute;e sera celle d&eacute;finie dans l'horloge syst&egrave;me
+(TOY). L'ARC, le Debug Monitor et MILO acceptent cette option&nbsp;; il faut,
+cependant, &ecirc;tre tr&egrave;s prudent lors de son utilisation. Par exemple,
+vous ne pouvez pas d&eacute;finir d'option qui vous permettra de
+d&eacute;marrer MILO au d&eacute;marrage suivant&nbsp;: lors de l'utilisation de la
+console ARC, cette derni&egrave;re vous permet de passer en mode Debug
+Monitor ou ARC lors du d&eacute;marrage, mais elle ne permet pas de passer
+en mode MILO.</P>
+
+<P>Pour inclure MILO dans la m&eacute;moire flash via le Debug Monitor,
+vous aurez besoin d'une image ad&eacute;quate (dite flashable).  La
+commande de compilation est&nbsp;: make MILO.rom, mais vous pouvez aussi construire
+une image rom &agrave; l'aide de l'outil makerom du Debug Monitor.</P>
+<P>
+<PRE>
+> makerom -v -i7 -1200000 MILO -o mini.flash
+</PRE>
+</P>
+
+<P>(tapez makerom pour comprendre ce que signifient les param&egrave;tres, '7'
+repr&eacute;sente un identificateur d'image flash utilis&eacute; par la
+SROM et -l200000 indique l'adresse de chargement de cette image).</P>
+
+<P>Pour charger cette image en m&eacute;moire, utilisez une des commandes
+flload, netload, ... &agrave; l'adresse 0x200000, puis ins&eacute;rez l'image
+en m&eacute;moire flash de la mani&egrave;re suivante&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+AlphaPC64> flash 200000 8
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>200000 est l'adresse de chargement et 8 est le num&eacute;ro du segment de
+m&eacute;moire &agrave; utiliser.  Il y a 16 segments de 64 Ko (soit 512 Ko)
+dans la SROM. (Le Debug Monitor est au segment 0 et l'ARC au segment
+4).</P>
+
+<P>D&eacute;finissez l'image que la SROM va ex&eacute;cuter au d&eacute;marrage
+en donnant une valeur &agrave; la variable TOY bootopt&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+AlphaPC64> bootopt 131
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P>(131 indique la 3&egrave;me image, 129 la 1&egrave;re image, 130 la
+2&egrave;me, etc...)</P>
+
+<P>&Eacute;teignez la machine, mettez le jumper 7 en place et red&eacute;marrez
+la machine. Vous devrez alors pouvoir observer MILO s'ex&eacute;cuter.
+F&eacute;licitations&nbsp;! Vous pouvez remonter la machine (enfin&nbsp;!). Si ce n'est
+pas le cas, conservez le tournevis pour plus tard, et enlevez &agrave; nouveau
+le jumper 7 pour red&eacute;marrer en mode Debug Monitor, reprenez les
+&eacute;tapes les unes &agrave; la suite des autres, m&eacute;thodiquement, en
+prenant garde de ne rien oublier.</P>
+
+<H3><A NAME="eb66p-section"></A> EB 66+</H3>
+
+<P>La carte EB66+, comme toutes les cartes d'&eacute;valuation de Digital,
+contient le Debug Monitor, et de ce fait celui-ci va nous permettre de
+charger MILO. Souvent (mais pas toujours), les cartes
+d&eacute;riv&eacute;es des cartes d'&eacute;valuation poss&egrave;dent ce
+logiciel. Habituellement, ces cartes contiennent la console ARC. Un utilitaire
+de gestion de la m&eacute;moire flash est disponible sous MILO, ainsi il est
+possible d'int&eacute;grer MILO &agrave; la m&eacute;moire flash lorsque
+celui-ci s'ex&eacute;cute (Section 
+<A HREF="#MILO-fmu-section">Ex&eacute;cution du gestionnaire de m&eacute;moire flash</A>). Ce
+syst&egrave;me accepte les variables d'environnement MILO.</P>
+
+<P>Ces cartes disposent de plusieurs images en m&eacute;moire flash
+contr&ocirc;l&eacute;es par jumper. Les deux bancs de jumpers sont J18 et J16
+et se situent au centre bas de la carte (consid&eacute;rant que le processeur
+Alpha se situe en haut de la carte). Vous pouvez choisir l'option de
+d&eacute;marrage par ces jumpers (et MILO lorsqu'il est charg&eacute;) ainsi
+qu'une variable d'environnement sauvegard&eacute;e dans la m&eacute;moire non
+volatile (NVRAM TOY).</P>
+
+<P>jumper 7-8 Ferm&eacute; signifie qu'il faut utiliser l'image
+d&eacute;sign&eacute;e par la variable bootopt, lorsqu'il est ouvert le
+Debug Monitor est ex&eacute;cut&eacute;.</P>
+
+<P>Pour le reste de la configuration, reportez vous au paragraphe
+pr&eacute;c&eacute;dent traitant de l'AlphaPC64 (Section 
+<A HREF="#pc64-section">AlphaPC64 (Cabriolet)</A>).</P>
+
+<H3><A NAME="eb64p-section"></A> EB 64+ / Aspen Alpine</H3>
+
+<P>Cette carte est tr&egrave;s similaire &agrave; l'AlphaPC64 except&eacute;
+qu'elle ne contient pas de m&eacute;moire flash utilisable par MILO. Cette
+carte poss&egrave;de deux ROMS, l'une contenant l'ARC, l'autre contenant le
+Debug Monitor.</P>
+
+<P>L'Aspen Alpine, quant &agrave; elle, ne contient qu'une ROM o&ugrave; est
+grav&eacute;e la console ARC.</P>
+
+<H3><A NAME="multia-section"></A> Universal Desktop Box (Multia)</H3>
+
+<P>C'est une station ultra compacte &agrave; base d'AXP 21066 qui int&egrave;gre
+un sous-syst&egrave;me graphique TGA (21030). De plus il n'y a de place
+que pour une carte graphique PCI demi-hauteur. Elle utilise la console ARC
+(Windows NT) et il est donc recommand&eacute; de l'utiliser pour le
+d&eacute;marrage de MILO (Section 
+<A HREF="#arc-section">Chargement de MILO depuis la console ARC pour Windows NT</A>).</P>
+
+<H3><A NAME="eb164-section"></A> EB 164</H3>
+
+<P>La carte EB164, comme toutes les cartes d'&eacute;valuation de Digital,
+contient le Debug Monitor, et de ce fait celui-ci va nous permettre de
+charger MILO. Souvent (mais pas toujours) les cartes d&eacute;riv&eacute;es des
+cartes d'&eacute;valuation poss&egrave;dent ce logiciel. Habituellement, ces
+cartes contiennent la console ARC. Un utilitaire de gestion de la
+m&eacute;moire flash est disponible sous MILO, ainsi il est possible
+d'int&eacute;grer MILO &agrave; la m&eacute;moire flash lorsque celui-ci
+s'ex&eacute;cute (Section 
+<A HREF="#MILO-fmu-section">Ex&eacute;cution du gestionnaire de m&eacute;moire flash</A>). Ce syst&egrave;me accepte les
+variables d'environnement MILO. La console SRM est, de plus, disponible
+(Section 
+<A HREF="#srm_section">D&eacute;marrage de MILO par le biais de la console SRM</A>).</P>
+
+<P>Ces cartes disposent de plusieurs images en m&eacute;moire flash
+contr&ocirc;l&eacute;es par jumper. Le banc de deux jumpers s'appelle J1 et
+se situe en bas &agrave; gauche de la carte (consid&eacute;rant que le
+processeur Alpha se situe en haut de la carte). Vous pouvez choisir l'option de
+d&eacute;marrage par ces jumpers (et MILO lorsqu'il est charg&eacute;) ainsi
+qu'une variable d'environnement sauvegard&eacute;e dans la m&eacute;moire non
+volatile (NVRAM TOY).</P>
+
+<P>jumper SP-11 de J1 ferm&eacute; signifie qu'il faut utiliser l'image
+d&eacute;sign&eacute;e par la variable bootopt&nbsp;; lorsqu'il est ouvert le
+Debug Monitor est ex&eacute;cut&eacute;.</P>
+
+<P>Pour le reste de la configuration, reportez-vous au paragraphe
+pr&eacute;c&eacute;dent traitant de l'AlphaPC64 (Section 
+<A HREF="#pc64-section">AlphaPC64 (Cabriolet)</A>).</P>
+
+<H3><A NAME="pc164-section"></A> PC164</H3>
+
+<P>La carte PC164, comme toutes les cartes d'&eacute;valuation de Digital,
+contient le Debug Monitor, et de ce fait celui-ci va nous permettre de
+charger MILO. Souvent (mais pas toujours) les cartes d&eacute;riv&eacute;es des
+cartes d'&eacute;valuation poss&egrave;dent ce logiciel. Habituellement, ces
+cartes contiennent la console ARC. Un utilitaire de gestion de la
+m&eacute;moire flash est disponible sous MILO, ainsi il est possible
+d'int&eacute;grer MILO &agrave; la m&eacute;moire flash lorsque celui-ci
+s'ex&eacute;cute (Section 
+<A HREF="#MILO-fmu-section">Ex&eacute;cution du gestionnaire de m&eacute;moire flash</A>). Ce syst&egrave;me accepte les variables
+d'environnement MILO. La console SRM est, de plus, disponible (Section 
+<A HREF="#srm_section">D&eacute;marrage de MILO par le biais de la console SRM</A>).</P>
+
+<P>Ces cartes disposent de plusieurs images en m&eacute;moire flash
+contr&ocirc;l&eacute;es par jumpers. Le banc principal de jumpers s'appelle
+J30, il contient les jumpers de configuration. Le jumper CF6 ferm&eacute;
+signifie que le syst&egrave;me d&eacute;marrera le Debug Monitor, il est
+par d&eacute;faut ouvert.</P>
+
+<P>Pour le reste de la configuration, reportez-vous au paragraphe
+pr&eacute;c&eacute;dent traitant de l'AlphaPC64(Section 
+<A HREF="#pc64-section">AlphaPC64 (Cabriolet)</A>).</P>
+
+<H3><A NAME="xl-section"></A> XL266</H3>
+
+<P>Le XL266 est un des syst&egrave;mes connus sous le nom d'Avanti. Il
+poss&egrave;de une carte fille sur laquelle r&eacute;sident le processeur Alpha
+et le cache qui se connecte &agrave; la carte m&egrave;re. Cette carte remplace
+une carte fille Pentium &eacute;quivalente.</P>
+
+<P>Certains de ces syst&egrave;mes sont vendus avec la console SRM, mais
+certains autres ne sont livr&eacute;s qu'avec la console ARC (Section 
+<A HREF="#arc-section">Chargement de MILO depuis la console ARC pour Windows NT</A>).</P>
+
+<P>Voici une liste compatible avec cette s&eacute;rie&nbsp;:
+<UL>
+<LI>AlphaStation 400 (Avanti),</LI>
+<LI>AlphaStation 250,</LI>
+<LI>AlphaStation 200 (Mustang),</LI>
+<LI>XL. Il en existe deux mod&egrave;les, XL266 et XL233 qui ne
+diff&egrave;rent que par la vitesse du processeur et la taille de la
+m&eacute;moire cache.</LI>
+</UL>
+</P>
+
+<P><B>Note&nbsp;:</B> Le syst&egrave;me que j'utilise pour d&eacute;velopper et
+tester MILO est un XL266&nbsp;; de ce fait, c'est le seul sur lequel je peux garantir
+un fonctionnement correct. Cela dit les autres syst&egrave;mes sont,
+techniquement, &eacute;quivalents. Ils poss&egrave;dent les m&ecirc;mes
+chipsets et les m&ecirc;mes m&eacute;canismes d'interruptions.</P>
+
+<H3><A NAME="p2k-section"></A> Platform2000</H3>
+
+<P>Il s'agit d'un syst&egrave;me &agrave; base de processeur 21066 &agrave;
+233 Mhz.</P>
+
+<H2><A NAME="MILO-if-section"></A> <A NAME="s6">6. L'interface utilisateur de MILO</A></H2>
+
+<P>Apr&egrave;s avoir correctement install&eacute; MILO (Abr&eacute;v. de
+MIniLOader) vous devrez obtenir l'invite de commande de MILO. Il y a une
+interface de commandes tr&egrave;s simple que vous pouvez utiliser dans le but
+de d&eacute;marrer une image Linux particuli&egrave;re. Utilisez la commande
+help pour obtenir une description sommaire des commandes.</P>
+
+<H2><A NAME="MILO-help-section"></A> <A NAME="ss6.1">6.1 La commande help</A>
+</H2>
+
+<P>Probablement la commande la plus utile de MILO.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+
+MILO> help
+MILO command summary:
+ls [-t fs] [dev:[dir]]
+                        - List files in directory on device
+boot [-t fs] [dev:file] [boot string]
+                        - Boot Linux from the specified device and file
+run [-t fs] dev:file
+                        - Run the standalone program dev:file
+show                    - Display all known devices and file systems
+set VAR VALUE           - Set the variable VAR to the specified VALUE
+unset VAR               - Delete the specified variable
+reset                   - Delete all variables
+print                   - Display current variable settings
+help [var]              - Print this help text
+
+Devices are specified as: fd0, hda1, hda2, sda1...
+Use the '-t filesystem-name' option if you want to use
+anything but the default filesystem ('ext2').
+Use the 'show' command to show known devices and filesystems.
+Type 'help var' for a list of variables.
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P><B>Note&nbsp;:</B> la commande <CODE>bootopt</CODE> n'appara&icirc;t que pour les
+syst&egrave;mes AlphaPC64 (et &eacute;quivalents).</P>
+
+<P><B>P&eacute;riph&eacute;riques.</B> Jusqu'&agrave; ce que vous utilisiez
+une commande qui n&eacute;cessite l'utilisation d'un des
+p&eacute;riph&eacute;riques, aucune initialisation n'est r&eacute;alis&eacute;e
+sur ces derniers. La premi&egrave;re commande <CODE>show</CODE>, <CODE>ls</CODE>, <CODE>boot</CODE> ou
+<CODE>run</CODE> provoquera l'initialisation des p&eacute;riph&eacute;riques. Les
+pilotes de p&eacute;riph&eacute;riques portent exactement les m&ecirc;mes noms
+que ceux de Linux. Donc le premier disque IDE sera appel&eacute; hda et la
+premi&egrave;re partition sera hda1. Utilisez la commande <CODE>show</CODE> pour
+obtenir une liste des p&eacute;riph&eacute;riques disponibles.</P>
+
+<P><B>Syst&egrave;mes de fichiers.</B> MILO est compatible avec trois
+diff&eacute;rents types de syst&egrave;mes de fichiers&nbsp;: MSDOS, EXT2 et
+ISO9660. &Agrave; partir du moment o&ucirc; un p&eacute;riph&eacute;rique est
+disponible pour lui, MILO est &agrave; m&ecirc;me de charger et
+d'ex&eacute;cuter n'importe quelle image disponible. Le syst&egrave;me de
+fichiers par d&eacute;faut est <CODE>EXT2</CODE>. Toutes les commandes utilisant les
+syst&egrave;mes de fichiers permettent d'en pr&eacute;ciser le type par le
+biais de l'option -t filesystem. Donc si vous souhaitez obtenir une liste du
+contenu d'un CDROM il suffit d'entrer la commande&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+MILO> ls -t iso9660 scd0:
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P><B>Variables.</B> MILO contient quelques variables qui aident au processus
+de d&eacute;marrage. Si vous d&eacute;marrez &agrave; partir de la console ARC,
+MILO utilisera les variables d'environnement d&eacute;finies par ce
+firmware. Pour certains syst&egrave;mes (tels que l'AlphaPC64), MILO
+dispose de son propre jeu de variables qui ne changent pas d'un
+d&eacute;marrage &agrave; l'autre. Ces variables sont&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+MILO> help var
+Variables that MILO cares about:
+  MEMORY_SIZE           - System memory size in megabytes
+  BOOT_DEV              - Specifies the default boot device
+  BOOT_FILE             - Specifies the default boot file
+  BOOT_STRING           - Specifies the boot string to pass to the kernel
+  SCSIn_HOSTID          - Specifies the host id of the n-th SCSI controller.
+  PCI_LATENCY           - Specifies the PCI master device latency
+  AUTOBOOT              - If set, MILO attempts to boot on powerup
+                          and enters command loop only on failure.
+  AUTOBOOT_TIMEOUT      - Seconds to wait before auto-booting on powerup.
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P><EM>ATTENTION</EM> &agrave; l'utilisation de la variable AUTOBOOT sans d&eacute;finir
+de valeur d&eacute;lai (AUTOBOOT_TIMEOUT) car MILO d&eacute;marrera apr&egrave;s
+avoir attendu 0 seconde. Ce n'est peut-&ecirc;tre pas ce que vous souhaitez.</P>
+
+<P>PCI_LATENCY repr&eacute;sente le nombre de cycles PCI qu'un
+p&eacute;riph&eacute;rique fonctionnant en bus master se r&eacute;serve
+lorsqu'il acquiert le contr&ocirc;le du bus. La valeur par d&eacute;faut est de
+32 et la maximum de 255. D&eacute;finir une valeur &eacute;lev&eacute;e revient
+&agrave; dire que chaque fois qu'un p&eacute;riph&eacute;rique prend le
+contr&ocirc;le du bus PCI, il transf&egrave;rera plus de donn&eacute;es.
+Cependant cela signifie aussi qu'un p&eacute;riph&eacute;rique devra attendre
+plus longtemps pour obtenir le contr&ocirc;le du bus.</P>
+
+<H2><A NAME="MILO-boot-section"></A> <A NAME="ss6.2">6.2 D&eacute;marrage de Linux</A>
+</H2>
+
+<P>La commande <CODE>boot</CODE> charge et d&eacute;marre un noyau Linux &agrave;
+partir d'un p&eacute;riph&eacute;rique. Vous aurez besoin d'avoir un disque
+contenant ce noyau (SCSI, IDE, disquette dans un format reconnu par MILO). Ces
+images peuvent &ecirc;tre compress&eacute;es &agrave; l'aide de gzip&nbsp;; les
+premi&egrave;res versions de MILO reconnaissaient ces fichiers &agrave; l'aide
+de leur extension '.gz', tandis que les plus r&eacute;centes font appel
+&agrave; la signature du fichier.</P>
+
+<P>Il est important de retenir que la version de MILO ne n&eacute;cessite pas de
+correspondance avec celle du noyau Linux que vous souhaitez charger. Vous
+d&eacute;marrez Linux avec la commande suivante&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+MILO> boot [-t file-system] device-name:file-name \
+           [[boot-option] [boot-option]...]
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P><CODE>device-name</CODE> repr&eacute;sente le nom du p&eacute;riph&eacute;rique que
+vous souhaitez utiliser, <CODE>file-name</CODE> le nom de fichier de l'image &agrave;
+charger en m&eacute;moire. Tous les arguments sp&eacute;cifi&eacute;s par la
+suite sont directement transmis au programme ex&eacute;cut&eacute; (ici le
+noyau Linux).</P>
+
+<P>Si vous installez Linux Red Hat pour Alpha vous devrez sp&eacute;cifier un
+p&eacute;riph&eacute;rique racine (root device) et autres options&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+MILO> boot fd0:vmlinux.gz root=/dev/fd0 load_ramdisk=1
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>MILO contient automatiquement les p&eacute;riph&eacute;riques en mode bloc
+configur&eacute;s dans vmlinux. J'ai test&eacute; le pilote de disquette, de
+disque IDE ainsi qu'un certain nombre de pilotes SCSI (par exemple le NCR810),
+et ceux-ci fonctionnent bien. Il est de m&ecirc;me important d'attribuer un ID
+SCSI raisonnable &agrave; votre contr&ocirc;leur SCSI. Par d&eacute;faut MILO
+l'initialisera &agrave; la valeur maximale (7) qui, en principe, devrait
+fonctionner correctement. N&eacute;anmoins, si vous le souhaitez, vous pouvez
+sp&eacute;cifier l'ID SCSI de votre N-i&egrave;me contr&ocirc;leur SCSI en
+d&eacute;finissant la variable <CODE>SCSI</CODE><EM>n</EM><CODE>_HOSTID</CODE>&nbsp;; par exemple pour
+pr&eacute;ciser que l'ID SCSI du contr&ocirc;leur num&eacute;ro 0 est 7
+utilisez la commande suivante&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+setenv SCSI0_HOSTID 7
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H2><A NAME="MILO-reboot-section"></A> <A NAME="ss6.3">6.3 Red&eacute;marrage de Linux</A>
+</H2>
+
+<P>Vous pouvez vouloir red&eacute;marrer Linux &agrave; l'aide de la commande
+<CODE>shutdown -r now</CODE>. Dans ce cas, le noyau Linux repasse le contr&ocirc;le
+&agrave; MILO (par une instruction HALT CallPAL entrypoint). MILO laisse une
+version de lui-m&ecirc;me compress&eacute;e en m&eacute;moire pour cette seule
+raison et d&eacute;tecte que le syst&egrave;me est red&eacute;marr&eacute; par
+le biais du HWRPB (Hardware Restart Parameter Block). Dans ce cas vous pouvez
+&nbsp;ed&eacute;marrer &agrave; l'aide de la m&ecirc;me commande qui vous a
+servi au d&eacute;marrage pr&eacute;c&eacute;dent. Il y a un
+d&eacute;lai de 30 secondes qui vous permet d'interrompre ce processus et de
+d&eacute;marrer n'importe quel autre noyau de n'importe quelle autre
+mani&egrave;re.</P>
+
+<H2><A NAME="MILO-bootopt-section"></A> <A NAME="ss6.4">6.4 La commande ''bootopt''</A>
+</H2>
+
+<P>Pour les syst&egrave;mes utilisant la m&eacute;moire flash comme les
+AlphaPC64, EB164 et EB66+, il existe diff&eacute;rentes options de
+d&eacute;marrage. Celles-ci sont modifiables &agrave; l'aide de la commande
+<CODE>bootopt</CODE>. Cette commande a un unique argument&nbsp;: il s'agit d'un nombre
+d&eacute;cimal qui repr&eacute;sente le type d'image &agrave; ex&eacute;cuter
+au prochain red&eacute;marrage de la machine (Allumage / Extinction ou Reset).</P>
+
+<P>La valeur <B>0</B> active le Debug Monitor, <B>1</B> active la console ARC.</P>
+
+<P>Ce chiffre correspond en fait &agrave; la N-i&egrave;me image pr&eacute;sente
+dans la PROM. Afin d'indiquer que l'action &agrave; effectuer est le
+d&eacute;marrage, il faut ajouter 128 &agrave; ce chiffre pour obtenir la
+valeur &agrave; transmettre &agrave; <CODE>bootopt</CODE>. Vous aurez donc la commande
+suivante (sachant que MILO est la 3&egrave;me image en PROM)&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+MILO> bootopt 131
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P><CODE>Note :</CODE> Soyez tr&egrave;s vigilant avec cette commande, une bonne
+r&egrave;gle est de ne jamais utiliser la valeur 0 (Debug Monitor), mais
+utilisez plut&ocirc;t le syst&egrave;me des jumpers pour obtenir ce
+r&eacute;sultat.</P>
+
+<H2><A NAME="MILO-fmu-section"></A> <A NAME="s7">7. Ex&eacute;cution du gestionnaire de m&eacute;moire flash</A></H2>
+
+<P>La commande <CODE>run</CODE> est utilis&eacute;e pour ex&eacute;cuter le
+gestionnaire de m&eacute;moire flash. Avant de d&eacute;marrer, vous devrez
+disposer d'un p&eacute;riph&eacute;rique accessible par MILO contenant le
+programme updateflash. Celui-ci (comme vmlinux) peut &ecirc;tre
+compress&eacute; avec gzip. Vous devez ex&eacute;cuter ce programme
+&agrave; l'aide de la commande suivante&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+MILO> run fd0:fmu.gz
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Une fois charg&eacute; et initialis&eacute;, le gestionnaire de
+m&eacute;moire flash vous donnera quelques informations concernant le
+p&eacute;riph&eacute;rique flash, et vous proposera une invite de
+commandes. &Agrave; nouveau la commande <CODE>help</CODE> est salvatrice.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+Linux MILO Flash Management Utility V1.0
+Flash device is an Intel 28f008SA
+16 segments, each of 0x10000 (65536) bytes
+Scanning Flash blocks for usage
+Block 12 contains the environment variables
+FMU>
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P><CODE>Notez</CODE> que sur les syst&egrave;mes qui permettent la sauvegarde de
+variables d'environnement et qui disposent de plus d'un bloc de m&eacute;moire
+flash (par exemple l'AlphaPC64), le gestionnaire de m&eacute;moire
+flash cherchera un bloc disponible pour la sauvegarde des variables
+d'environnement de MILO. Si un tel bloc existe, le gestionnaire de
+m&eacute;moire flash vous indiquera son emplacement. Dans le cas
+contraire, vous devrez utiliser la commande <CODE>environment</CODE> pour
+d&eacute;finir un bloc et l'initialiser. Dans l'exemple ci-dessus le bloc
+num&eacute;ro 12 de la m&eacute;moire flash renferme les variables
+d'environnement de MILO.</P>
+
+<H2><A NAME="ss7.1">7.1 La commande ''help''</A>
+</H2>
+
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+FMU> help
+FMU command summary:
+
+list            - List the contents of flash
+program         - program an image into flash
+quit            - Quit
+environment     - Set which block should contain the environment variables
+bootopt num     - Select firmware type to use on next power up
+help            - Print this help text
+FMU>
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P><EM>Note&nbsp;:</EM> les commandes <CODE>environment</CODE> et <CODE>bootopt</CODE> ne sont
+disponibles que sur les syst&egrave;mes EB66+, EB164, PC164 et AlphaPC64
+(ainsi que leur clones).</P>
+
+<H2><A NAME="ss7.2">7.2 La commande ''list''</A>
+</H2>
+
+<P>La commande ''list'' affiche les informations sur l'utilisation de la
+m&eacute;moire flash. Pour les syst&egrave;mes disposant de plus d'un
+bloc, l'usage de chaque bloc est affich&eacute;.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+FMU> list
+Flash blocks:  0:DBM  1:DBM  2:DBM  3:WNT  4:WNT  5:WNT  6:WNT  7:WNT  8:MILO
+        9:MILO 10:MILO 11:MILO 12:MILO 13:U 14:U 15:WNT
+Listing flash Images
+  Flash image starting at block 0:
+    Firmware Id: 0 (Alpha Evaluation Board Debug Monitor)
+    Image size is 191248 bytes (3 blocks)
+    Executing at 0x300000
+  Flash image starting at block 3:
+    Firmware Id: 1 (Windows NT ARC)
+    Image size is 277664 bytes (5 blocks)
+    Executing at 0x300000
+  Flash image starting at block 8:
+    Firmware Id: 7 (MILO/Linux)
+    Image size is 217896 bytes (4 blocks)
+    Executing at 0x200000
+FMU>
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H2><A NAME="ss7.3">7.3 La commande ''program''</A>
+</H2>
+
+<P>Le gestionnaire de m&eacute;moire flash contient une copie
+compress&eacute;e d'une image flash de MILO. Cette commande vous permet
+de sauvegarder cette image dans la PROM. La commande vous permet de revenir en
+arri&egrave;re, mais avant de l'utiliser vous devriez utiliser la commande list
+pour d&eacute;finir o&ugrave; il faut mettre MILO. Si MILO est
+d&eacute;j&agrave; dans la m&eacute;moire flash, le gestionnaire de
+m&eacute;moire flash vous demandera si vous souhaitez remplacer la version
+actuellement en PROM.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+FMU> program
+Image is:
+    Firmware Id: 7 (MILO/Linux)
+    Image size is 217896 bytes (4 blocks)
+    Executing at 0x200000
+Found existing image at block 8
+Overwrite existing image? (N/y)? y
+Do you really want to do this (y/N)? y
+Deleting blocks ready to program: 8 9 10 11
+Programming image into flash
+Scanning Flash blocks for usage
+FMU>
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P><EM>!!! IMPORTANT !!!</EM> Attendez que cela soit fini avant
+d'&eacute;teindre votre ordinateur.</P>
+
+<P><EM>!!! IMPORTANT !!!</EM> Je n'insisterai jamais assez sur le fait que vous
+devez &ecirc;tre extr&ecirc;mement prudent lorsque vous effectuez ce genre de
+manipulation. Une tr&egrave;s bonne r&egrave;gle &agrave; respecter est de ne
+jamais effacer le Debug Monitor.</P>
+
+<H2><A NAME="ss7.4">7.4 La commande ''environment''</A>
+</H2>
+
+<P>Cette commande d&eacute;termine quel est le bloc qui recevra les variables
+d'environnement.</P>
+
+<H2><A NAME="ss7.5">7.5 La commande ''bootopt''</A>
+</H2>
+
+<P>Il s'agit de la m&ecirc;me commande que celle de MILO (Section 
+<A HREF="#MILO-bootopt-section">La commande ''bootopt''</A>). </P>
+
+<H2><A NAME="ss7.6">7.6 La commande ''quit''</A>
+</H2>
+
+<P>Cette commande n'a que peu de sens, car la seule mani&egrave;re possible
+pour se retrouver sous MILO est de red&eacute;marrer le syst&egrave;me.</P>
+
+<H2><A NAME="s8">8. Restrictions</A></H2>
+
+<P>Malheureusement la perfection n'&eacute;tant pas de ce monde, il existe des
+restrictions auxquelles il faut se plier.</P>
+
+<P>MILO n'est pas con&ccedil;u pour charger d'autres syst&egrave;mes
+d'exploitation que Linux, cependant il peut charger et ex&eacute;cuter des
+images dont l'ex&eacute;cution est possible au m&ecirc;me emplacement
+m&eacute;moire que Linux (c'est &agrave; dire&nbsp;: 0xFFFFFC0000310000). C'est ce
+qui permet au gestionnaire de m&eacute;moire flash de fonctionner.</P>
+
+<P>Les sources du PALcode contenues dans <CODE>miniboot/palcode/</CODE><EM>toto</EM>
+sont correctes, mais ce PALcode est probl&eacute;matique lorsqu'il est
+compil&eacute; avec la derni&egrave;re version de <CODE>gas</CODE>.
+Probl&egrave;me qui n'existe pas avec l'ancien ex&eacute;cutable gas fourni
+avec les cartes d'&eacute;valuation. J'essaie actuellement de trouver
+quelqu'un capable de r&eacute;soudre ce probl&egrave;me. Pour l'instant, j'ai
+fourni un PALcode pr&eacute;compil&eacute; pour les cartes supportant MILO et
+David Mosberger-Tang a une version de gas corrig&eacute;e sur son site ftp.</P>
+
+<H2><A NAME="s9">9. D&eacute;pannage</A></H2>
+
+<P>Voici un ensemble de probl&egrave;mes courants que certaines personnes ont
+rencontr&eacute;s&nbsp;; vous trouverez, ensuite, leur solution.</P>
+
+<P><B>Lecture de disques DOS depuis le Debug Monitor.</B></P>
+<P>Quelques versions du Debug Monitor (pr&eacute;-version 2.0) ont
+un probl&egrave;me avec le gestionnaire DOS g&eacute;n&eacute;r&eacute;
+&agrave; partir de Linux. Ce probl&egrave;me se manifeste de la mani&egrave;re
+suivante&nbsp;: le Debug Monitor semble lire correctement les premiers
+secteurs de la disquette, puis affiche, en boucle, le message "Bad Sectors".
+Cela vient apparemment du fait qu'il existe une diff&eacute;rence entre le
+syst&egrave;me de fichiers DOS tel que l'attend le Debug Monitor et
+l'impl&eacute;mentation de DOSFS sous Linux. Afin de r&eacute;soudre ce
+probl&egrave;me, utilisez un PC sous DOS pour confectionner la disquette (et
+non pas Linux). Par exemple, si le chargement du fichier <CODE>MILO.cab</CODE> ne
+fonctionne pas, effectuez les op&eacute;rations suivantes sur une machine DOS&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+copy a:MILO.cab c:
+copy c:MILO.cab a:
+del c:MILO.cab
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Et r&eacute;essayez de d&eacute;marrer depuis cette disquette. Cela devrait
+r&eacute;soudre le probl&egrave;me.</P>
+
+<P><B>Milo affiche une s&eacute;rie de </B><CODE>O></CODE><B> et n'accepte pas de
+commandes.</B>
+Ceci arrive quand MILO a &eacute;t&eacute; compil&eacute; pour utiliser
+COM1 comme console secondaire. Dans ce cas, MILO reproduit l'affichage sur COM1
+et accepte des saisies depuis ce dernier. C'est excellent pour
+d&eacute;boguer, mais pas tant que &ccedil;a si vous avez un
+p&eacute;riph&eacute;rique autre qu'un terminal s&eacute;rie connect&eacute;.
+Si cela arrive, d&eacute;connectez le p&eacute;riph&eacute;rique attach&eacute;
+au port COM1 ou mettez-le hors tension jusqu'&agrave; ce que le noyau Linux ait
+d&eacute;marr&eacute;. &Agrave; ce stade tout devrait fonctionner correctement.</P>
+
+<P><B>MILO se plaint de ce que l'image du noyau poss&egrave;de un mauvais
+'magic number'.</B></P>
+<P>Les anciennes versions de MILO ne sont pas compatibles avec les fichiers
+objets de type ELF. Cela pourrait &ecirc;tre la source de vos ennuis. Si
+c'&eacute;tait le cas, passez &agrave; la version la plus r&eacute;cente que
+vous pourrez trouver. Toutes les versions &agrave; partir de la 2.0.20 sont
+compatibles avec les objets ELF. D'autre part il se pourrait que l'image de
+MILO soit corrompue, ou qu'il faille ajouter l'extension '.gz' au nom du
+fichier noyau.</P>
+
+<P><B>MILO affiche "...turning on virtual addressing and jumping to the Linux
+Kernel" puis rien ne se passe.</B></P>
+<P>Une des causes possibles est que l'image du noyau est configur&eacute;e de
+mani&egrave;re incorrecte ou qu'elle a &eacute;t&eacute; produite pour
+un autre type de machine Alpha. Une autre possibilit&eacute; est que la carte
+vid&eacute;o est une TGA (ZLXp) et que le noyau est configur&eacute; pour
+utiliser le VGA (ou l'inverse). Il est utile de compiler le noyau pour qu'il
+affiche sa console sur COM1 (echo console) et donc de pouvoir, dans ce
+cas, connecter un terminal s&eacute;rie ou alors d'essayer le noyau qui
+&eacute;tait livr&eacute; avec votre distribution Linux.</P>
+
+<P><B>MILO ne reconna&icirc;t pas les p&eacute;riph&eacute;riques SCSI.</B></P>
+<P>L'image standard de MILO comporte autant de pilotes de
+p&eacute;riph&eacute;riques qu'il en existe de stables pour Alpha (au moment de
+la r&eacute;daction de ce manuel il contient les pilotes pour&nbsp;: NCR810, QLOGIC
+ISP, Buslogic et Adaptec 294x/394x). Si votre carte n'est pas support&eacute;e
+c'est peut-&ecirc;tre que le pilote n'est pas encore suffisamment stable sur
+plate-forme Alpha. Vous pouvez obtenir la liste des p&eacute;riph&eacute;riques
+SCSI support&eacute;s par une image MILO avec la commande <CODE>show</CODE>.</P>
+
+<H2><A NAME="s10">10. Remerciements</A></H2>
+
+<P>Je souhaiterais remercier&nbsp;:
+<UL>
+<LI>Eric Rasmussen et Eilleen Samberg, les auteurs du PALcode&nbsp;;</LI>
+<LI>Jim Paradis pour le pilote clavier, l'interface originelle de MILO et
+son travail sur AlphaBIOS&nbsp;;</LI>
+<LI>Jay Estabrook pour son aide et ses d&eacute;bogages&nbsp;;</LI>
+<LI>David Mosberger-Tang pour la version freeware de l'&eacute;mulateur BIOS
+et son appui et ses encouragements&nbsp;;</LI>
+<LI>Le dernier, et pas des moindres, Linus Torvalds pour le code du timer et
+celui du noyau.</LI>
+</UL>
+</P>
+
+<P>Beaucoup de choses restent &agrave; faire sous MILO&nbsp;; s'il y a quelque chose
+que vous souhaitez faire ou ajouter vous-m&ecirc;me, faites-le moi savoir&nbsp;:
+<A HREF="mailto:david.rusling@reo.mts.dec.com">david.rusling@reo.mts.dec.com</A>, afin de ne pas d&eacute;velopper deux
+fois la m&ecirc;me chose.</P>
+
+<P>Pour finir, un grand merci &agrave; Digital pour le d&eacute;veloppement d'un
+si merveilleux processeur (et pour le salaire qu'ils me versent afin de le
+faire).</P>
+
+</BODY>
+</HTML>

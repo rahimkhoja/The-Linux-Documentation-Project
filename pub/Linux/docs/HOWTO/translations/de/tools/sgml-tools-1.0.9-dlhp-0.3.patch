@@ -1,0 +1,175 @@
+diff -u -r sgml-tools-1.0.9/lib/SGMLTools/Html2Html.pm sgml-tools-1.0.9-neu/lib/SGMLTools/Html2Html.pm
+--- sgml-tools-1.0.9/lib/SGMLTools/Html2Html.pm	Fri Mar 20 12:26:44 1998
++++ sgml-tools-1.0.9-neu/lib/SGMLTools/Html2Html.pm	Sun Aug 15 00:26:15 1999
+@@ -254,7 +254,7 @@
+     my $next = $use_imgs  
+                   ? qq(<IMG SRC="next.gif" ALT="$nextlabel">)
+                   : qq($nextlabel);
+-    $next = qq(<A HREF="$firstname-$myfilenum.$fileext">$next</A>)
++    $next = qq(<A HREF="$firstname-$myfilenum.$fileext" REL="next">$next</A>)
+        if ($myfilenum < $filecount);
+     $next = join "", $next, "\n";
+     $outfh->print($next);
+@@ -264,7 +264,7 @@
+                   ? qq(<IMG SRC="prev.gif" ALT="$prevlabel">)
+                   : qq($prevlabel);
+     $prev = join "", qq(<A HREF="$firstname-), ($myfilenum - 2),
+-                     qq(.$fileext">$prev</A>)
++                     qq(.$fileext" REL="prev">$prev</A>)
+        if ($myfilenum >= 3);
+     $prev = join "", $prev, "\n";
+     $outfh->print($prev);
+@@ -274,7 +274,7 @@
+                 ? qq(<IMG SRC="toc.gif" ALT="$toclabel">)
+                 : qq($toclabel);
+     $toc = join "", qq(<A HREF="$firstname.$fileext#toc),
+-                    &section_num($secnr, 0), qq(">$toc</A>)
++                    &section_num($secnr, 0), qq(" REL="contents">$toc</A>)
+        if ($outfh->fileno != STDOUT->fileno);
+     $toc = join "", $toc, "\n";
+     $outfh->print($toc);
+@@ -340,7 +340,7 @@
+ 	if ($outfh->fileno != STDOUT->fileno);
+     $outfh->print($toc,"\n");
+ 
+-    $outfh->print("</HEAD>\n<BODY>\n");
++    $outfh->print("</HEAD>\n<BODY BGCOLOR=\"#FFFFFF\">\n");
+     &browse_links($outfh, $filenum, 1);
+ }
+ 
+diff -u -r sgml-tools-1.0.9/lib/dist/fmt_latex2e.pl sgml-tools-1.0.9-neu/lib/dist/fmt_latex2e.pl
+--- sgml-tools-1.0.9/lib/dist/fmt_latex2e.pl	Tue Oct 13 13:48:02 1998
++++ sgml-tools-1.0.9-neu/lib/dist/fmt_latex2e.pl	Sun Aug 15 00:27:04 1999
+@@ -16,6 +16,14 @@
+ 
+ use File::Copy;
+ 
++# ps2pdf available?
++my $values = [ "dvi", "tex", "ps" ];
++my $pdfdir;
++foreach $pdfdir (split (":", $ENV{'PATH'}))
++{
++    $values =  [ "dvi", "tex", "ps", "pdf" ] if -x "$pdfdir/ps2pdf";
++}
++
+ my $latex2e = {};
+ $latex2e->{NAME} = "latex2e";
+ $latex2e->{HELP} = <<EOF;
+@@ -24,7 +32,7 @@
+ EOF
+ $latex2e->{OPTIONS} = [
+    { option => "output", type => "l", 
+-     'values' => [ "dvi", "tex", "ps" ], short => "o" },
++     'values' => $values, short => "o" },
+    { option => "bibtex", type => "f",  short => "b" },
+    { option => "makeindex", type => "f",  short => "m" },
+    { option => "pagenumber", type => "i", short => "n" },
+@@ -166,7 +174,9 @@
+       $global->{papersize} ne "a4" ||
+       $latex2e->{pagenumber} != 1 ||
+       $global->{pass} ne "" ||
+-      $latex2e->{makeindex})
++      $latex2e->{makeindex} ||
++      $latex2e->{output} eq "pdf" ||
++      $latex2e->{output} eq "ps")    
+     {
+       my $langlit = ISO2English ($global->{language});
+       $langlit = ($langlit eq 'english') ? "" : ",$langlit"; 
+@@ -178,7 +188,17 @@
+ 	    {
+ 	      s/\\documentclass\[.*\]/\\documentclass\[$replace\]/;
+               $_ = $_ . "\\makeindex\n" if ($latex2e->{makeindex});
+-            }  
++            }
++	  if ($latex2e->{output} eq "ps" ||
++              $latex2e->{output} eq "pdf")
++            {
++ 	      $_ = $_ . "\\usepackage{times}\n" 
++                if (/^\\documentclass/);
++              $_ = $_ . "\\usepackage\[ps2pdf\]{hyperref}\n" 
++		if (/^\\usepackage{epsfig}/);
++              $_ = "\\def\\htmlurl#1#2{\\href{#1}{#2}}\n"  
++	        if (/^\\def\\htmlurl/);
++	    }
+           if (/%end-preamble/)
+ 	    {
+ 	      if ($latex2e->{pagenumber}) 
+@@ -236,8 +256,15 @@
+       return 0;
+     }
+   `dvips -q -t $global->{papersize} -o $filename.ps $filename.dvi`;
+-  $global->{debug} || unlink ("$filename.dvi", "$filename.tex");
+-
++  
++  if ($latex2e->{output} eq "ps")
++    {
++      $global->{debug} || unlink ("$filename.dvi", "$filename.tex", "$filename.out");
++      return 0;
++    }
++   
++  `ps2pdf -sPAPERSIZE=$global->{papersize} $filename.ps`;
++  $global->{debug} || unlink ("$filename.dvi", "$filename.tex", "$filename.ps", "$filename.out");
+   return 0;
+ };
+ 
+diff -u -r sgml-tools-1.0.9/lib/dist/sgmltool/html/mapping sgml-tools-1.0.9-neu/lib/dist/sgmltool/html/mapping
+--- sgml-tools-1.0.9/lib/dist/sgmltool/html/mapping	Tue Feb 10 21:16:42 1998
++++ sgml-tools-1.0.9-neu/lib/dist/sgmltool/html/mapping	Sun Aug 15 00:26:15 1999
+@@ -66,8 +66,8 @@
+ <comment>	+	"<H4>Comment</H4>"	+
+ </comment>		
+ 
+-<abstract>	+	"<P><HR>\n<EM>"
+-</abstract>		"</EM>\n<HR>"		+
++<abstract>	+	"<P><HR NOSHADE SIZE=1>\n<FONT SIZE=-1 FACE=\"Helvetica, Arial\">"
++</abstract>		"</FONT>\n<HR NOSHADE SIZE=1>"		+
+ 
+ <appendix>	+	"<H2>Appendix</H2>"	+
+ </appendix>
+diff -u -r sgml-tools-1.0.9/lib/dist/sgmltool/latex2e/mapping sgml-tools-1.0.9-neu/lib/dist/sgmltool/latex2e/mapping
+--- sgml-tools-1.0.9/lib/dist/sgmltool/latex2e/mapping	Fri Jun 26 21:39:17 1998
++++ sgml-tools-1.0.9-neu/lib/dist/sgmltool/latex2e/mapping	Sun Aug 15 00:30:22 1999
+@@ -13,6 +13,7 @@
+ 			"\\usepackage{babel}\n"
+ 			"\\usepackage{epsfig}\n"
+ 			"\\usepackage{[OPTS]}\n"
++			"\\def\\htmlurl#1#2{#2}\n"
+ 			"\\def\\addbibtoc{\n"
+ 			"\\addcontentsline{toc}{section}{\\numberline{\\mbox{}}\\relax\\bibname}\n"
+ 			"}%end-preamble\n"	+
+@@ -28,6 +29,7 @@
+ 			"\\usepackage{babel}\n"
+ 			"\\usepackage{epsfig}\n"
+ 			"\\usepackage{[OPTS]}\n"
++			"\\def\\htmlurl#1#2{#2}\n"
+ 			"\\def\\addbibtoc{\n"
+ 			"\\addcontentsline{toc}{chapter}{\\numberline{\\mbox{}}\\relax\\bibname}\n"
+ 			"}\n"
+@@ -44,6 +46,7 @@
+ 			"\\usepackage{babel}\n"
+ 			"\\usepackage{epsfig}\n"
+ 			"\\usepackage{[OPTS]}\n"
++			"\\def\\htmlurl#1#2{#2}\n"
+ 			"\\def\\addbibtoc{\n"
+ 			"\\addcontentsline{toc}{chapter}{\\numberline{\\mbox{}}\\relax\\bibname}\n"
+ 			"}\n"
+@@ -258,7 +261,7 @@
+ <url>			"\\nameurl{[URL]}{[NAME]}"
+ </url>
+ 
+-<htmlurl>		"\\onlynameurl{[NAME]}"
++<htmlurl>		"\\htmlurl{[URL]}{[NAME]}"
+ </htmlurl>
+ 
+ <x>	
+@@ -294,8 +297,8 @@
+ <tscreen>	+	"\\begin{tscreen}"	+
+ </tscreen>	+	"\\end{tscreen}"	+
+ 
+-<quote> +       "\\begin{quotation}"    +
+-</quote>        +       "\\end{quotation}"      +
++<quote>		+       "\\begin{quote}"    +
++</quote>        +       "\\end{quote}"      +
+ 
+ % theorems and such
+ 

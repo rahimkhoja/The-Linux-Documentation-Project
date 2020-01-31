@@ -1,0 +1,229 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+<HEAD>
+ <META NAME="GENERATOR" CONTENT="LinuxDoc-Tools 0.9.21">
+ <TITLE>Mini-HOWTO Machines Multi-Ethernet</TITLE>
+</HEAD>
+<BODY>
+<H1>Mini-HOWTO Machines Multi-Ethernet</H1>
+
+<H2>Don Becker, <CODE>becker@cesdis.gsfc.nasa.gov</CODE></H2>5 ao&ucirc;t 1995
+<HR>
+<EM>Ce mini-Howto explique comment configurer Linux pour qu'il reconnaisse
+plusieurs cartes Ethernet sur une même machine.</EM>
+<HR>
+<H2><A NAME="s1">1. Introduction</A></H2>
+
+<P>Dans le cas de la plupart des distributions classiques de Linux, il
+suffit d'ajouter la ligne suivante au début de votre fichier
+<CODE>/etc/lilo.conf</CODE> et de relancer <CODE>lilo</CODE>&nbsp;:</P>
+<P>
+<PRE>
+append = "ether=0,0,eth1"
+</PRE>
+</P>
+<P>C'est tout ce que vous avez à faire. Lors du prochain redémarrage de
+la machine, Linux devrait reconnaître la seconde carte.</P>
+
+<H2><A NAME="s2">2. Les différentes solutions</A></H2>
+
+
+<P>Par défaut, le noyau Linux ne recherche qu'une seule carte Ethernet,
+et ne va pas plus loin dès qu'il en a trouvé une. Il y a trois façons
+de contraindre le noyau à rechercher des cartes supplémentaires. Par
+ordre de simplicité (et de souplesse) croissante&nbsp;:
+<UL>
+<LI>fournir des paramètres au noyau lors du démarrage&nbsp;;</LI>
+<LI>configurer le chargeur pour qu'il fournisse lui-même
+systématiquement ces paramètres au noyau&nbsp;;</LI>
+<LI>modifier les tables de détection des cartes Ethernet du noyau
+dans le fichier <CODE>drivers/net/Space.c</CODE> (et recompiler le noyau
+après coup).</LI>
+</UL>
+</P>
+<P>Dans la plupart des cas, c'est la deuxième solution qui convient le
+mieux, et correspond à ce que nous avons décrit en introduction. Les
+deux premières solutions reposent sur le passage de paramètres au
+noyaux et sont décrites dans la section suivante. La troisième
+solution est décrite ensuite.</P>
+
+<H2><A NAME="s3">3. Transmettre des paramètres au noyau</A></H2>
+
+
+<P>Le noyau Linux admet qu'on lui fournisse un certain nombre de
+paramètres lors de son lancement. Le plus souvent ces paramètres
+décrivent des aspects de la configuration qui ne peuvent être
+déterminés qu'au moment du démarrage. Pour les cartes réseaux, le
+paramètre est le suivant&nbsp;:</P>
+<P>
+<PRE>
+ether=IRQ,adresse-E/S,param1,param2,nom
+</PRE>
+</P>
+
+<P>Les valeurs numériques admises peuvent être exprimées en décimal, en
+octal (précédées par un '0') ou en hexadécimal (précédées par '0x'). Le
+premier argument qui n'est pas une valeur numérique est pris comme
+<EM>nom</EM> du périphérique (ici une carte réseau). Les paramètres vides
+(entre virgules) ont zéro comme valeur par défaut, et les paramètres
+manquants avant le nom ne sont pas modifiés.</P>
+<P>
+<DL>
+<DT><B><CODE>IRQ</CODE></B><DD><P>Ce paramètre indique l'IRQ (ligne d'interruption) à
+configurer (pour les cartes admettant un paramétrage logiciel de
+l'IRQ) ou à utiliser (pour celles où l'IRQ est configurée avec des
+cavaliers sur la carte). Une valeur nulle (0) indique de demander à la
+carte quelle IRQ utiliser (si elle le permet) ou d'utiliser l'autoIRQ
+si la carte ne le permet pas.</P>
+
+<DT><B><CODE>adresse-E/S</CODE></B><DD><P>Ce paramètre indique l'adresse
+d'entrée/sortie à tester. Une valeur nulle (0) demande le test de
+toutes les adresses d'entrée/sortie raisonnables. Celles-ci sont
+déterminées d'après une carte des zones d'entrée/sortie habituelles
+pour les différents types de périphérique. Cette carte des zones est
+ignorée si une adresse d'entrée/sortie est spécifiée. Utilisé avec le
+paramètre
+<CODE>reserve=<EM>base</EM>,<EM>taille</EM>,</CODE>...
+<BLOCKQUOTE>Se
+reporter à la documentation <EM>Lilo</EM>.</BLOCKQUOTE>
+ ceci permet
+d'empêcher l'auto-test d'une zone d'entrée/sortie par d'autres pilotes
+et d'éviter ainsi le dysfonctionnement d'un périphérique qui se
+trouverait pertubé par ces tests.</P>
+
+<DT><B><CODE>param1,param2</CODE></B><DD><P>Au départ, ces paramètres permettaient
+d'indiquer l'adresse d'une zone de mémoire partagée pour les cartes qui
+utilisaient cette technique, comme la WD8013. Leur utilisation a
+ensuite été étendue à la transmission d'autres informations propres
+aux différents types de cartes.</P>
+
+<DT><B><CODE>nom</CODE></B><DD><P>Ce paramètre indique le nom d'un périphérique
+prédéfini. Le noyau standard définit ainsi au moins "<CODE>eth0</CODE>",
+"<CODE>eth1</CODE>", "<CODE>eth2</CODE>" et "<CODE>eth3</CODE>". D'autres noms
+peuvent être prédéfinis (pour PPP, SLIP, etc.) mais ils ont une
+sémantique différente (pour toute précision, se reporter aux FAQ et
+HOWTO correspondants).</P>
+
+</DL>
+</P>
+<P>Deux méthodes peuvent être utilisées pour fournir ces paramètres au
+noyau Linux lors de son lancement. La méthode habituelle est de les
+indiquer directement après le nom de l'image noyau à
+charger. L'exemple suivant permet de tester les quatre emplacements
+possibles&nbsp;:</P>
+<P>
+<PRE>
+linux ether=0,0,eth1 ether=0,0,eth2 ether=0,0,eth3
+</PRE>
+</P>
+<P>Pour éviter d'avoir à taper ceci à chaque démarrage, il est plus
+pratique de configurer votre chargeur.</P>
+
+<H2><A NAME="ss3.1">3.1 Configurer votre chargeur</A>
+</H2>
+
+
+<P>Il est supposé dans ce qui suit que vous utilisez le chargeur Linux
+standard <EM>Lilo</EM>.</P>
+
+<P>Il est bien évidemment pénible d'avoir à taper une série de paramètres
+lors de chaque démarrage, et de plus cela empêcherait tout redémarrage
+involontaire de s'effectuer correctement
+<BLOCKQUOTE>Bien que ce type de
+redémarrage ne se produise pas sous Linux
+<CODE>;-)</CODE>(<EM>N.D.T.</EM>).</BLOCKQUOTE>
+. L'ajout d'une ligne
+<CODE>append</CODE> à votre fichier de configuration <EM>Lilo</EM>
+(<CODE>/etc/lilo.conf</CODE>) vous permet de fournir automatiquement ces
+paramètres au noyau (n'oubliez pas de relancer <CODE>lilo</CODE> pour
+mettre à jour votre configuration).</P>
+<P>
+<PRE>
+append = "ether=0,0,eth1 ether=0,0,eth2 ether=0,0,eth3"
+</PRE>
+</P>
+<P>Cet exemple est équivalent au précédent (test des quatre
+emplacements), en utilisant cette fois <EM>Lilo</EM> pour transmettre
+à chaque démarrage ces paramètres au noyau.</P>
+
+<H2><A NAME="s4">4. Modifier le noyau</A></H2>
+
+
+<P>Si vous pouvez configurer votre système sans toucher au code source du
+noyau, nous vous recommandons fortement de faire ainsi (cf. supra). Il
+est difficile de garder une trace d'une modification apportée au code
+source et cela complique grandement les mises à jour du
+noyau. Toutefois, cela s'impose dans les situations suivantes&nbsp;:</P>
+<P>
+<UL>
+<LI> lorsque vous avez besoin de plus de quatre cartes (seules
+<CODE>eth0</CODE> à <CODE>eth3</CODE> sont définies dans le source
+<CODE>drivers/net/Space.c</CODE>)&nbsp;;
+</LI>
+<LI> vous devez resteindre les types de périphériques recherchés à
+un sous-ensemble précis de types de cartes quand, par exemple, le
+mécanisme de détection confond des types de cartes différents&nbsp;;
+</LI>
+<LI>quand vous voulez utiliser un nom de périphérique différent de
+<CODE>eth</CODE><EM>x</EM>.
+</LI>
+</UL>
+</P>
+
+<H2><A NAME="s5">5. Notes sur la détection de quelques cartes particulières</A></H2>
+
+
+
+<H2><A NAME="ss5.1">5.1 Cartes Lance/PCNET</A>
+</H2>
+
+
+<P>Le pilote Lance a besoin de tampons DMA en mémoire basse, ce qui fait
+que la procédure de détection des cartes Lance est spécifique à ce
+type de cartes, et effectuée avant la détection des autres périphériques
+réseaux. L'avantage est que les cartes Lance multiples sont
+automatiquement détectées par cette procédure, l'inconvénient est que
+le pilote Lance ignore (pour le moment) les paramètres <EM>Lilo</EM>
+telle l'IRQ.</P>
+
+<H2><A NAME="ss5.2">5.2 La 3C509 en mode ISA</A>
+</H2>
+
+
+<P>La 3C509 présente la caractéristique unique de permettre une détection
+vraiment sûre par le bus ISA. C'est une caractéristique intéressante,
+mais malheureusement pour les situations qui nous intéressent ici,
+cela ne fait pas très bon ménage avec les autres mécanismes de
+détection.</P>
+
+<P>Le problème le plus important est qu'il est difficile de savoir quelle
+carte sera reconnue en premier, l'ordre dépendant de l'adresse
+Ethernet des cartes. Cela signifie que la carte avec l'adresse la
+plus basse se verra affectée à <CODE>eth0</CODE>, et ainsi de suite. Si la
+carte correspondant à <CODE>eth0</CODE> est retirée, toutes les autres
+cartes voient leur nom de périphérique décalé d'une unité vers <CODE>eth0</CODE>.</P>
+
+<P>Un problème lié est qu'il n'est pas possible de laisser une première
+carte inactive, ou une carte active à une adresse ou à une IRQ différentes
+de celles indiquées dans l'EEPROM, ou encore de configurer une carte à une
+adresse spécifique.</P>
+
+<H2><A NAME="ss5.3">5.3 La 3C579 EISA et la 3C509 en mode EISA</A>
+</H2>
+
+
+<P>Les noyaux de version antérieure à la 1.1.25 ne détecteront pas
+correctement les cartes multiples en mode EISA. Si plusieurs
+périphériques <CODE>eth</CODE><EM>x</EM> sont indiqués, la <EM>même</EM>
+carte 3C509 sera détectée plusieurs fois. La solution est de spécifier
+l'adresse d'entrée/sortie directement. Les noyaux de version
+ultérieure détecteront correctement plusieurs cartes en mode EISA, et
+détecteront aussi des cartes en mode ISA supplémentaires, une fois
+toutes les adresses potentielles de cartes en mode EISA testées.</P>
+<P>
+<BLOCKQUOTE>
+Don Becker, <CODE>becker@cesdis.gsfc.nasa.gov</CODE>
+</BLOCKQUOTE>
+</P>
+</BODY>
+</HTML>

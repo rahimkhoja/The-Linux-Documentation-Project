@@ -1,0 +1,563 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+<HEAD>
+ <META NAME="GENERATOR" CONTENT="LinuxDoc-Tools 0.9.21">
+ <TITLE>Le problème du signal 11</TITLE>
+</HEAD>
+<BODY>
+<H1>Le problème du signal 11</H1>
+
+<H2>Rogier Wolff (
+<A HREF="mailto:R.E.Wolff@BitWizard.nl">R.E.Wolff@BitWizard.nl</A>)<BR>
+(traduit par Nat Makarévitch 
+<A HREF="mailto:nat@linux-france.com">nat@linux-france.com</A>)</H2>Version 19970716fr
+<HR>
+<EM>Cette FAQ dresse liste des causes possibles d'un problème que connaissent
+ces derniers temps certains utilisateurs de Linux&nbsp;: la compilation
+d'un important ensemble logiciel
+<BLOCKQUOTE>(par exemple le noyau)</BLOCKQUOTE>
+
+échoue à cause d'un <EM>signal 11</EM>.
+Ce problème peut être causé par un dysfonctionnement d'ordre matériel (cas
+le plus fréquemment observé) ou logiciel.</EM>
+<HR>
+<H2><A NAME="s1">1. À propos de ce document</A></H2>
+
+<P>La 
+<A HREF="http://www.bitwizard.nl/sig11/">version originale</A> de ce document est à présent intégrée à la collection des
+"Mini-Howto" de Linux.<BR>
+La version publiée sur le Web était consultée 300 fois par semaine en juin
+1996 (augmentation&nbsp;: facteur 3 en 3 mois).</P>
+
+<P>La plus récente version de ce texte, librement utilisable s'il n'est pas
+modifié, sur trouve sur
+<A HREF="http://www.linux-france.com/">son site de référence &lt;URL:http://www.linux-france.com/&gt;</A></P>
+<P>Tout commentaire et compte-rendu d'expérience intéresse l'auteur (
+<A HREF="mailto:R.E.Wolff@BitWizard.nl">Rogier Wolff &lt;R.E.Wolff@BitWizard.nl&gt;</A>) mais les suggestions d'ajouts techniquement
+sans valeur seront rejetées.<BR>
+Expédier à 
+<A HREF="mailto:nat@linux-france.com">nat@linux-france.com</A> les commentaires concernant cette adaptation
+française.</P>
+<P>Note&nbsp;: le problème détaillé ici concerne aussi les autres systèmes un
+tant soit peu exigeants&nbsp;: Windows 3.1, FreeBSD, Windows NT,
+NextStep...</P>
+<P>Cette adaptation française doit beaucoup à J. Chion.</P>
+<H2><A NAME="s2">2. Question clé</A></H2>
+
+<P>Voici la question-clé traitée par ce document&nbsp;:
+<PRE>
+Lorsque je compile un noyau Linux la procédure avorte avec un message:
+      gcc: Internal compiler error: program cc1 got fatal signal 11
+Que se passe-t-il ?
+</PRE>
+</P>
+
+<H2><A NAME="ss2.1">2.1 Réponse succincte</A>
+</H2>
+
+<P>Le problème est vraisemblablement causé par un dysfonctionnement du
+matériel. De nombreux composants de l'ordinateur peuvent être impliqués et
+diverses manières de résoudre le problème existent.</P>
+<H2><A NAME="s3">3. Comment s'assurer que le matériel est en cause&nbsp;?</A></H2>
+
+<P>Sitôt après l'échec du <CODE>make</CODE>, invoquez-le à nouveau.</P>
+
+<P>Si la machine parvient à compiler quelques autres fichiers, nous pouvons
+penser que le matériel est défaillant.</P>
+
+<P>
+<A NAME="Expiration du buffer cache"></A> 
+Si, par contre, la compilation cesse tout de suite (message "nothing to be
+done for xxxx" avant nouvel échec au même endroit), il faudra déterminer si
+le contenu de la mémoire vive est toujours bien préservé. Pour cela&nbsp;:
+<PRE>
+        dd if=/dev/DISQUE_DUR of=/dev/null bs=1024k count=MEGAS
+</PRE>
+
+<EM>DISQUE_DUR</EM> remplace ici le nom du fichier spécial associé au
+disque dur stockant les sources. Pour connaître son nom, rester dans le
+répertoire abritant les sources et introduire <CODE>df&nbsp; .</CODE> ("df" suivi
+d'un espace puis un point).<BR>
+<EM>MEGAS</EM> remplace ici le nombre de Mo de mémoire vive dont la
+machine dispose (indiqué par <CODE>free</CODE>).</P>
+
+<P>Cette commande va obliger Linux à lire les informations placées au début du
+disque de façon à "gaver" le contenu du cache disque ("buffer-cache"). Il
+devra donc, par la suite, relire les fichiers source à compiler ainsi que
+les binaires de gcc.</P>
+
+<P>Invoquer <CODE>make</CODE>.<BR></P>
+<P>Si la compilation échoue toujours au même "endroit", le problème est
+probablement d'ordre logiciel. Étudier en ce cas la section consacrée aux
+<A HREF="#Quelles sont les autres causes possibles ?">autres causes possibles</A>.</P>
+<P>Si la compilation échoue à un autre stade, nous pouvons
+conclure que les transferts de données entre le disque et la mémoire vive
+ne sont pas assurés correctement.</P>
+<H2><A NAME="s4">4. Que signifie ce "signal 11"&nbsp;?</A></H2>
+
+<P>Linux avorte grâce au "signal 11" tout programme tentant d'accéder à une
+adresse mémoire ne lui appartenant pas. Parmi les nombreuses causes
+possibles, nous ne pouvons retenir dans l'absolu que deux possibilités,
+dans le cas où cela concerne une version stable de gcc utilisée sur une machine
+très commune&nbsp;: problème matériel ou bien inadéquation de certaines
+composantes des utilitaires logiciels du système.</P>
+
+<P>Lorsque ce problème survient sur une machine sans défaut matériel, il ne
+peut être causé que par une erreur de programmation ou de compilation (en
+l'occurrence du binaire de gcc). Mais lorsque le matériel est défaillant,
+et que des valeurs stockées en mémoire vive changent plus ou moins
+aléatoirement, un programme exigeant tel que gcc ne parviendra pas à mener
+à bien sa mission car il tentera tôt ou tard de déréférencer un pointeur au
+contenu ainsi modifié.</P>
+
+<P>Un pointeur, sur une machine à processeur Intel, s'étend sur 32 bits et
+permet donc d'accéder à 4 Go. Peu de machines Intel disposent d'autant de
+mémoire vive dont la majeure partie serait allouée à gcc&nbsp;!<BR>
+Une adresse de 32 bits aléatoire est donc très probablement illégale et
+Linux tuera le programme qui tente avec elle, selon lui, de manipuler des
+données ne lui appartenant pas.</P>
+
+<H2><A NAME="s5">5. Quel composant incriminer&nbsp;?</A></H2>
+
+<P>Voici une liste des diverses causes de dysfonctionnement du matériel&nbsp;:</P>
+<P>
+<UL>
+<LI>Composants trop lents.
+De mauvaises surprises sont à craindre si l'une des "barrettes" de mémoire
+vive ne fonctionne pas convenablement.  Même une carte mère capable de
+contrôler par test de parité ne détectera pas les erreurs survenant
+lors des cycles d'écriture.<P>Inventaire des causes et solutions&nbsp;:
+<UL>
+<LI>Latence des composants trop importante ("mémoire trop
+lente")<BR>
+Le contrôleur de bus ne parvient pas toujours en ce cas à obtenir à temps
+la donnée requise par le processeur car la mémoire "réagit" trop
+lentement. Solution&nbsp;:augmenter le nombre de cycles d'attente ("wait
+states") grâce au SETUP de la machine. Problème fréquent sur les machines
+486 cadencé à plus de 80 MHz équipées d'un BIOS de marque AMI. (Pat V.)<BR>
+Il est parfois nécessaire de remplacer les composants pour diminuer la
+latence. Les systèmes ayant un bus cadencé à 33 MHz (P100, P133...) ne doivent
+pas employer de RAM avec plus de 60ns de latence, surtout si la carte mère est
+de marque ASUS. L'ensemble peut sembler fonctionner avec des composants à
+70ns mais une petite erreur est alors toujours possible (Andrew
+Eskilsson).
+
+</LI>
+<LI>Composant défecteux<BR>
+Démonter une barrette (ou changer temporairement la seule barrette
+employée) puis relancer le système et tester. Recommencer autant de fois
+que nécessaire afin d'isoler le (ou les&nbsp;!) composants
+défectueux. Prendre garde, le cas échéant, lors de la manipulation des
+mémoires statiques, car une décharge <EM>d'électricité statique</EM> peut
+les <EM>condamner</EM>.
+<P>Témoignage (kettner@cat.et.tudelft.nl)&nbsp;: nous avons éprouvé de grandes
+difficultés avec une machine dont il s'avéra que les quatre barrettes
+étaient défectueuses et modifiaient à peu près un bit par heure de
+fonctionnement. La machine "plantait" environ une fois par jour et les
+compilations de noyau échouaient environ une fois par heure. Cette machine
+a pu exécuter le test mémoire durant 2300 cycles complets sans erreur,
+puis détecta environ 10 erreurs et continua ensuite sans problème durant
+plusieurs centaines de cycles. La compilation de noyau s'avéra le test le plus
+efficace car même le cas le plus favorable ne permettait pas de
+compiler plus de 14 noyaux à la suite. Nous avons donc échangé ces
+barrettes.</P>
+
+
+</LI>
+<LI>Convertisseurs défectueux<BR>
+De nombreux supports de mémoire, permettant de monter des composants 32 bits
+sur des supports 72 points, ne sont pas conçus de façon correcte, en
+particulier les plus anciens.<P>Témoignages&nbsp;: nous avons très longtemps utilisé sans problème un jeu de
+composants sans support de ce type. Mais ils ne furent pas utilisables avec
+un convertisseur (Naresh Sharma (n.sharma@is.twi.tudelft.nl)).</P>
+<P>Paul Gortmaker (paul.gortmaker@anu.edu.au) indique que les convertisseurs
+doivent tous comporter au moins quatre condensateurs de régulation du
+courant.</P>
+
+
+</LI>
+<LI>Mode de rafraîchissement de la mémoire vive inadéquat<BR>
+Les composants "perdent" alors peu à peu les données stockées. Causes (Hank
+Barta (hank@pswin.chi.il.us), Ron Tapia (tapia@nmia.com))&nbsp;: certaines
+cartes mère donnent la possiblité de raréfier les cycles de
+rafraîchissement en vue d'augmenter la bande passante utile du bus (option
+"hidden refresh" du SETUP). Un programme, souvent appelé <CODE>dram</CODE>,
+offre le moyen de configurer le jeu de composants ("chipset") au plus bas
+niveau afin d'obtenir des effets semblables.
+
+</LI>
+<LI>Trop faible nombre de cycles d'attente<BR>
+Certains composants de la carte mère peuvent ne pas fonctionner toujours
+correctement si le nombre de cycles d'attente ("wait states") n'est pas
+approprié. L'augmenter grâce au SETUP.</LI>
+</UL>
+</P>
+
+
+</LI>
+<LI>Défaillance de la mémoire cache<BR>
+Le contenu de la mémoire cache n'est généralement pas certifié par un test
+de parité et une défaillance ne sera donc pas diagnostiquée par la carte
+mère. Test&nbsp;: utiliser le SETUP pour invalider le cache externe ("L2")
+puis faire fonctionner le système. Si les problèmes disparaissent le cache est
+défectueux. Solutions&nbsp;:<P>
+<UL>
+<LI>Vitesse ou latence de la mémoire cache inadéquate.<BR>
+Augmenter, grâce au SETUP, le nombre de cycles d'attente.
+
+</LI>
+<LI>Composant de mémoire défecteux<BR>
+Il faut alors changer de composant cache. <EM>ATTENTION</EM>&nbsp;: il s'agit
+très souvent de mémoire statique, donc <EM>très</EM> fragile (Joseph Barone
+(barone@mntr02.psf.ge.com)).
+
+</LI>
+<LI>Mode d'exploitation du cache inadéquat<BR>
+Le mode "écriture différée" ("write back"), par exemple, cause parfois des
+problèmes lorsque le jeu de composants de la carte mère n'est pas
+correctement conçu (cas observé sur une carte "MV020 486VL3H" (20 Mo RAM)
+par Scott Brumbaugh).
+
+</LI>
+</UL>
+</P>
+
+</LI>
+<LI>Configuration incorrecte de la carte mère<BR>
+Un cavalier ("jumper") détermine parfois le cache qui sera employé (le modèle
+monté sur une micro carte d'extension ou bien les composants de mémoire
+classiques). Exemple&nbsp;: cavalier JP16 sur les ASUS P/I-P55TP4XE version
+2.4.
+
+</LI>
+<LI>Transferts de données entre disque et mémoire<BR>
+Un bloc de données lu sur le disque peut se trouver stocké en mémoire avec
+un bit erroné.<BR>
+Déterminer si c'est la cause du problème en recopiant des fichiers puis en
+comparant la copie à l'original. Répéter ce test&nbsp;: après un <CODE>dd</CODE>
+(consulter à ce propos la section consacrée à l'
+<A HREF="#Expiration du buffer cache">expiration du buffer cache</A>) la compilation avortera
+très vraisemblablement à un autre stade.
+<P>
+<UL>
+<LI>Interruptions masquées durant des transferts IDE<BR>
+Certains disques IDE ne tolèrent pas le démasquage des interruptions lors
+des transferts, en particulier en période de forte charge système
+("hdparm&nbsp;-u0").
+
+</LI>
+<LI>Disque de marque Kalok<BR>
+La qualité des disques Kalok de la série 31xx laisse beaucoup à désirer,
+mieux vaut éviter de les employer. Ils ne sont de toutes façons pas
+compatibles avec Linux. Les réformer ou laisser aux utilisateurs de
+systèmes d'exploitation sans cache disque.
+
+</LI>
+<LI>Disques SCSI<BR>
+Vérifier terminateurs et câbles.  Un câble court peut sembler fonctionner
+avec une terminaison inadéquate mais les données transférées peuvent en
+pâtir. Essayer de valider les options de test de parité.
+</LI>
+</UL>
+</P>
+
+</LI>
+<LI>Augmentation abusive de la cadence d'horloge ("overclocking")<BR>
+Le résultat est le plus souvent aléatoire. Essayer d'exploiter la machine à
+la cadence d'horloge normale.<BR>
+
+Dans un cas au moins (Samuel Ramac (sramac@vnet.ibm.com)) un processeur
+P120 ne tolérait pas 120 MHz mais fonctionnait à 100 MHz. La carte mère
+n'était pas en cause car le bus est en fait plus rapide lorsque l'horloge
+bat à 100 MHz
+<BLOCKQUOTE>CPU à 120&nbsp;: bus à 60 (x 2), CPU à 100&nbsp;:
+bus à 66 (x 1,33)</BLOCKQUOTE>
+. Un autre processeur P120, monté en lieu et
+place, fonctionne d'ailleurs normalement.<BR>
+Tous les "fondeurs" (constructeurs de processeurs) produisent ainsi de
+rares "ratés", ce n'est en rien spécifique à Intel.
+
+</LI>
+<LI>Refroidissement du processeur<BR>
+L'élevation de la température du processeur provoquée par une augmentation
+de la cadence d'horloge ou par une panne du dispositif de refroidissement
+peut générer des dysfonctionnements. Bon révélateur&nbsp;: interdire au
+noyau d'utiliser l'instruction HALT grâce au paramètre LILO adéquat (lire
+le "BootPrompt HOWTO"). La température du circuit augmentera alors beaucoup
+plus vite, même sous faible charge système, et la fréquence d'apparition
+des problèmes augmentera. Le Pentium à l'instruction "FDIV" boguée est
+particulièrement concerné car son ventilateur n'était pas conçu au mieux.
+Notons aussi que la colle employée pour assujetir le radiateur au
+processeur doit présenter des caractéristiques de conduction thermique
+correcte (Arno Griffioen (arno@ixe.net), W. Paul Mills (wpmills@midusa.net),
+Alan Wind (wind@imada.ou.dk))
+<P>Intel indique que la température de la surface du processeur doit être
+comprise entre&nbsp;:<BR>
+<UL>
+<LI>0 et +85° C: Intel486 SX, Intel486 DX, IntelDX2, IntelDX4<BR></LI>
+<LI>0 et +95° C: IntelDX2, IntelDX4 OverDrive®<BR></LI>
+<LI>0 et +80° C: 60 MHz Pentium®<BR></LI>
+<LI>0 et +70° C: 66 to 166 MHz Pentium<BR></LI>
+</UL>
+
+Consulter à ce propos les sections Q6, Q7 et Q13 de ce
+<A HREF="http://pentium.intel.com/procs/support/faqs/iarcfaq.htm">document Intel</A></P>
+
+</LI>
+<LI>Voltage de l'alimentation du processeur<BR>
+Certains processeurs 5 Volts fonctionnent sous 3,3 Volts, mais pas toujours
+de façon parfaite. Pis&nbsp;: les documentations de certains systèmes sont
+incorrectes et recommandent une configuration inadéquate (Karl Heyes
+(krheyes@comp.brad.ac.uk))
+
+</LI>
+<LI>Voltage de l'alimentation de la mémoire<BR>
+Les plus récentes cartes ne tolèrent que la mémoire 3,3 Volts. Ne jamais
+utiliser les composants sous un voltage inadéquat (risque de
+destruction).
+
+</LI>
+<LI>Surexploitation du bus local<BR>
+Le nombre de cartes connectables à un bus local décroît avec sa fréquence
+d'exploitation&nbsp;: 3 cartes à 25 MHz, 2 à 33 MHz, une seule à 40 MHz et
+aucune à 50 MHz (fréquence maximale). Certains systèmes tolèrent mal la
+surcharge et les données échangées peuvent alors en pâtir. Essayer
+d'augmenter les états d'attente insérés entre les cycles du bus local
+(Richard Postgate (postgate@cafe.net)).
+
+</LI>
+<LI>Fonctions d'économie d'énergie ("power management", "APM")<BR>
+Certains portables, en particulier, offrent une fonction de reprise
+immédiate (mode "resume") et des programmes pilotes ne tolèrent pas
+toujours cela. Débrayer ces fonctions ou bien compiler l'"APM
+support" dans le noyau (Elizabeth Ayer (eca23@cam.ac.uk)).
+
+</LI>
+<LI>Processeur défectueux<BR>
+Certains exemplaires des processeurs courants recèlent des bogues aux
+effets pervers. Aucune solution n'existe, il faut remplacer le composant.
+Des cas d'incompatibilité entre processeur et carte mère auraient été
+observés. Depuis février 1997 la première vague de problèmes, qui
+concernait les processeurs Intel, décroît nettement tandis que
+l'exploitation de processeurs Cyrix/IBM 6x86 sur certaines cartes mère
+s'avère difficile.  Le manuel d'une carte mère précise qu'elle est
+incompatible avec les premières versions du 6x86. C'est regrettable car les
+performances de ces processeurs sont fort bonnes.
+</LI>
+</UL>
+</P>
+<H2><A NAME="s6">6. Mais tout fonctionnait correctement depuis longtemps&nbsp;!</A></H2>
+
+<P>Le fait que la configuration déficiente fonctionnait sans problème depuis
+un moment n'implique malheureusement pas que le matériel est hors de
+cause.</P>
+
+<P>L'exemple classique concerne les composants de mémoire. Leurs fabricants ne
+disposent pas d'une ligne de production distincte pour chaque type de
+mémoire. Les circuits proviennent tous des mêmes machines et matières
+premières, seul le test final détermine si un composant donné sera par
+exemple vendu en tant que 60 ns ou bien 70 ns. Vos composants
+fonctionnaient peut-être à merveille depuis longtemps à la limite de leurs
+capacités mais un facteur quelconque (la température, par exemple, ralentit
+les mémoires) peut les rendre assez vite inadéquats.</P>
+
+<P>Un climat estival ou bien une lourde charge de travail processeur place
+donc parfois le système dans des conditions où son fonctionnement correct
+n'est plus certain, voire plus possible (Philippe Troin
+(ptroin@compass-da.com)).</P>
+<H2><A NAME="s7">7. Mon programme de test mémoire ne révèle aucun problème</A></H2>
+
+<P>Le test mémoire effectué par le BIOS lors du démarrage de la machine n'en
+est le plus souvent pas un. Des conditions d'exploitation extrêmes peuvent
+seules permettre de lever le doute. Tester grâce à <CODE>memtest86</CODE>.</P>
+<H2><A NAME="s8">8. Le problème est-il limité à la compilation du noyau&nbsp;?</A></H2>
+
+<P>Non, mais la compilation du noyau exige beaucoup de ressources et constitue
+donc un excellent test ou révélateur.</P>
+<P>Autres cas observés&nbsp;:
+<UL>
+<LI>Certaines machines se bloquent parfois lorsqu'elles exécutent le
+script d'installation de la distribution Slackware (dhn@pluto.njcc.com).</LI>
+<LI>Le noyau stoppe parfois une tâche à cause d'une
+"general protection error" (message confié à syslog)
+(fox@graphics.cs.nyu.edu).</LI>
+</UL>
+</P>
+<H2><A NAME="s9">9. D'autres systèmes d'exploitation fonctionnent pourtant bien sur cette</A> machine&nbsp;!</H2>
+
+<P>Linux exploite mieux le matériel que la plupart des autres systèmes, comme
+ses performances le laissent imaginer.</P>
+
+<P>Certains autres systèmes, par exemple édités par Microsoft, se "plantent
+parfois" de façon incompréhensible. Peu d'utilisateurs s'en plaignent,
+semble-t-il, et cette société leur 
+<A HREF="http://www.cantrip.org/nobugs.html">répond</A> en ce cas d'une
+manière quelque peu étrange.</P>
+
+<P>Le mode de conception et d'utilisation de ces systèmes d'exploitation
+produit un ensemble le plus souvent plus "prédictible" que Linux dans la
+mesure ou une application donnée sera le plus souvent chargée dans la même
+section de la mémoire vive. Les aléas dûs à un composant défectueux sont
+donc parfois portés au compte d'un programme donné et non du matériel.</P>
+
+<P>Une chose demeure cependant certaine&nbsp;: un système Linux bien installé
+sur une machine saine doit pouvoir compiler cent fois de suite un noyau
+sans aucun problème.</P>
+<P>Témoignage&nbsp;: Linux et gcc testent à merveille la machine. Hors de
+Linux le test "Winstone" produit le même genre d'effets (Jonathan Bright
+(bright@informix.com))</P>
+<H2><A NAME="s10">10. "signal 11" est-il le seul effet&nbsp;?</A></H2>
+
+
+<P>Ce n'est malheureusement pas le cas. Les signaux 6 et 4 peuvent aussi
+relever de ce genre de problème (lorsque la mémoire n'accomplit pas
+correctement son office n'importe quel type d'erreur peut survenir) mais le
+11 est le plus commun.</P>
+<P>Autres problèmes constatés&nbsp;:
+<UL>
+<LI> free_one_pmd: bad directory entry 00000008</LI>
+<LI> EXT2-fs warning (device X:Y): ext_2_free_blocks bit already
+cleared for block Z</LI>
+<LI> Internal error: bad swap device</LI>
+<LI> Trying to free nonexistent swap-page</LI>
+<LI> kfree of non-kmalloced memory ...</LI>
+<LI> scsi0: REQ before WAIT DISCONNECT IID</LI>
+<LI> Unable to handle kernel NULL pointer dereference at virtual
+address c0000004 </LI>
+<LI> put_page: page already exists 00000046
+invalid operand: 0000</LI>
+<LI> Whee.. inode changed from under us. Tell Linus</LI>
+<LI> crc error    System halted  (lors du démarrage)</LI>
+<LI> Segmentation fault</LI>
+<LI> "unable to resolve symbol" </LI>
+<LI> make 1]: *** ... Error 139
+make: *** ... Error 1
+<LI> X Window avorte brusquement avec un mesage
+'can terminate with a "caught signal xx"'</LI>
+</LI>
+</UL>
+</P>
+<P>Les premiers exemples relèvent d'arrêts provoqués par le noyau qui
+"suspecte" une erreur de programmation l'affectant.  Les autres concernent
+les applications.</P>
+<P>(S.G.de Marinis (trance@interseg.it), Dirk Nachtmann
+(nachtman@kogs.informatik.uni-hamburg.de))</P>
+<H2><A NAME="s11">11. Que faire&nbsp;?</A></H2>
+
+<P>
+<UL>
+<LI> Démonter des barrettes, les remplacer</LI>
+<LI> Débrayer (SETUP) le cache de second niveau du processeur</LI>
+<LI> Diminuer la cadence du processeur et du bus</LI>
+<LI> Restaurer la cadence de rafraîchissement de la mémoire préconisée</LI>
+<LI> Démarrer avec un noyau sous option "mem=4M" pour lui interdire
+d'exploiter la mémoire au-dessus des 4 premiers Mo</LI>
+<LI> Tester&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+    tcsh
+    cd /usr/src/linux
+    make zImage
+    foreach i (0 1 2 3 4 5 6 7 8 9)
+      foreach j (0 1 2 3 4 5 6 7 8 9)
+        make clean;make zImage > log."$i"$j
+      end
+    end
+</PRE>
+</CODE></BLOCKQUOTE>
+
+Tous les contenus des fichiers de trace résultants doivent être identiques.
+Cela exige environ 24 heures sur un P100 / 16 Mo RAM et environ 3 mois sur
+un 386 / 4 Mo :-)</LI>
+</UL>
+</P>
+<P>Le moyen le plus efficace reste de remplacer tous les composants de
+mémoire. Ce n'est cependant pas toujours facile.</P>
+<H2><A NAME="s12">12. Et le test physique&nbsp;?</A></H2>
+
+<P>Même certains équipements électroniques de test des mémoires ne mettent pas
+toujours en évidence les problèmes dont nous traitons ici car ils peuvent par
+exemple dépendre du mode d'exploitation des composants par la carte mère.</P>
+<H2><A NAME="s13">13. Quelles sont les autres causes possibles ?</A></H2>
+
+<P>
+<A NAME="Quelles sont les autres causes possibles ?"></A> </P>
+<P>
+<UL>
+<LI>pgcc<BR>
+Utilisation de la version de gcc "pgcc", dont le générateur de code
+est optimisé pour le Pentium. La compilation, avec ses options par défaut,
+de certains modules du noyau (par exemple floppy.c) produit un signal
+11. Les causes se trouvent à la fois dans le noyau, la libc et pgcc.  On
+constate vite qu'il ne s'agit pas d'un problème matériel car il se produit
+toujours au même stade de la compilation.<BR>
+Solution&nbsp;: utiliser un gcc standard ou bien des options interdisant
+certaines optimisations (par exemple "-fno-unroll-loops") (Evan Cheng
+(evan@top.cis.syr.edu)).
+
+</LI>
+<LI>Composants de gcc hétéroclites<BR>
+Lorsque les fichiers appartenant à gcc proviennent de sources différentes
+des problèmes peuvent appraître. Il faut alors tout remplacer par une
+version complète et correcte (Richard H. Derr III (rhd@Mars.mcs.com)).
+
+</LI>
+<LI>Édition de liens avec bibliothèque pour <CODE>SCO</CODE><BR>
+Sous iBCS&nbsp; les applications dont le LDFLAGS contient <CODE>-L</CODE>lib/ sont
+exposées.
+
+</LI>
+<LI>a.out et ELF<BR>
+Compilation d'un noyau a.out au sein d'un environnement ELF (ou le
+contraire).. Le premier appel à "ld" causera toujours un "signal
+11"(REW).
+
+</LI>
+<LI>Carte Ethernet ISA sur bus PCI mal configuré<BR>
+Cela peut causer de graves problèmes logiciels (sigsegv, arrêt du
+noyau...). Il faut alors utiliser le SETUP pour configurer l'"aperture"
+(zone de mémoire commune à la carte et à l'espace d'adressage du
+système).
+
+</LI>
+<LI>Contenu de la partition de mémoire virtuelle ("swap")
+endommagé<BR>
+Tony Nugent (T.Nugent@sct.gu.edu.au) précise qu'il a pu résoudre le
+problème en re-préparant la partition grâce à "mkswap".<BR>
+Louis J. LaBash Jr. (lou@minuet.siue.edu) nous rappelle qu'il faut invoquer
+"sync" après un "mkswap".
+
+</LI>
+<LI>Cartes Ethernet bas de gamme de type NE2000<BR>
+La qualité de certaines cartes est si médiocre qu'elles mettent en péril la
+stabilité du système. Les noyaux Linux postérieurs à 1.3.48 les tolèrent
+semble-t-il mieux (REW).
+
+</LI>
+<LI>Alimentation électrique<BR>
+Cas peu probable, même une machine très bien équipée n'approche guère les
+limites des alimentations 200 W. Seul un système utilisant de nombreux
+anciens disques (gros consommateurs de courant) peut poser un problème
+(Greg Nicholson (greg@job.cba.ua.edu)).<BR>
+Thorsten Kuehnemann (thorsten@actis.de) indique qu'une alimentation
+défectueuse peut provoquer des signaux 11.
+
+</LI>
+<LI>Compilation du code ext2<BR>
+Dans certains cas la compilation du code de gestion du système de fichiers
+ext2 provoque un signal 11 (Morten Welinder (terra@diku.dk)).
+
+</LI>
+<LI>Mémoire disponible insuffisante<BR>
+gcc produit alors d'étranges erreurs (Paul Brannan (brannanp@musc.edu)).</LI>
+</UL>
+</P>
+
+<H2><A NAME="s14">14. Cette liste me laisse sceptique&nbsp;!</A></H2>
+
+<P>Nous ne traitons ici que de cas <B>réels&nbsp;!</B><BR>
+(N.d.T&nbsp;: la version 
+<A HREF="http://www.bitwizard.nl/sig11/">originale</A> de ce document propose une liste des auteurs de
+témoignages).</P>
+</BODY>
+</HTML>

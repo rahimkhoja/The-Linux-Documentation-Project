@@ -1,0 +1,356 @@
+
+                           Mini-HOWTO Sendmail+UUCP
+
+Hadi Salim, jamal@glcom.com ou hadi@cyberus.ca
+
+   25 octobre 1997
+
+1. Introduction.
+
+   Après m'être finalement calmé et après avoir lu le FM (le Livre de la
+   Chauve Souris, pour être précis) j'ai résolu l'énigme de Caramilk !
+   Les étapes suivantes ont été testées avec les binaires fournis dans la
+   RedHat. Peut-être devrais-je soumettre aussi ces astuces au mainteneur
+   de la FAQ Sendmail dans la mesure où il n'y a aucune mention
+   d'interconnexion entre UUCP et Sendmail dedans.
+
+1.1 Ce que ce document essaye de vous montrer
+
+   Comment configurer une simple machine, dénotée par me.com dans
+   l'exemple, ne possédant aucun accès direct à Internet pour router le
+   courrier électronique pour vous via sendmail et UUCP vers une 'machine
+   plus intelligente' i.e. : votre ISP. Vous pouvez optionellement
+   configurer cette machine pour fournir d'autres machines i.e. : vous
+   êtes leur 'machine intelligente' (NDT : référée par smarthost dans le
+   reste du document) ou encore passerelle.
+
+1.2 Ce que ce document ne vous dit pas
+
+   J'ai reçu un nombre incroyable de questions concernant des sujets
+   dépassant le cadre de ce HOWTO. Le but de ce document n'est pas de les
+   décrire, donc merci d'essayer de ne pas m'envoyer de questions sur ce
+   qui suit :
+
+  Comment configurer UUCP.
+
+   Consultez une des nombreuses références bien faites, telles ques :
+
+   UUCP HOWTO (Vince Shakan)
+
+   Using and managing UUCP (Ed Revin et al -- éditions O'Reilly) qui est
+   je pense la meilleure référence sur UUCP
+
+   Linux Network Administrator Guide (Olaf Kirch)
+
+  Comment configurer le DNS.
+
+   Consultez une des nombreuses références bien faites, telles ques :
+
+   Caching named mini howto (Nicolai Langfeldt)
+
+   The bat book (Sendmail;Costalles, Allman, Rickert ; éditions O'Reilly)
+
+   DNS and BIND (Editions O'Reilly)
+
+   TCP/IP Network Administration (Hunt, Craig ; éditions O'Reilly)
+
+   Linux Network Administrator Guide (Olaf Kirch)
+
+   sendmail Theory and Practice (Avolio et Vixie ; éditions Digital
+   press)
+
+  Comment configurer des bases de données (autres que la mailertable) pour
+  fonctionner avec sendmail.
+
+   Consultez une des nombreuses références bien faites, telles ques:
+
+   The bat book (Sendmail ; Costalles, Allman, Rickert -- éditions
+   O'Reilly)
+
+   TCP/IP administration (Editions O'Reilly)
+
+   Sendmail Theory and Practice (Avolio et Vixie ; éditions Digital
+   press)
+
+   Documentations attachées à sendmail
+
+  Comment écrire ou modifier des ensembles règle ou des mailers
+
+   Toutes les références du dessus en XXX
+
+   Vous pouvez aussi trouver de l'aide dans les groupes de nouvelles
+   suivants:
+
+   comp.mail.sendmail comp.mail.uucp comp.os.linux.networking
+
+   Canaux IRC
+
+   #linux, #unix
+
+2. La configuration
+
+   C'est pour un système, hypothétiquement appelé me.com, dont le
+   courrier est envoyé uniquement via UUCP. mysmarthost est le nom de la
+   machine de mon FAI tel qu'il est configuré dans le fichier uucp sys et
+   me.com est le nom de machine que nous utilisons ou sous lequel nous
+   sommes connus dans les enregistrements MX sur Internet. mysmarthost
+   est connecté à Internet. Nous nous moquons vraiment de savoir comment,
+   nous savons juste qu'elle sait comment nous y conduire. me.com, dont
+   la configuration que nous décrivons dans l'exemple, alimente les sites
+   down.com et system1.org et leurs sous-noeuds. me.com se connecte à
+   down.com via TCP/IP et se connecte à system1.org via une connexion
+   UUCP directe par une ligne téléphonique. La description de la
+   configuration est indiquée çi-dessous :
+
+        ------------------------
+        |                       |
+        |     Internet          |
+        |                       |
+        -----------------------
+                    |
+                    | Ligne dédiée à PPP utilisant TCP-IP
+                    |
+                -------------
+                |            |
+                |mysmarthost | Serveur de noms autoritaire pour
+                |            | *.me.com, *.down.com, *.system1.org
+                |            |
+                --------------
+                    |
+                    | UUCP par réception ligne téléphonique pour
+                    | system1.org, *.system1.org,*.down.com, down.com
+                    | ainsi que me.com et *.me.com
+                 ------------
+                | * *****  *  |
+   ------------ | * me.com *  | ------
+                | *        *  |      |
+   |            | * *****  *  |      |
+   |             ------------        |
+   |UUCP via ligne téléphonique      | uucp via TCP/IP
+   |                                 |
+ -----------                  -----------
+|           |                |           |
+|system1.org|                | down.com  |-------
+|           |                |           |      |
+ ----------                  ------------       |
+     |                                          |
+     |                                          |
+     |                                          |
+     | LAN : smtp vers le noeud            | UUCP ligne téléphonique
+     |                                          |
+-----------------                             ----------------
+|               |                             |              |
+|Sous-noeuds de |                             | Réseau local |
+|de system1     |                             | de down      |
+|               |                             ----------------
+-----------------
+
+   Prérequis
+
+   1) Si vous avez déjà un DNS qui marche ou avez un pointeur sur un DNS
+   (dans votre /etc/resolv.conf) et avez une connexion directe au réseau
+   alors passez cette partie. Vous êtes sauf. Vous n'avez pas de choses
+   "intelligentes" à faire.
+
+   2) Si vous êtes sur une machine utilisant uucp pour le courrier alors
+   vous n'avez pas vraiment besoin de compiler bind/resolv dans
+   sendmail ;
+
+   Comment survivre à la mise sous forme canonique sur une machine
+   indépendante sans DNS
+
+2.1 PARTIE I
+
+   Si vous prenez un sendmail pré-compilé avec BIND dedans vous pouvez
+   toujours y arriver (comme c'est le cas avec le sendmail de RedHat).
+
+   a) Vous référer à ma solution pour ça basée sur le fichier m4 décrit
+   (mon favori). Essayez d'utiliser cette option à moins que vous teniez
+   à b) ou c) ci-dessous. OU
+
+   b) Si vous me contactez je pourrais vous fournir une version non
+   compilée avec BIND (8.8.5). Peut-être que RedHat devrait considérer la
+   fourniture de deux binaires sendmail (comme slackware) un avec BIND et
+   l'autre sans BIND. OU
+
+   c) La solution la plus rapide pour avoir un sendmail sans bind est
+   d'éditer les lignes de src/conf.h ci-dessous comme je l'ai montré :
+
+   # ifndef NAMED_BIND conf.h:# define NAMED_BIND 0 /* use Berkeley
+   Internet Domain Server */
+
+2.2 PARTIE II
+
+   Sendmail devrait cependant normallement insister à faire les requêtes
+   de noms pour résoudre la partie machine en utilisant gethostbyaddr()
+   pour chaque mail qu'il envoie (même si vous lui dites de ne pas mettre
+   les noms sous forme canonique).
+
+   a) utiliser une adresse IP de la RFC1597 (10.0.0.0-10.255.255.255,
+   172.16.0.0-172.31.255.255, 192.168.0.0-192.168.255.255) Editez
+   /etc/hosts et ajoutez ce qui suit comme exemple pour la machine myhost
+   10.0.0.1 myhost.me.com myhost OU
+
+   b) Si vous utilisez NIS (et NIS est compilé dans sendmail comme cela
+   semble être le cas dans la RedHat.) assurez vous que le fichier
+   /etc/nsswitch.conf contienne : hosts: files dns et dans /etc/hosts et
+   ajoutez ce qui suit comme exemple pour la machine myhost [toujours en
+   utilisant l'adressage IP de la RFC1597] 10.0.0.1 myhost.me.com myhost
+
+   NOTE : Dans a) et dans b) ci-dessus il est vital que vous listiez le
+   long (complètement qualifié) dans le fichier /etc/hosts utilisé. i.e
+   la ligne doit être 10.0.0.1 myhost.me.com et NON 10.0.0.1 myhost vous
+   aurez aussi besoin de définir la macro sendmail $j pour qu'elle
+   contienne myhost.me.com ajoutez ce qui suit à votre fichier
+   /etc/sendmail.cf après qu'il ait été généré Dmyhost.me.com (ou vous
+   pouvez utiliser MASQUERADE_AS(myhost.me.com) dans le fichier .mc
+   ci-dessous)
+
+   NOTE !!!!! myhost comme nom de domaine est donné à titre d'exemple ;
+   vous n'avez pas à l'utiliser tel quel. Choisissez-vous votre propre
+   nom de machine si vous n'en avez pas déjà un.
+
+   2) Assurez-vous que vous avez makemap et qu'il est capable de
+   supporter hash et/ou le format plus commun dbm ou même le format btree
+   (La version RedHat ne supporte pas dbm). Makemap est normallement
+   distribué avec sendmail.
+
+2.3 CONFIGURATION (le fichier mc)
+
+   I) créez votre fichier .mc avec votre éditeur favori ; j'appellerai ce
+   fichier my.mc
+
+   a) Pas de DNS -- machine indépendante
+
+   include(`../m4/cf.m4')
+   VERSIONID(`me.com setup with uucp created by xxxx --no dns ')
+   dnl OSTYPE(linux)
+   FEATURE(nodns)dnl
+   FEATURE(nocanonify)dnl
+   FEATURE(always_add_domain)dnl
+   FEATURE(mailertable, hash /etc/mailertable)dnl
+   MAILER(local)dnl
+   MAILER(smtp)dnl
+   MAILER(uucp)
+   define(`SMART_HOST', uucp-dom:mysmarthost)
+
+   Dissequons ceci :
+
+   include(`../m4/cf.m4') requiert l'inclusion de la macro m4 qui se
+   trouve dans ../m4/cf.m4 afin de résoudre certaines choses.
+
+   VERSIONID(`me.com setup with uucp created by xxxx --no dns ') C'est
+   utilisé pour distinguer les différentes versions du fichier .cf que
+   vous pourriez finir par créer.
+
+   OSTYPE(linux) Ca sert à définir/redéfinir les choses spécifiques à
+   Linux. Il est prudent de l'avoir ici.
+
+   FEATURE(nodns)dnl Cela veut dire que nous n'avons pas de serveur DNS
+   (comme nous n'utilisons uucp que pour le mail. Sendmail doit être
+   compilé pour ne pas utiliser bind). C'est devenu obsolète. Je vais le
+   laisser ici juste au cas où vous utiliseriez une version plus ancienne
+   de sendmail.
+
+   FEATURE(nocanonify)dnl Cela veut dire Ne passez pas les addresses à la
+   règle $[ ... ]$ pour la mise en forme canonique. Normallement si vous
+   avez BIND compilé dans sendmail, il essayerait et développerait
+   l'alias/l'adresse IP en un nom canonique grâce au DNS. Vous n'en avez
+   pas besoin si tout ce que vous avez ne sont que des approvionnements
+   par UUCP i.e. : vous avez une machine indépendante.
+
+   FEATURE(always_add_domain)dnl Ceci ajoute le nom de domaine local même
+   au mail local. Ce n'est pas nécessaire mais j'aime bien ; Ce n'est
+   peut-être pas prudent dans la mesure où les spammeurs, avec une
+   configuration appropriée, peuvent vous embêter. me.com n'est pas
+   connecté au réseau via tcp/ip donc c'est sans danger.
+
+   FEATURE(mailertable, hash /etc/mailertable)dnl Le fichier
+   /etc/mailertable sera une base de donnée hashée où nous allons stocker
+   les informations de routage de certains sites. Si vous n'approvisionez
+   personne vous n'en avez pas besoin. J'en dirai plus là-dessus plus
+   tard. Si vous vouliez utiliser le format dbm vous auriez
+   FEATURE(mailertable, dbm /etc/mailertable)dnl Si vous vouliez utiliser
+   le format btree vous auriez FEATURE(mailertable, btree
+   /etc/mailertable)dnl
+
+   MAILER(local)dnl MAILER(smtp)dnl MAILER(uucp) Ce sont les mailers que
+   nous utilisons.
+
+   define(`SMART_HOST', uucp-dom:mysmarthost) Notre smarthost est chez
+   notre FAI, il est défini dans le fichier sys comme system mysmarthost.
+   Tous les messages que nous ne pouvons pas traiter (i.e : ceux dont les
+   domaines ou les mailers nous sont étrangers) seront envoyés à notre
+   smarthost/FAI qui s'en débrouillera. Notez que nous utilisons uucp-dom
+   comme mailer uucp. Ce mailer particulier utilise des règles de
+   réécritures de type smtp.
+
+   b) Avec DNS
+
+   include(`../m4/cf.m4')
+   VERSIONID(`me.com setup with uucp created by xxxx --dns enabled')dnl
+   OSTYPE(linux)
+   FEATURE(always_add_domain)dnl
+   FEATURE(mailertable, hash /etc/mailertable)dnl
+   MAILER(local)dnl
+   MAILER(smtp)dnl
+   MAILER(uucp)
+   define(`SMART_HOST', uucp-dom:mysmarthost)
+
+   II) Crééz votre fichier sendmail.cf
+
+   a) Sauvegardez votre ancien fichier /etc/sendmail.cf
+   b) Remplacez votre fichier sendmail.cf avec le nouveau : m4 my.mc
+   /etc/sendmail.cf
+   c) Verifiez que le fichier sendmail.cf a été correctement créé sur les
+   bases de vos spécifications.
+   Les quelques problèmes que j'ai eus sont : le mailer uucp-dom manquant
+   C'était parceque je n'avais pas mis le mailer smtp. En fait, j'ai
+   compris que c'est important de le mettre avant l'uucp.
+
+   III) Crééz votre fichier /etc/mailertable
+   Si vous n'alimentez pas de sites uucp vous pouvez omettre cette étape.
+   a) crééz/éditez le fichier /etc/mailertable exemple de fichier
+   /etc/mailertable :
+
+   system1.org uucp-dom:system1
+   .system1.org uucp-dom:system1
+   down.com uucp-dom:down
+   up.down.com error: Host is unknown at me.com
+   .down.com uucp-dom:down
+   .me.com error: Host unknown at me.com
+
+   Cela veut dire que tout ce qui est adressé à system1.org ou à
+   *.system1.org et que nous recevons sera envoyé à system1 en utilisant
+   uucp-dom en autres termes nous faisons le routage de mail pour
+   *.system1.org; idem pour down.com et ses sous-noeuds sauf en ce qui
+   concerne le filtrage additionnel ; nous renvoyons tout mail pour le
+   sous-noeud de down up.down.com en utilisant le mailer error intégré à
+   sendmail avec le message "Host is unknown at me.com" ; Tout ça
+   parceque l'administrateur de down.com nous l'a demandé. Pour renvoyer
+   les sous-domaines qui nous sont inconnus nous utilisons la dernière
+   ligne de mailertable (ce que sont nous les sous-noeuds par défaut).
+
+   b) créez la base de données avec makemap
+
+   si vous utilisez hash : makemap hash /etc/mailertable <
+   /etc/mailertable si vous utilisez dbm : makemap dbm /etc/mailertable
+   </etc/mailertable si vous utilisez btree : makemap btree
+   /etc/mailertable </etc/mailertable
+
+   à faire à chaque fois que vous modifiez le fichier.
+
+   IV) Redémarrez sendmail
+
+   V) Testez sendmail i) sendmail -bv user@destination ii) utilisez
+   sendmail -bt et entrez plusieurs adresses en utilisant la règle 3,0
+   pour voir où elles arrivent et les différentes règles et cheminements
+   "cf" pris. Vous y êtes !
+
+3. A faire
+
+   1) Ajouter des informations sur la mise en place du système down.com
+   (afin de montrer comment prendre en compte de ces noeuds smtp) 2)
+   Ajouter des informations sur comment mettre en place la distribution
+   de news via UUCP (INN de préférence). Cela nécessitera peut-être de
+   changer le titre du document.

@@ -1,0 +1,220 @@
+<!doctype linuxdoc system>
+<linuxdoc>
+<article>
+<title>sendmail address rewriting mini-HOWTO
+<author>Thomas Roessler, roessler@guug.de
+<date>v0.0, 6 May 1998
+
+<abstract> Ce document décrit briévement la mise en place du fichier de 
+configuration de sendmail pour un accés individuel à l'Internet via le réseau
+téléphonique commuté. </abstract>
+
+<sect>Introduction
+
+<p>On suppose que votre accés à l'Internet repose sur le principe le plus
+couramment rencontré de nos jours : une connexion au réseau d'un 
+fournisseur d'accés via une liaison PPP au dessus d'une liaison série. 
+Le courrier qui vous est destiné est récupéré auprés d'un serveur POP ou 
+IMAP tandis que le courrier sortant est transmis via SMTP. Comme vous ne 
+possédez pas de nom de domaine, tout doit transiter par la <em/même/ adresse.
+
+<p>On suppose vous avez déjà installé une version récente du sendmail
+d'Eric Allman. A l'écriture de ces lignes, la version courante est la 8.8.8. 
+Elle devrait fonctionner sans problèmes.
+
+<p>Le texte fait parfois référence à certaines spécificités des distributions
+GNU/Linux de Debian. Les utilisateurs de systèmes différents adapteront.
+
+<p>Vérifiez que vous disposez bien des informations suivantes :
+
+<itemize>
+<item>Le nom du serveur de courrier de votre Fournisseur d'Accés Internet
+<item>Votre adresse électronique
+</itemize>
+
+
+<p>On attend de la configuration à venir :
+
+<enum>
+<item>que l'envoi de courrier entre utilisateurs locaux soit possible,
+<item>que le reste de l'Internet voit les adresses des utilisateurs telles
+qu'elles sont définies au niveau du FAI ( et non les adresses locales ! ).
+</enum>
+
+<p>Pour atteindre cet objectif, on utilisera la fonctionnalité 
+<tt/genericstable/ de sendmail.
+
+<sect>Fichiers impliqués
+
+<p>On regroupe tous les fichiers de configuration de sendmail dans un
+répertoire particulier sous <tt/&sol;etc/ : <tt/&sol;etc&sol;mail/. Sendmail 
+s'attendant à les trouver en <tt/&sol;etc/, <tt/&sol;etc&sol;sendmail.cf/ sera
+un lien symbolique vers <tt/&sol;etc&sol;mail&sol;sendmail.cf/.
+
+<p>On trouvera dans <tt/&sol;etc&sol;mail/ :
+<itemize>
+<item><tt/aliases/ - des adresses supplémentaires 
+<item><tt/genericsdomain/ - diverses informations sur la configuration du
+système
+<item><tt/genericstable/ - règles de traduction 
+<item><tt/sendmail.cf/ - fichier de configuration de sendmail
+<item><tt/sendmail.mc/ - la matrice du <tt/sendmail.cf/.
+</itemize>
+
+Certains de ces fichiers s'accompagnent de fichiers <tt/.db/ contenant
+les bases de données hachées que sendmail utilise directement.
+
+<p>L'arborescence d'origine de sendmail est censée se trouver en
+<tt/&sol;usr&sol;lib&sol;sendmail.cf/ ainsi que c'est le cas avec les 
+distributions GNU/Linux Debian. Reportez vous à la documentation de votre 
+distribution si celle-ci diffère.
+
+<sect>Configuration de sendmail
+<sect1>Le fichier de configuration principal 
+
+<p>La configuration de Sendmail repose sur un ensemble de règles assez 
+complexes. Bien que cela puisse s'avérer trés puissant, il n'est pas courant de 
+fabriquer ex-nihilo un <tt/sendmail.cf/. Il faudrait de surcroit y passer
+pas mal de temps. Si vous êtes motivé, lancez vous dans la lecture de 
+la bible disponible chez O'Reilly.
+
+<p>Au lieu de forger à la main les règles, on utilise le pré-processeur de
+macros <tt/m4/ pour fabriquer un fichier de configuration à partir des
+éléments préts à l'emploi qui sont fournis avec sendmail.
+
+<p>Jetons un oeil sur les premières lignes du <tt/sendmail.mc/ :
+
+<code>
+include(/usr/lib/sendmail.cf/m4/cf.m4)
+VERSIONID(`sendmail.mc - roessler@guug.de')
+OSTYPE(debian)
+define(`ALIAS_FILE',`/etc/mail/aliases')
+</code>
+
+Tout d'abord, on inclut <tt/cf.m4/. Ce fichier m4 contient de 
+nombreuses macros utiles pour la suite. Ne vous trompez pas dans les chemins 
+d'accès.
+Ceux que nous donnons ici correspondent typiquement à un système GNU/Linux
+Debian. La macro <tt/OSTYPE/ positionne les valeurs par défaut de certaines
+variables. Si vous n'utilisez pas une Debian, remplacez ici "debian" par 
+"linux". <tt/ALIAS_FILE/ fournit à sendmail l'emplacement du fichier d'alias.
+
+<p>Les lignes suivantes forcent l'utilisation des fonctionnalités 
+<tt/genericstable/ et précisent où trouver les fichiers nécessaires :
+<code>
+FEATURE(masquerade_envelope) 
+FEATURE(genericstable, `hash -o /etc/mail/genericstable')
+GENERICS_DOMAIN_FILE(`/etc/mail/genericsdomain') 
+</code>
+<tt/masquerade_envelope/ réclame qu'une mise en forme du type en-tête soit
+appliquée à l'enveloppe des messages à expédier. Est concernée l'adresse vers
+laquelle les agents de transport extérieurs dirigeront leurs messages 
+d'avertissement ou leurs avis d'échecs. Les fichiers <tt/generics*/ seront
+détaillés plus loin.
+
+<p>A présent, on définit un hôte intelligent ( "smart agent" ), c'est à dire
+une machine capable de gérer le courrier sortant à notre place. Il ne s'agit 
+pas nécessairement des serveurs POP ou IMAP de l'ISP. La hotline vous aidera 
+le cas échéant à dissiper les doutes.
+<code>
+define(`SMART_HOST',`relai-de-sortie.mon.fournisseur')
+</code>
+Remplacez <em/relai-de-sortie.mon.fournisseur/ par le nom complet ( FQDN ) 
+correspondant à votre fournisseur d'accés.
+
+<p>Les deux dernières lignes incluent les définitions des "mailer" grâce
+auxquels sendmail détermine comment manipuler les différents types de courrier :
+<code>
+MAILER(local)
+MAILER(smtp)
+</code>
+
+<p>Pour générer le fichier <tt/sendmail.cf/ à partir du <tt/sendmail.mc/,
+exécutez les commandes suivantes en tant qu'utilisateur root :
+<code>
+# m4 sendmail.mc > _sendmail.cf
+# mv -f _sendmail.cf sendmail.cf
+</code>
+Notez la technique qui consiste à enregistrer la sortie de <tt/m4/ dans un
+fichier temporaire avant de l'installer au bon endroit. On évite ainsi que
+sendmail ne lise des fichiers de configuration incomplets !
+
+<sect1>Modification des adresses
+
+<p>On commence par préciser à sendmail les adresses à considérer comme 
+locales. Pas de difficultés : rentrez le nom complet de votre
+machine dans le fichier <tt/&sol;etc&sol;mail&sol;genericsdomain/. Pour
+obtenir ce nom, exécutez la commande suivante : <code> $ hostname -f </code>. 
+
+<p>Passons aux règles de reécriture proprement dites :
+<tt/&sol;etc&sol;mail&sol;genericstable/. Ce fichier est formé de deux colonnes
+séparées par des blancs. La première contient les adresses locales et la
+seconde les adresses électroniques qui doivent être employées à la place. 
+Le fichier devrait ressembler à ça :
+
+<code>
+harry	harryx@mon.fai
+maude	maudey@son.fai
+root	francois@mon.fai
+news	francois@mon.fai
+</code>
+
+Il devrait y avoir une entrée pour <em/chaque/ compte sur la machine isolée
+de façon à ce que le courrier sortant du système comporte des informations
+d'en-tête correctes.
+
+<p>Afin d'améliorer les performances, sendmail n'utilise pas directement ce
+fichier mais une version hachée. Pour la créer, exécutez la commande suivante :
+
+<code>
+# makemap -r hash genericstable.db < genericstable
+</code>
+
+<p>Notez que les règles issues de <tt/genericstable/ ne s'appliquent <em/pas/
+au courrier local ni à celui que vous recevez de l'extérieur. La traduction
+n'a lieu que si un message est transmis au relai de votre FAI.
+
+<sect1>Alias
+
+<p>Le fichier d'alias contient des adresses supplémentaires qui ne sont 
+valables que pour les messages locaux. Ceci s'avère utile pour les comptes
+de maintenance tels <tt/root/ qui reçoivent des messages créés automatiquement
+par le système d'exploitation.
+
+<p>Le point de départ d'un <tt/&sol;etc&sol;mail&sol;aliases/ pourrait
+ressembler à ça :
+
+<code>
+root: francois 
+news: root
+postmaster: root
+mail: root
+www: root
+
+nobody: &sol;dev&sol;null
+MAILER-DAEMON: nobody
+</code>
+
+Dans l'exemple ci-dessus, le courrier à destination des utilisateurs 
+<tt/root/, <tt/news/, <tt/postmaster/, <tt/mail/, et <tt/www/ sont renvoyés
+vers <tt/francois/, tandis que ceux pour <tt/nobody/ et <tt/MAILER-DAEMON/ 
+seront redirigés vers le <tt/&sol;dev&sol;null/.
+
+<p>De même que le <tt/genericstable/, le fichier <tt/aliases/ peut contenir
+<em/beaucoup/ de données. Comme il serait inefficace que sendmail utilise
+le fichier texte tel quel, le mécanisme employé pour le <tt/genericstable/
+s'applique encore : on génère une base de données hachée. Au lieu de la
+commande <tt/makemap/, rentrez cette fois la commande <tt/newaliases/. Tout
+fonctionne automagiquement.
+
+<sect>Références 
+
+<p> Les sources de sendmail sont fournies avec une documentation abondante.
+Lisez la donc, et étudiez plus particulièrement le fichier
+<tt>/cf&sol;README</tt>.
+
+<p>Si vous souhaitez explorer davantage les options de configuration de 
+sendmail, procurez vous la référence en la matière par Bryan
+Costales, Eric Allman et Neil Rickert : "Sendmail" ( O'Reilly, 1993 ).
+
+</article></linuxdoc>

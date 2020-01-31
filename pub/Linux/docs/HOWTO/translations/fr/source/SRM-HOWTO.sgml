@@ -1,0 +1,671 @@
+<!doctype linuxdoc system>
+
+<article>
+
+<title>SRM Firmware Howto</title>
+<author>
+Version originale : <url url="mailto:davidm@azstarnet.com" name="David Mosberger">
+(Traduction française : Nicolas Jadot (njadot@etu.info.unicaen.fr))
+</author>
+
+<date>v0.5, 17 August 1996
+<abstract>
+Ce document décrit la manière de démarrer une station Linux/Alpha
+utilisant le <em/firmware/ SRM, lequel est  normalement utilisé 
+pour démarrer Digital Unix.
+(NDT : le <em/firmware/ est un micro-code embarqué sur une puce, en
+quelque sorte l'équivalent du BIOS des PC) <!-- NJ : à vérifier -->
+En général, il est préférable d'utiliser MILO à la place du programme
+<tt/aboot/ sachant que MILO est parfaitement adapté aux 
+besoins de Linux. Cependant, MILO n'existe pas sur tous les 
+systèmes et ne permet pas encore de démarrer sur un réseau. Dans ces
+cas là, utiliser la console SRM est peut-&ecirc;tre la bonne solution. 
+</abstract>
+
+<toc>
+
+<p> A moins que vous soyiez intéressés par les détails techniques,
+vous pouvez passer directement à la section <ref id="aboot">
+
+<sect>Comment SRM démarre-t-il un système d'exploitation ?
+
+<p> Toutes les versions de SRM peuvent démarrer à partir d'un disque
+SCSI et les versions destinées aux plates-formes récentes, comme les
+Noname et AlphaStations, peuvent de plus démarrer depuis une
+disquette. Le démarrage réseau via <tt/bootp/ est également supporté.
+Notez que les anciennes versions de SRM (notamment celles pour Jensen)
+<em/ne pouvaient pas/ démarrer depuis une disquette. Le démarrage
+depuis un disque IDE n'est pas supporté.
+
+<p> Le démarrage de Linux avec SRM s'effectue en deux étapes :
+d'abord, SRM charge et transfère le controle à un chargeur 
+<!-- bootstrap loader --> secondaire. Ensuite, ce chargeur secondaire met 
+en place l'environnement de Linux, lit l'image du noyau depuis un
+système de fichiers sur disque et donne la main à Linux.
+
+<p> A l'heure actuelle <!-- Currently --> il existe deux chargeurs
+secondaires pour Linux : le chargeur <em/brut/ <!-- raw --> fourni
+avec le noyau Linux et <tt/aboot/, distribué séparement. Ces deux
+chargeurs sont décrits en détails ci-dessous.
+
+<sect1>Charger le chargeur secondaire <!-- bootstrap loader -->
+
+<p> SRM est ignorant des systèmes de fichiers et des partitions des
+disques. Il s'attend simplement à ce que le chargeur secondaire occupe
+un certain nombre de secteurs physiques consécutifs, commençant à une
+adresse donnée. L'information concernant la taille du chargeur secondaire et
+l'adresse de son premier secteur est stockée dans les 512 premiers
+octets. Plus précisement <!-- Specifically -->, l'entier long occupant
+l'adresse 480 contient la <em/taille/ du chargeur secondaire et celui
+occupant l'adresse 488 donne le <em/nombre de secteurs/ de décalage
+jusqu'au début du chargeur. Le premier secteur contient également un
+drapeau à l'adresse 496 qui vaut toujours 0 et une somme de contr&ocirc;le à
+l'adresse 504. Cette somme de contr&ocirc;le est simplement la somme des 63
+premiers entiers longs du premier secteur.
+
+<p> Si cette somme est correcte, SRM continue et lit le nombre de
+secteurs indiqué par la <em/taille/ en commençant par celui indiqué
+dans le champ <em/numéro de secteur/ et les place en mémoire
+<em/virtuelle/ à l'adresse <tt/0x20000000/. Si la lecture se termine
+avec succés, SRM effectue un saut à l'adresse <tt/0x20000000/.
+
+<sect>Le chargeur brut
+
+<p> Les sources de ce chargeur peuvent &ecirc;tre trouvés dans le répertoire
+
+<tscreen><verb>
+        linux/arch/alpha/boot
+</verb></tscreen>
+
+des sources du noyau Linux. Ce programme charge le noyau Linux en lisant
+<tt/START&lowbar;SIZE/ octets en commençant à l'adresse
+<tt/BOOT&lowbar;SIZE+512/ (également en octets). Les constantes
+<tt/START&lowbar;SIZE/ et <tt/BOOT&lowbar;SIZE/ sont définies dans le
+fichier d'en-tete <tt>linux/include/asm-alpha/system.h</tt>. 
+<tt/START&lowbar;SIZE/ doit &ecirc;tre au moins aussi élévé que la taille de
+l'image du noyau (i.e, la somme des tailles des segments <tt/.text/, <tt/.data/,
+et <tt/.bss/ <!-- NJ : faut-il traduire ? -->). De m&ecirc;me,
+<tt/BOOT&lowbar;SIZE/ doit &ecirc;tre au moins aussi élevé que l'image du
+chargeur. Ces deux constantes doivent avoir comme valeur un multiple
+entier de la taille d'un secteur, soit 512 octets. Les valeurs par
+défaut sont 2Mo pour <tt/START&lowbar;SIZE/ et 16Ko pour 
+<tt/BOOT&lowbar;SIZE/. Notez que si vous voulez démarrer depuis une
+disquette de 1.44Mo, vous devez réduire <tt/START&lowbar;SIZE/ à
+1400Ko et vous assurer que la taille du noyau que vous voulez démarrer ne
+dépasse pas cette valeur.
+
+<p> Pour construire un chargeur brut, tapez simplement <tt/make
+rawboot/ dans <tt>/usr/src/linux</tt>. Ceci devrait produire dans
+<tt>arch/alpha/boot</tt> les fichiers suivants :
+
+<descrip>
+<tag><tt>tools/lxboot</tt>:</tag> Le premier secteur du disque. Il
+        contient l'adresse et la taille du prochain fichier au format décrit ci-dessus.
+<tag><tt>tools/bootlx</tt>:</tag> Le lanceur brut qui chargera le
+        fichier ci-dessous
+<tag><tt>vmlinux.nh</tt>:</tag> L'image brute du noyau constituée des
+        segments <tt/.text/, <tt/.data/ et <tt/.bss/ du fichier objet
+        <tt>/usr/src/linux/vmlinux</tt>. L'extension <tt/.nh/ indique que ce
+        fichier n'a pas l'ent&ecirc;te d'un fichier objet.
+        <!-- NJ : no object-file header ? -->
+</descrip>
+
+<p> La concaténation de ces trois fichiers devrait &ecirc;tre écrite sur le
+disque à partir duquel vous voulez démarrer. Par exemple, pour
+démarrer depuis une disquette, insérez une disquette vierge dans le
+lecteur, soit <!-- NJ : say ? --><tt>/dev/fd0</tt> et ensuite tapez :
+<tscreen><verb>
+cat tools/lxboot tools/bootlx vmlinux >/dev/fd0
+</verb></tscreen>
+
+<p> Vous pouvez maintenant arréter le système et démarrer depuis une
+disquette en utilisant <!-- NJ : by issueing ? --> la commande
+<tt/boot dva0/.
+
+<sect>Le chargeur <tt/aboot/<label id="aboot">
+
+<p> Si vous utilisez le <em/firmware/ SRM, <tt/aboot/ est la meilleure
+façon de démarrer Linux. Il supporte :
+
+<itemize>
+<item> démarrage direct depuis divers systèmes de fichiers (<tt/ext2/,
+       <tt/ISO9660/, et <tt/UFS/, le système de fichiers de Digital Unix),
+<item> lancement de fichiers objets exécutables (ELF et ECOFF),
+<item> lancement de noyaux compressés,
+<item> démarrage par réseau (en utilisant le protocole <tt/bootp/),
+<item> table de partitions au format Digital Unix (compatible avec les
+       tables de partitions de BSD),
+<item> démarrage interactif et configurations par défaut des consoles
+       SRM qui n'acceptent pas les longues cha&icirc;nes d'option. 
+</itemize>
+
+
+<sect1>Se procurer et installer <tt/aboot/
+
+<p> Les codes sources les plus récents d'<tt/aboot/ sont disponibles à
+l'adresse <url url="ftp://ftp.azstarnet.com/pub/linux/axp/aboot" name="ftp://ftp.azstarnet.com/pub/linux/axp/aboot">. La description de ce manuel s'applique à <tt/aboot/ pour
+les versions 0.5 et suivantes.
+
+<p> Une fois que vous avez téléchargé et extrait l'archive 
+<tt/tar/, jetez un oeil aux fichiers <tt/README/ et <tt/INSTALL/
+pour lire les directives d'installation. En particulier, assurez vous
+que les variables, dans les fichiers <tt/Makefile/ et <tt>include/config.h</tt>
+sont correctes vis-à-vis de votre environnement <!-- NJ : environment ? -->. 
+Normalement, vous ne devriez pas avoir à changer quoi que
+ce soit pour compiler sous Linux, mais c'est toujours une bonne chose
+de vérifier. Si la configuration vous convient, tapez simplement
+<tt/make/ pour lancer la compilation (si vous n'effectuez pas cette
+opération sous Linux, sachez que <tt/aboot/ requiert GNU <tt/make/).
+
+Après l'exécution de <tt/make/, le répertoire <tt/aboot/ devrait
+contenir les fichiers suivants :
+
+<descrip>
+<tag>aboot</tag> L'exécutable réel (fichier objet ECOFF ou ELF),
+<tag>bootlx</tag> Comme ci-dessus, mais ce fichier ne contient que les
+segments text, data et bss (ce fichier n'est pas un fichier objet),
+<tag>sdisklabel/writeboot</tag> Un utilitaire pour installer
+<tt/aboot/ sur un disque dur,
+<tag>tools/e2writeboot</tag> Un utilitaire pour installer <tt/aboot/
+sur un système de fichiers ext2 (n'est en général utilisé que pour les
+disquettes),
+<tag>tools/isomarkboot</tag> Un utilitaire pour installer <tt/aboot/
+sur un système de fichiers iso9660 (utilisé par les distributeurs de CD-ROM),
+<tag>tools/abootconf</tag> Un utilitaire pour configurer <tt/aboot/
+s'il est installé.
+</descrip>
+
+<sect1>Installation sur disquette
+
+<p> Le lanceur peut &ecirc;tre installé sur une disquette en utilisant la
+commande <tt/e2writeboot/ (note : ceci ne peut se faire sur un Jensen
+car son <em/firmware/ n'implante pas le démarrage depuis une
+disquette). Cette commande nécessite que le disque ne soit pas trop
+fragmenté car elle a besoin de trouver suffisament de secteurs
+contigus pour stocker l'image entière de <tt/aboot/ (actuellement,
+environ 90Ko). Si <tt/e2writeboot/ échoue à cause de ça, reformatez la
+disquette et réessayez (par ex., avec <tt/fdformat(1)/). Par exemple, la
+procédure suivante installe <tt/aboot/ sur une disquette en supposant
+que la disquette est dans le lecteur correspondant à <tt>/dev/fd0</tt> :
+
+<tscreen><verb>
+fdformat /dev/fd0
+mke2fs /dev/fd0
+e2writeboot /dev/fd0 bootlx
+</verb></tscreen>
+
+<sect1>Installation sur disque dur
+
+<p> Sachant que la commande <tt/e2writeboot/ peut échouer sur un
+disque hautement fragmenté et comme le reformattage d'un disque dur ne
+se fait pas sans peine, il est généralement plus s&ucirc;r d'installer
+<tt/aboot/ sur un disque dur en utilisant la commande <tt/swriteboot/.
+<tt/swriteboot/ nécessite que les premiers secteurs soient réservés
+aux procédures de démarrage. Nous suggérons que le disque soit
+partitionné de manière à ce que la première partition commence à une
+adresse correspondant à 2048 secteurs. Cela laisse 1Mo d'espace ibre
+pour stocker <tt/aboot/. Sur un disque partitionné de cette façon 
+<!-- NJ : properly partitioned disk ? -->, il est alors possible 
+d'installer <tt/aboot/ comme décrit ci-dessous (en supposant que le
+disque correspond à <tt>/dev/sda</tt>.) :
+
+<tscreen><verb>
+swriteboot /dev/sda bootlx
+</verb></tscreen>
+
+Sur un Jensen, vous devrez laisser un peu plus d'espace, sachant que
+vous devrez également stocker le noyau à cet endroit - 2Mo devraient
+suffire en utilisant une image compressée. Utilisez <tt/swriteboot/
+comme décrit à la section <ref id="booting"> pour écrire <tt/bootlx/
+avec le noyau Linux.
+
+<sect1>Installation sur CD-ROM
+
+<p> Pour construire un CD-ROM amorçable avec SRM, construisez
+simplement <tt/aboot/ comme décrit ci-dessus. Assurez-vous ensuite que le
+fichier <tt/bootlx/ est présent sur le système de fichiers iso9660
+(e.g., copiez <tt/bootlx/ dans le répertoire où est monté le système
+de fichiers) <!-- NJ : the directory that is the filesystem master -->,
+et lancez <tt/mkisofs/ sur ce répertoire). Après cela, la seule chose
+restant à faire est de marquer le système de fichiers comme amorçable
+avec SRM. Cela est réalisé gr&acirc;ce à une commande de la forme :
+
+<tscreen><verb>
+isomarkboot filesystem bootlx
+</verb></tscreen>
+
+La commande ci-dessus nécessite que <tt/filesystem/ est un fichier
+contenant le système de fichiers iso9660 <!-- ? --> et que <tt/bootlx/
+a été copié dans la racine de ce système de fichiers. C'est tout !
+
+
+<sect1>Construire un noyau Linux<label id="Building Linux">
+
+<p> Un noyau Linux amorçable peut &ecirc;tre construit par les étapes
+suivantes. Durant le <tt/make config/, assurez-vous de répondre "oui"
+(<em/"yes"/) à la question concernant le lancement du noyau par SRM.
+
+<tscreen><verb>
+cd /usr/src/linux
+make config
+make dep
+make boot
+</verb></tscreen>
+
+<p> La dernière commande construira le fichier
+<tt>arch/alpha/boot/vmlinux.gz</tt> qui peut alors &ecirc;tre copié
+sur le disque à partir duquel vous désirez démarrer. Dans notre
+exemple précédent concernant la disquette, cela donnerai :
+
+<tscreen><verb>
+mount /dev/fd0 /mnt
+cp arch/alpha/boot/vmlinux.gz /mnt
+umount /mnt
+</verb></tscreen>
+
+
+<sect1>Démarrer Linux<label id="booting">
+
+<p> Avec le <em/firmware/ SRM et <tt/aboot/ installé, le démarrage de
+Linux s'effectue généralement avec une commande de la forme :
+
+<tscreen>
+<tt/boot/ <it/devicename/ <tt/-fi/ <it/filename/ <tt/-fl/ <it/flags/
+</tscreen>
+
+<p> Les arguments <it/filename/ et <it/flags/ sont optionels. S'ils
+ne sont pas spécifiés, SRM utilise les valeurs par défaut contenues
+dans les variables d'environnement <tt/BOOT&lowbar;OSFILE/ et
+<tt/BOOT&lowbar;OSFLAGS/.  La syntaxe et la signification de ces deux
+arguments est décrite plus en détail ci-dessous.
+
+<sect2>Nom du fichier boot <!-- boot filename ? -->
+
+<p> L'argument <em/filename/ est de la forme :
+<quote>
+&lsqb;<em/n//&rsqb;<em/filename/
+</quote>
+
+<em/n/ est un simple nombre dans l'intervalle 1..8 qui donne le numéro
+de la partition de démarrage. <em/filename/ est le chemin d'accés au
+fichier à lancer. Par exemple, pour démarrer depuis la deuxième
+partition du sixième disque SCSI, vous entreriez :
+
+<tscreen><verb>
+boot dka600 -file 2/vmlinux.gz
+</verb></tscreen>
+
+Ou, pour démarrer depuis le premier lecteur de disquette :
+
+<tscreen><verb>
+boot dva0 -file vmlinux.gz
+</verb></tscreen>
+
+<p> Si un disque n'a pas de table des partitions, <tt/aboot/ considère
+que le disque contient une partition <tt/ext2/ commençant au premier
+bloc du disque. Cela permet de démarrer depuis une disquette.
+
+<p> <!-- As a special case ? --> Le numéro de partition 0 est utilisé
+ pour demander le démarrage depuis un disque qui ne contient pas
+(encore) de système de fichiers. Si l'on spécifie le numéro de
+"partition" 0, <tt/aboot/ considère que le noyau Linux suit
+directement l'image de <tt/aboot/. Une telle chose peut &ecirc;tre
+réalisée avec la commande <tt/swriteboot/. Par exemple, pour
+configurer un démarrage sans système de fichiers depuis
+<tt>/dev/sda</tt>, on pourrait utiliser la commande :
+
+<tscreen><verb>
+swriteboot /dev/sda bootlx vmlinux.gz
+</verb></tscreen>
+
+<p> Démarrer un système de cette façon n'est pas obligatoirement
+nécessaire. La raison d'&ecirc;tre de cette fonctionnalité est de
+permettre l'installation de Linux sur un système qui ne peut démarrer
+depuis une disquette (e.g., le Jensen).
+
+<sect2>Drapeaux de démarrage <!-- NJ : Boot Flags ? -->
+
+<p>Plusieurs drapeaux de démarrage peuvent &ecirc;tre spécifiés. La
+syntaxe en est :
+<tscreen><verb>
+-flags "options..."
+</verb></tscreen>
+
+Où "options..." est une combinaison des options suivantes (séparées
+par des espace). Il y a encore plus d'options, en fonction des pilotes
+que le noyau a installé. Les options listées ci-après ne sont là que
+pour illustrer l'idée générale :
+
+<descrip>
+
+<tag/load&lowbar;ramdisk=1/
+Copie le système de fichiers racine depuis une disquette vers un
+disque virtuel en mémoire avant de lancer le système. Ce disque
+virtuel sera utilisé en lieu et place du périphérique racine. Ceci est
+utile pour démarrer Linux sur une machine qui ne possède qu'un lecteur
+de disquettes.
+
+<tag/floppy=<em/str//
+<!-- Sets floppy configuration so <em/str/ -->
+
+<tag/root=<em/dev//
+Sélectionne le périphérique <em/dev/ comme système de fichiers
+racine. Le périphérique peut &ecirc;tre spécifié comme la combinaison
+des numéros <em>major/minor</em> du fichier de périphérique en
+hexadécimal (e.g., 0x802 pour /dev/sda2) ou un nom de fichier de
+périphérique (e.g.,<tt>/dev/fd0</tt>, <tt>/dev/sda2</tt>).
+
+<tag/single/
+Lance le système en mode mono-utilisateur.
+
+<tag/kgdb/
+Autorise <em/kernel-gdb/ (ne fonctionne que si <tt/CONFIG&lowbar;KGDB/
+est activé ; un deuxième système Alpha doit &ecirc;tre connecté par
+voie série pour que cela fonctionne).
+
+</descrip>
+
+<p> Quelques implémentations de SRM (e.g., celle du Jensen) sont
+limitées <!-- NJ : handicapped ? --> et n'autorisent que les 
+cha&icirc;nes d'options de courte longueur (e.g., au plus 8
+caractères). Dans ce cas là, <tt/aboot/ peut &ecirc;tre démarré 
+avec le drapeau de démarrage "i". Avec ce drapeau, <tt/aboot/
+demandera à l'utilisateur d'entrer une cha&icirc;ne d'options pouvant
+atteindre 256 caractères. Par exemple :
+
+<tscreen><verb>
+boot dka0 -fl i
+aboot> 3/vmlinux.gz root=/dev/sda3 single
+</verb></tscreen>
+
+Comme démarrer de cette façon devient rapidement pénible 
+<!-- NJ :  tedious ?-->, <tt/aboot/ autorise l'utilisateur à définir
+des raccourcis pour les lignes de commande fréquemment utilisées. En
+particulier, une option donnée par un chiffre <!-- NJ : single digit -->
+-- option --> (0-9) demande à <tt/aboot/ d'utiliser l'option
+correspondante dans le fichier <tt>/etc/aboot.conf</tt>. Un exemple de
+fichier <tt/aboot.conf/ est donné ci-dessous :
+
+<tscreen><verb>
+#
+# aboot default configurations
+#
+0:3/vmlinux.gz root=/dev/sda3
+1:3/vmlinux.gz root=/dev/sda3 single
+2:3/vmlinux.new.gz root=/dev/sda3
+3:3/vmlinux root=/dev/sda3
+8:- root=/dev/sda3            # fs-less boot of raw kernel
+9:0/vmlinux.gz root=/dev/sda3 # fs-less boot of (compressed) ECOFF kernel
+-
+</verb></tscreen>
+
+Avec ce fichier, la commande
+
+<tscreen><verb>
+boot dka0 -fl 1
+</verb></tscreen>
+
+correspond exactement à la commande de démarrage donnée ci-dessus. Il
+est cependant facile d'oublier la correspondance entre les numéros et
+les cha&icirc;nes d'options. Pour éviter ce problème, démarrez avec
+l'option "h" et <tt/aboot/ affichera le contenu de
+<tt>/etc/aboot.conf</tt> avant d'afficher l'invite demandant la
+cha&icirc;ne d'option entière.
+
+En conclusion, m&ecirc;me si <tt/aboot/ demande l'entrée d'une
+cha&icirc;ne d'options, il est possible d'entrer un simple caractère
+("i", "h", ou "0"-"9") pour obtenir le m&ecirc;me résultat que si le
+drapeau avait été spécifié sur la ligne de commande de démarrage. Par
+exemple, vous pouvez démarrer avec le drapeau "i", taper ensuite "h"
+(suivi par entrée) pour vous rappeler le contenu de
+<tt>/etc/aboot.conf</tt>
+
+<sect3>Sélectionner la partition de /etc/aboot.conf
+
+<p> Quand <tt/aboot/ est installé sur un disque dur, il a besoin de
+savoir sur quel partition il lui faut chercher le fichier
+<tt>/etc/aboot.conf</tt>. Nouvellement compilé, <tt/aboot/ cherchera
+sur la deuxième partition (<tt>/dev/sda2</tt>). Comme il serait
+contraignant d'avoir à recompiler <tt/aboot/ uniquement pour changer
+le numéro de la partition, <tt/abootconf/ autorise à directement
+modifier <tt/aboot/ déjà installé. Par exemple, si vous désiriez
+changer <tt/aboot/ afin qu'il utilise la <em/troisième/ partition du
+disque <tt>/dev/sda</tt>, vous utiliseriez la commande :
+
+<tscreen><verb>
+abootconf /dev/sda 3
+</verb></tscreen>
+
+Vous pouvez vérifier le réglage courant simplement en omettant le
+numéro de partition. Alors, <tt>abootconf /dev/sda</tt> affichera la
+partition actuellement sélectionnée. Notez que <tt/aboot/ &ecirc;tre 
+déjà installé pour que cette commande réussisse. Aussi, lors de
+l'installation d'un nouvel <tt/aboot/, le numéro de partition
+redeviendra celui par défaut (i.e., il sera nécessaire de relancer
+<tt/abootconf/).
+
+Depuis la version 0.5 de <tt/aboot/, il est également possible de
+sélectionner la partition contenant le fichier <tt>aboot.conf</tt>
+depuis la ligne de commande de démarrage. Cela peut &ecirc;tre fait
+avec une ligne de commande de la forme <it/a/<tt/:/<it/b/ où <it/a/
+est le numéro de la partition contenant <tt>/etc/aboot.conf</tt> et 
+<it/b/ est une option d'une lettre comme décrit plus haut
+(<tt/0/-<tt/9/, <tt/i/, ou <tt/h/). Par exemple, si vous tapez
+<tt/boot -fl "3:h" dka100/ le système démarre depuis SCSI ID 1, charge
+<tt>/etc/aboot.conf</tt> depuis la troisième partition, affiche son contenu
+à l'écran et attend que vous entriez les options de démarrage.
+
+<sect1>Démarrage réseau<label id="Network Booting">
+
+<p> Deux étapes préliminaires sont nécessaires avant que Linux puisse
+démarrer par un réseau. Premièrement, vous devrez positionner les
+variables d'environnement de SRM pour permettre le démarrage <em/via/
+le protocole <tt/bootp/ et deuxièmement vous devrez configurer une
+autre machine comme serveur de démarrage. Reportez-vous à la
+documentation de SRM fournie avec votre machine pour toute information
+sur la mise en place de <tt/bootp/. Configurer le serveur de démarrage
+dépend étroitement du système d'exploitation de cette machine, mais
+typiquement cela nécessite de lancer le programme <tt/bootpd/ en
+t&acirc;che de fond après avoir configuré le fichier
+<tt>/etc/bootptab</tt>. Le fichier <tt/bootptab/ possède une entrée
+par machine cliente autorisée à démarrer depuis le serveur. Par
+exemple, si vous voulez démarrer la machine
+<tt/myhost.cs.arizona.edu/, une entrée de la forme suivante serait
+nécessaire :
+
+<tscreen><verb>
+myhost.cs.arizona.edu:\
+	:hd=/remote/:bf=vmlinux.bootp:\
+	:ht=ethernet:ha=08012B1C51F8:hn:vm=rfc1048:\
+	:ip=192.12.69.254:bs=auto:
+</verb></tscreen>
+
+Cette entrée considère que l'adresse Ethernet de la machine est 
+<tt/08012B1C51F8/ et que son adresse IP est 192.12.69.254. L'adresse
+Ethernet peut &ecirc;tre trouvée gr&acirc;ce à la commande <tt/show
+device/ de la console SRM ou, si Linux est lancé, avec la commande
+<tt/ifconfig/. L'entrée précise également que si le client ne déclare
+pas le contraire, le fichier qui sera lancé sera le fichier <tt/vmlinux.bootp/
+du répertoire <tt>/remote</tt>. Pour plus d'informations sur la
+configuration de <tt/bootpd/, reportez-vous à sa page de manuel.
+
+Ensuite, construiser <tt/aboot/ gr&acirc;ce à la commande <tt/make
+netboot/. Assurez-vous que le noyau que vous désirez lancer a déjà été
+construit. Par défaut, le <tt/Makefile/ du programme <tt/aboot/
+utilise le noyau
+<tt>/usr/src/linux/arch/alpha/boot/vmlinux.gz</tt> (éditez le
+<tt/Makefile/ si vous désirez utiliser un autre chemin d'accés). Le
+résultat de <tt/make netboot/ est un fichier nommé <tt/vmlinux.bootp/
+contenant <tt/aboot/ <em/et/ le noyau Linux, pr&ecirc;t pour le
+démarrage par réseau.
+
+Enfin, copiez <tt/vmlinux.bootp/ dans le répertoire du serveur de
+démarrage. Dans l'exemple plus haut, vous l'auriez copié dans le
+répertoire <tt>/remote/</tt>. Ensuite, allumez la machine client et
+démarrez la, en spécifiant l'adaptateur Ethernet comme périphérique de
+démarrage. SRM nomme typiquement le premier adaptateur Ethernet
+<tt/ewa0/, donc, pour démarrer depuis ce périphérique, vous utiliserez
+la commande :
+
+<tscreen><verb>
+boot ewa0
+</verb></tscreen>
+
+Les options <tt/-fi/ et <tt/-fl/ sont utilisable comme d'habitude. En
+particulier, vous pouvez demander à <tt/aboot/ d'attendre l'entrée
+d'arguments pour le noyau Linux en spécifiant l'option <tt/-fl i/.
+
+<sect>Partager un disque avec Digital Unix
+
+<p> Malheureusement, Digital Unix ne sait rien de Linux, aussi,
+partager un disque unique entre les deux systèmes n'est pas totalement
+simple. Cependant, ce n'est pas une t&acirc;che difficile si vous
+suivez les conseils prodigués dans cette section. Nous considérerons
+que vous utilisez la version 0.5 ou postérieure de <tt/aboot/.
+
+<sect1>Partitionner le disque
+
+<p> Premièrement et avant tout : n'utilisez <em/jamais/ les programmes
+de partitionnement de Linux (<tt/minlabel/ ou
+<tt/fdisk/) sur un disque également utilisé par Digital Unix. Le
+programme Linux <tt/minlabel/ utilise le m&ecirc;me format de table de
+partitions que le programmme <tt/disklabel/ de Digital Unix, mais il
+existe des incompatibilités avec les données écrites par
+<tt/minlabel/, alors Digital Unix refusera tout simplement la table de
+partitions engendrée par <tt/minlabel/. <!-- NJ : générer n'est PAS français --> 
+Pour configurer une partition Linux <tt/ext2/ sous Digital Unix,
+vous allez devoir changer l'entrée <em/disktab/ de votre disque. Pour
+illustrer notre propos, supposons que vous avez un disque rz26 (un
+disque de 1Go) sur lequel vous voulez installer Linux. L'entrée
+<em/disktab/ sous Digital Unix v3.2 ressemble à (voyez le fichier
+<tt>/etc/disktab</tt>) :
+
+<tscreen><verb>
+rz26|RZ26|DEC RZ26 Winchester:\
+        :ty=winchester:dt=SCSI:ns#57:nt#14:nc#2570:\
+        :oa#0:pa#131072:ba#8192:fa#1024:\
+        :ob#131072:pb#262144:bb#8192:fb#1024:\
+        :oc#0:pc#2050860:bc#8192:fc#1024:\
+        :od#393216:pd#552548:bd#8192:fd#1024:\
+        :oe#945764:pe#552548:be#8192:fe#1024:\
+        :of#1498312:pf#552548:bf#8192:ff#1024:\
+        :og#393216:pg#819200:bg#8192:fg#1024:\
+        :oh#1212416:ph#838444:bh#8192:fh#1024:
+</verb></tscreen>
+
+Les champs intéressants ici sont <tt/o/it/?/; et <tt/p/<it/?/, où
+<it/?/ désigne une lettre de l'intervalle <tt/a/-<tt/h/ (les huit
+premières partitions). La valeur <tt/o/ indique l'adresse du début de
+la partition (en nombre de secteurs) et la valeur <tt/p/ donne la
+taille de la partition (également en nombre de
+secteurs). Reportez-vous à <tt/disktab(4)/ pour plus
+d'informations. Notez que Digital Unix <em/aime/ définir des
+partitions qui se chevauchent. Pour les entrées ci-dessus,
+l'organisation des partitions ressemble à cela (vous pouvez vérifier
+en ajoutant les diverses valeurs <tt/o/ et <tt/p/) :
+
+<tscreen><verb>
+  a    	b      	  d    	      e	     	  f
+|---|-------|-----------|-----------|-----------|
+
+                        c
+|-----------------------------------------------|
+
+                     g                 h
+            |-----------------|-----------------|
+</verb></tscreen>
+
+Digital Unix insiste pour que la partition <tt/a/ commence à l'adresse
+0 et que la partition <tt/c/ couvre l'étendue du disque. A part cela,
+vous pouvez organiser la table des partitions comme bon vous semble.
+
+Supposons que vous avez Digital Unix utilisant la partition <tt/g/ et
+que vous voulez installer Linux sur la partition <tt/h/ avec la
+partition <tt/b/ comme partition de swap. Pour obtenir cette
+organisation sans détruire la partition Digital Unix existante, vous
+devez configurer explicitement les types des partitions. Vous pouvez
+réaliser ceci en ajoutant un champ <tt/t/ pour chaque partition. Dans
+notre cas, nous ajoutons la ligne suivante à l'entrée <em/disktab/.
+
+<tscreen><verb>
+	:ta=unused:tb=swap:tg=4.2BSD:th=reservd8:
+</verb></tscreen>
+
+Pourquoi avons-nous marqué la partition <tt/h/ comme "reservd8"
+plut&ocirc;t que comme "ext2" ? Bon, Digital Unix ne connait rien de
+Linux. Une partition de type "ext2" correspond à une valeur numérique
+de 8, et Digital Unix utilise la ch&acirc;ne "reservd8" pour cette
+valeur. Donc, dans le langage de Digital Unix, "reservd8" signifie
+"ext2". Ceci était la partie hardue. Maintenant, il ne nous reste plus
+qu'à installer la nouvelle entrée <em/disktab/ sur le
+disque. Considérons que le disque à l'ID SCSI 5. Dans ce cas, nous
+faisons :
+
+<tscreen><verb>
+disklabel -rw /dev/rrz5c rz26
+</verb></tscreen>
+
+Vous pouvez vérifier que tout va bien en lisant le <em/disklabel/
+gr&acirc;ce à la commande <tt>disklabel -r /dev/rrz5c</tt>. A ce
+point, vous pouvez vouloir redémarrer Digital Unix et vous assurer que
+la partition Digital Unix est encore présente et en bon état. Si c'est
+le cas, vous pouvez arréter la machine et commencer l'installation de
+LInux. Prenez soin de sauter l'étape de partitionnement du disque lors
+de la procédure d'installation. Sachant que nous avons déjà installé
+une table de partitions correcte, vous devriez &ecirc;tre capable de
+procéder à cette opération et de sélectionner la huitième partition
+comme partition racine de Linux et la deuxième comme partition de
+swap. Si le disque est le deuxième disque SCSI de la machine, les noms
+de périphériques pour ces deux partitions seront <tt>/dev/sdb8</tt> et
+<tt>/dev/sdb2</tt>, respectivement (notez que Linux utilise des lettre
+pour désigner les disques et des numéros pour désigner les partitions,
+exactement à l'inverse de Digital Unix ; le schéma de Linux a plus de
+sens bien s&ucirc;r ;-).
+
+<sect1>Installer <tt/aboot/
+
+<p> <em/Premier obstacle/ <!-- caveat ? -->: avec le <em/firmware/ -->
+-- SRM, 
+vous ne pouvez démarrer qu'un et un seul système d'exploitation par
+disque. Pour cette raison, il est généralement préférable de disposer 
+d'au moins deux disques SCSI dans une machine sur laquelle vous 
+désirez utiliser aussi bien Linux que Digital Unix. Bien s&ucirc;r 
+vous pouvez aussi démarrer Linux depuis une disquette si la vitesse
+importe peu, ou par un réseau, si vous disposez d'un serveur
+<tt/bootp/. Mais dans cette partie, nous considérerons que vous 
+souhaitez démarrer Linux depuis un disque contenant une ou plusieurs 
+partitions Digital Unix.
+
+<p> <em/Deuxième obstacle/ : installer <tt/aboot/ sur un disque partagé
+avec Digital Unix rend les première et troisième partitions
+inutilisables (sachant qu'elles doivent commencer à l'adresse 0). Pour
+cette raison, nous vous recommandons de changer la taille de la
+partition <tt/a/ à une valeur juste suffisament élevée pour contenir
+<tt/aboot/ (1Mo devrait convenir).
+
+Une fois que ces deux obstacles sont surmontés, installer <tt/aboot/
+est aussi simple que d'habitude : comme les partitions <tt/a/ et
+<tt/c/ vont recouvrir <tt/aboot/ <!-- NJ : will overlap with ? -->,
+nous devons spécifier à <tt/swriteboot/ que ceci est intentionnel 
+<!-- re-NJ : that this is indeed OK ? -->. Nous pouvons le faire sous
+Linux avec une ligne de commande de la forme suivante (de nouveau,
+nous supposerons que l'on veut installer <tt/aboot/ sur le deuxième
+disque SCSI) :
+
+<tscreen><verb>
+swriteboot -f1 -f3 /dev/sdb bootlx
+</verb></tscreen>
+
+Le paramètre <tt/-f1/ signifie que nous voulons forcer l'écriture de
+<tt/bootlx/ m&ecirc;me s'il recouvre la première partition. La
+m&ecirc;me chose s'applique à la troisième partition.
+
+C'est tout. Vous devriez désormais pouvoir arréter le système et
+lancer Linux depuis le disque dur. Dans notre exemple, la ligne de
+commande SRM pour le faire serait :
+
+<tscreen><verb>
+boot dka5 -fi 8/vmlinux.gz -fl root=/dev/sdb8
+</verb></tscreen>
+
+</article>

@@ -1,0 +1,150 @@
+
+                              Bridging mini HOWTO
+
+Christopher Cole mailto:cole@coledd.com
+Version française : Samuel Tribehou mailto:Samuel-TRIBEHOU@mail.cpod.fr
+
+   v1.11, 7 Septembre 1998.
+     _________________________________________________________________
+
+   _Ce document décrit l'installation d'un pont ethernet. Un pont est une
+   machine qui contrôle des paquets de données à l'intérieur d'un
+   sous-réseau dans le but de réduire le trafic. Un pont est généralement
+   plaçé entre deux groupes différents d'ordinateurs qui peuvent
+   communiquer entre eux, mais pas avec les ordinateurs de l'autre
+   groupe. Un bon exemple est de considérer un groupe de Macintosh et un
+   autre de machines Unix. Ces groupes de machines tendent à beaucoup
+   communiquer entre eux, et le trafic qu'ils produisent sur le réseau
+   engendre des collisions pour les autres machines qui tentent de
+   communiquer. Un pont sera plaçé entre ces groupes d'ordinateurs. Son
+   rôle sera alors d'examiner la destination des paquets de données un
+   par un et de décider de passer ou non les paquets de l'autre côté du
+   segment ethernet. Le résultat est un réseau plus rapide, «silencieux»,
+   et engendrant moins de collisions._
+     _________________________________________________________________
+
+1. Installation
+
+     * Se procurer «Bridge Config» :
+       ftp://shadow.cabi.net/pub/Linux/BRCFG.tgz
+     * Authoriser de multiples interfaces ethernet sur la machine en
+       ajoutant ceci à votre /etc/lilo.conf, et en relançant lilo :
+
+append = "ether=0,0,eth1"
+
+       Si vous avez trois interfaces sur votre pont, utilisez cette ligne
+       à la place :
+
+append = "ether=0,0,eth1 ether=0,0,eth2"
+
+       D'autres interfaces pourront être trouvées en rajoutant plus de
+       déclarations ether. Par défaut le noyau ne cherche à détecter
+       qu'une seule carte ethernet, et dès qu'il en a trouvé une la
+       détection cesse. La déclaration append ci-dessus indique au noyau
+       de continuer à chercher d'autres cartes ethernet une fois la
+       première trouvée. Alternativement, les paramètres de boot peuvent
+       être utilisés à la place :
+
+linux ether=0,0,eth1
+
+       ou, avec 3 interfaces, utilisez :
+
+linux ether=0,0,eth1 ether=0,0,eth2
+
+     * Recompilez le noyau en rajoutant l'option BRIDGING.
+     * Un pont ne devrait pas avoir d'adresse IP. Il PEUT, mais un
+       véritable pont n'en a pas besoin. Pour enlever l'adresse IP de
+       votre pont, allez dans /etc/sysconfig/network-scripts/ (pour une
+       RedHat) et copiez ifcfg-lo0 dans ifcfg-eth0 et ifcfg-eth1. Dans
+       ces deux fichiers, changez la ligne contenant «DEVICE=lo» en
+       «device=eth0» et «DEVICE=eth1». Les autres distributions peuvent
+       dériver sur ce point. Faites ce que vous devez faire ! S'il y a
+       plus de 2 interfaces sur ce pont, soyez sûr de faire les
+       configurations correspondantes pour les autres aussi.
+     * Rebootez, de façon à utiliser le nouveau noyau avec l'option
+       bridging, et pour être sûr que des adresses IP ne sont pas
+       attachées aux interfaces reseau.
+     * Une fois que le système est prêt, mettez les cartes ethernet en
+       mode «promiscuous», de façon à ce qu'elles regardent chaque paquet
+       qui passe par leur interface :
+
+ifconfig eth0 promisc; ifconfig eth1 promisc
+
+       Toutes les interfaces qui sont connectées aux segments réseau à
+       relier doivent être mises en «promiscuous mode».
+     * Mettez le pont en route en utilisant le programme brcfg :
+
+brcfg -ena
+
+     * Vérifiez qu'il y a un trafic différent pour chaque interface :
+
+tcpdump -i eth0 (dans une fenêtre).
+tcpdump -i eth1 (dans une autre fenêtre).
+
+     * Lancez un sniffer ou tcpdump sur une autre machine pour vérifier
+       que le pont sépare les segments correctement.
+
+2. Questions fréquemment posées.
+
+     * _Q : __J'ai le message : ioctl(SIOCGIFBR) failed~: Package not
+       installed. Qu'est-ce que ça veut dire ?_
+       _R : _Le support du pontage n'est pas intégré dans votre noyau.
+       Utilisez un noyau 2.0 ou supérieur, et recompilez-le avec l'option
+       BRIDGING.
+     * _Q : __Les machines qui sont d'un côté du pont ne peuvent pas
+       «pinger» les autres !_
+       _R : _
+         1. Avez vous activé le pontage en utilisant «brcfg -ena» ?
+            (brcfg devrait répondre «bridging is ENABLED» )
+         2. Avez vous mis l'interface en «promiscuous mode» ? (Tapez la
+            commande «ifconfig». Le drapeau (flag) devrait être mis sur
+            les deux interfaces.)
+         3. Si vous utilisez des cartes pouvant gérer plusieurs sortes
+            d'interface, vérifiez que c'est la bonne qui est utilisée. Il
+            se peut que vous ayez besoin d'utiliser le programme de
+            configuration qui est livré avec votre carte réseau.
+     * _Q : __Je ne peux pas utiliser telnet ou ftp depuis le pont !
+       pourquoi ?_
+       _R : _C'est parce que le pont n'a d'adresse IP pour aucune de ses
+       interfaces. Un pont doit être une partie transparente d'un réseau.
+     * _Q : __Que dois-je configurer pour que le routage se fasse bien ?_
+       _R : _Rien ! Tout le méchanisme de routage est délégué au code de
+       pontage du noyau. Pour voir les adresses ethernet telles qu'elles
+       sont comprises par le noyau, utilisez le programme brcfg en mode
+       debug : _brcfg -deb_
+     * _Q : __Le pont semble marcher, mais pourquoi traceroute ne montre
+       pas le pont comme faisant partie du chemin ?_
+       _R : _À cause de la nature d'un pont, traceroute ne devrait PAS
+       montrer le pont comme faisant partie du chemin. Un pont doit être
+       transparent pour le reste du réseau.
+     * _Q : __Est-il nécessaire de compiler le noyau avec l'option
+       IP_FORWARD ?_
+       _R : _Non. Le code de pontage dans le noyau se charge du transport
+       des paquets. IP_FORWARD sert pour une passerelle qui a des
+       adresses IP associées à ses interfaces.
+     * _Q : __Pourquoi est-ce que les adresses ethernet physiques pour le
+       port 1 et 2 sont les mêmes selon brcfg ? Ne devraient-elles pas
+       être différentes ?_
+       _R : _Non. Chaque port sur un pont est intentionellement assigné à
+       la même adresse ethernet physique par le code de pontage.
+     * _Q : __Bridging n'apparait pas dans les options lorsque je fais
+       un/ make config sur les sources du noyau. Comment faire pour
+       pouvoir le sélectionner ?_
+       _R : _Pendant la configuration du noyau, répondez Y à la
+       question«Prompt for development and/or incomplete code/drivers
+       (CONFIG_EXPERIMENTAL) Y/n/?».
+     * _Q : __Trop de hubs (4 ou plus) chaînés l'un après l'autre (en
+       série) posent des problèmes de timing sur un ethernet. Quel effet
+       a un pont dans un sous-réseau accédé par des hubs ?_
+       _R : _Un pont annule la règle des 3/4/5 hubs. Un pont ne gère pas
+       les paquets de la même façon qu'un hub, et ne contribue donc pas
+       aux problèmes de timing dasns un réseau.
+     * _Q : __Est-ce qu'un pont peut être interfaçé avec des segments
+       ethernet d'un côté de 10Mb et de l'autre de 100Mb ?_
+       _R : _Oui, un pont peut joindre entre eux un segment de 10Mb avec
+       un autre de 100Mb. Du moment que la carte réseau du côté rapide du
+       réseau est une 100Mb, TCP prendra en charge le reste. Bien qu'il
+       soit vrai que les paquets d'un hôte dans le réseau à 100Mb
+       communiquant avec un autre du réseau à 10Mb se déplaceront à
+       seulement 10Mb/s, le reste du trafic sur l'ethernet rapide n'est
+       pas ralenti.

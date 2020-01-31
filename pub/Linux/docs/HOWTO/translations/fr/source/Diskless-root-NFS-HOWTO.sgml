@@ -1,0 +1,932 @@
+<!doctype linuxdoc system>
+
+<!-- LinuxDoc file was created by LyX 1.0 (C) 1995-1999 by <hans>
+ Tue Mar 30 12:25:28 1999
+ -->
+
+ <article>
+ <title>NFS-Root client et serveur HowTo</title>
+ <author>
+Hans de Goede &lt;hans@highrise.nl&gt;
+ </author>
+
+ <date>v1.0 30 Mars 1999 </date>
+
+ <abstract>Ce document décrit l'installation et la configuration
+ d'un serveur pour que ses clients puissent démarrer et
+ fonctionner sans disque (par montage NFS de root).
+ </abstract>
+
+ <toc>
+
+ <sect>Introduction
+
+<p>Ce Howto est  également disponible à l'adresse - 
+<url url="http://x.mame.net/hans">.
+ Il décrit un exemple de configuration où root est monté en NFS, mais il
+ diffère des autres NFS-root HowTo sur deux points :
+</p>
+
+ <p>
+ <enum>
+  <item>Il propose à la fois l'aspect serveur et l'aspect client,
+ offrant une solution complète ; il ne décrit pas les principes
+ de base du montage de root via NFS mais plutôt un exemple
+ de configuration qui fonctionne.
+
+  <item>La configuration décrite est particulière dans la mesure où c'est
+ l'arborescence root du serveur qui est partagée avec
+ les stations (workstations, ws), tandis qu'habituellement,
+ on a plutôt un mini-root par station.
+    Ceci a quelques avantages :
+  <itemize>
+   <item>occupe un faible espace disque
+   <item>tous les changements sur le serveur sont
+     automatiquement disponibles côté client
+     (la configuration n'est faite qu'une fois)
+   <item>facilite l'ajout de nouveaux clients
+   <item>un seul système à maintenir.
+  </itemize>
+ </enum></p>
+ <p>Ce document est basé sur un système RedHat 5.2. On suppose
+ que le lecteur de ce HowTo a suffisamment d'expérience en
+ administration système linux ; l'adaptation de cette solution
+ à une autre distribution ne devrait donc pas poser de problème.
+ </p>
+ <sect1>Copyright
+<p>
+Ce HOWTO est &copy; Hans de Goede, 1999.
+    
+Sauf indication contraire, les droits d'auteur des HOWTO Linux sont
+détenus par leurs auteurs respectifs. Les HOWTO Linux peuvent être
+reproduits et distribués, en totalité ou en partie, sur tout média
+physique ou électronique dans la mesure où ce copyright est préservé
+dans chaque copie. La distribution commerciale en est autorisée et
+encouragée. L'auteur apprécierait toutefois qu'on lui notifie
+individuellement ce genre de distribution.
+ 
+Le présent copyright doit couvrir toute traduction, compilation et
+autre travail dérivé des HOWTO Linux. C'est-à-dire qu'il est interdit
+d'imposer des restrictions de diffusion allant au delà du présent
+copyright à des ouvrages inspirés, ou incorporant des passages, de
+HOWTO Linux. Sous certaines conditions, des exceptions à ces règles
+seront tolérées : contactez le coordinateur des HOWTO à l'adresse
+donnée ci-dessous.  
+
+Pour résumer, nous souhaitons une diffusion aussi large que possible
+de ces informations. Néanmoins, nous entendons garder la propriété
+intellectuelle (copyright) des HOWTO, et apprécierions d'être informés
+de leur redistribution.
+ 
+Pour toute question plus générale, merci de contacter le coordinateur
+des HOWTO, Tim Bynum, à l'adresse électronique <tt><htmlurl
+url="mailto:tjbynum@wallybox.cei.net"
+name="tjbynum@wallybox.cei.net"></tt>.
+ </p>
+ <sect1>Historique
+ <p>
+ <itemize>
+  <item>v0.1, 20 Janvier 1999 : premier jet au HHS, là où la configuration
+  a été développée.
+  <item>v1.0, 30 Mars 1999 : première version diffusée, écrite partiellement
+durant ma période de stage chez ISM.
+ </itemize></p>
+ <sect>Principes de base
+ <p>Dans cette configuration
+  les clients utilisent le système de fichiers racine du serveur.
+  Ils y accèdent bien sûr en lecture seule.
+ </p>
+ <sect1>Les choses ne peuvent pas être aussi simples...
+ <p>Quelques problèmes apparaissent rapidement.
+ </p>
+ <sect2>Chaque station a besoin de sa propre copie d'un certain nombre de répertoires
+ <p>Une configuration linux doit avoir les accès en écriture
+  sur les répertoires suivants :
+ </p>
+ <p>
+ <enum>
+  <item>/dev
+  <item>/var
+  <item>/tmp
+ </enum></p>
+ <p>Il y a trois solutions, l'une d'elles ne fonctionnant que pour /dev :
+ </p>
+ <p>
+ <enum>
+  <item>utiliser (monter) un ramdisk et remplir celui-ci par
+   extraction d'une archive ou copie depuis un répertoire modèle.
+  <itemize>
+   <item>avantages :
+    <enum>
+     <item>nettoyé à chaque reboot (suppression des fichiers tmp et log).
+      Pas de maintenance.
+     <item>ne prend pas de place sur le serveur et ne génère pas
+      de trafic réseau. Il est donc plus rapide et utilise moins
+      de ressources côté serveur.
+    </enum>
+   <item>inconvénients :
+    <enum>
+     <item>occupe de la mémoire
+     <item>les fichiers de log ne sont pas conservés.
+     Il faut configurer syslog pour rediriger les logs
+     sur le serveur si on tient vraiment à récupérer les messages des clients.
+    </enum>
+  </itemize>
+  <item>créer un répertoire pour chaque station sur le serveur
+  et le monter par NFS en lecture-écriture.
+  <itemize>
+   <item>avantages &amp; inconvénients :
+   <enum>
+    <item>les arguments ci-dessus sont à prendre à l'envers
+    dans le cas des répertoires situés sur le serveur.
+   </enum>
+  </itemize>
+  <item>à partir du noyau 2.2, on peut utiliser
+  le type devfs pour /dev (un système de fichiers virtuel à la
+  manière de /proc).
+  <itemize>
+   <item>avantages:
+    <enum>
+     <item>devfs prend très peu de mémoire comparé à un ramdisk,
+     et pas du tout d'espace disque sur le serveur.
+     En plus il est très rapide.
+     Un /dev normal occupe au moins 1,5 Mo dans la mesure
+     où un fichier (un <em>device</em>) fait au minimum 1 ko,
+     et il y a environ 1200 fichiers. On peut bien entendu utiliser
+     un modèle de /dev avec simplement les entrées nécessaires
+     pour économiser un peu de place : 1,5 Mo, ça fait beaucoup
+     pour un ramdisk et ça ne fait pas très propre sur un serveur.
+     <item>devfs crée automatiquement des entrées pour les devices
+     détectés et ajoutés, donc pas besoin de maintenance.
+    </enum>
+   <item>inconvénients :
+    <enum>
+     <item>tout changement sur /dev tel que création d'un lien
+     pour la souris ou le lecteur de cdrom est perdu.
+     Devfs fournit cependant un script nommé rc.devfs
+     pour sauvegarder ces changements. Le script présent dans ce HowTo
+     va alors automatiquement restaurer les liens symboliques nouvellement
+     positionnés en appelant rc.devfs. Si on fait des changements
+     sur /dev, il faut donc appeler rc.devfs soi-même de cette façon :
+    </enum>
+    <quote>/etc/rc.d/rc.devfs save /etc/sysconfig
+    </quote>
+  </itemize>
+ </enum></p>
+ <p>Comme on peut le voir, il y a plusieurs moyens de résoudre
+ ce problème d'accès en lecture-écriture.
+ Voici les options choisies pour le reste de ce Howto :
+ </p>
+ <p>
+ <itemize>
+  <item>pour /dev nous utiliserons devfs
+  <item>pour /var et /tmp, nous utiliserons un ramdisk de 1 Mo.
+  Celui-ci sera partagé pour utiliser la mémoire de manière efficace.
+  Pour réaliser ce partage, /tmp sera en fait un lien symbolique sur /var/tmp.
+  <item>pour remplir ce ramdisk, une archive conviendra tout aussi bien
+  qu'un répertoire modèle. Mais comme les modifications sont plus
+  aisées avec le répertoire modèle,
+  c'est cette dernière solution qui sera retenue.
+ </itemize></p>
+ <sect2>Un accès en écriture sur /home semble nécessaire...
+ <p>Mais ce n'est pas vraiment un problème puisque dans
+ toute configuration unix de type client/serveur,
+ /home est monté en lecture-écriture depuis le serveur,
+ donc ça nous conviendra ;)
+ </p>
+ <sect2>Comment une station récupère son adresse IP de manière à pouvoir communiquer avec le serveur ?
+ <p>Heureusement pour nous ce probleme a déjà été résolu
+ et le noyau a deux possibilités pour la configuration
+ automatique de l'adresse IP :
+ </p>
+ <p>
+ <enum>
+  <item>RARP
+  <item>Bootp
+ </enum></p>
+ <p>RARP est le plus facile à configurer, bootp est le plus flexible.
+ Mais la plupart des bootroms supportent uniquement bootp,
+ donc nous utiliserons bootp.
+ </p>
+ <sect2>Et la configuration spécifique à chaque station ?
+ <p>Sur RedHat, la plupart des fichiers de configuration système
+ sont déjà situés sous /etc/sysconfig.
+ Nous déplacerons donc simplement ceux qui ne le sont pas encore
+ et ajouterons des liens symboliques.
+ Ensuite nous monterons un répertoire /etc/sysconfig par station.
+ C'est la seule partie qui est propre à la distribution utilisée ici.
+ Avec une autre distribution, il suffira de créer un répertoire sysconfig,
+ déplacer tous les fichiers de configuration qui ne peuvent être partagés,
+ et ajouter les liens nécessaires.
+ De même, /etc/rc.d/rc3.d (ou l'équivalent dans les autres distribs)
+ peut présenter des différences entre le serveur et les stations.
+ Si on considère que toutes les stations lancent les mêmes services,
+ on créera simplement un rc3.d pour les stations et un pour le serveur :
+ </p>
+ <p>
+ <enum>
+  <item>créer un /etc/rc.d/rc3.ws et un /etc/rc.d/rc3.server
+  <item>faire un lien de /etc/rc.d/rc3.d vers /etc/sysconfig/rc3.d
+  <item>faire un lien de /etc/sysconfig/rc3.d vers /etc/rc.d/rc3.xxx
+  <item>remplacer S99local dans rc3.ws par un lien vers /etc/sysconfig/rc.local pour que chaque station ait son propre rc.local
+ </enum></p>
+ <sect2>Divers problèmes
+ <p>
+ </p>
+ <p>
+ <enum>
+  <item>/etc/rc.d/rc.sysinit a besoin de /var, donc /var doit
+ être monté ou créé avant que rc.sysinit ne soit exécuté.
+ Il serait également intéressant que /etc/sysconfig (propre à chaque station)
+ soit monté avant le lancement des scripts d'initialisation.
+  <itemize>
+   <item>pour cela nous appellerons un script dès le début
+   de /etc/rc.d/rc.sysinit, aussi bien
+   sur le serveur que sur les stations ; ce script devra donc détecter
+   sur quelle machine il tourne pour ne rien faire dans le cas du serveur.
+  </itemize>
+  <item>/etc/mtab doit être accessible en écriture :
+  <itemize>
+   <item>il suffit de créer un lien vers /proc/mounts
+    et un fichier vide mounts dans /proc pour que fsck
+    et mount ne se plaignent pas pendant l'initialisation
+    (alors que /proc n'est pas encore monté).
+    Il est à noter que smb(u)mount ne respecte pas le lien mtab
+    et va l'écraser. Donc si on utilise smb(u)mount,
+    il faut écrire un wrapper qui va restorer le lien.
+  </itemize>
+ </enum></p>
+ <sect>Préparation du serveur
+ <p>
+ </p>
+ <sect1>Compiler un noyau
+ <p>Il faut prévoir le nécessaire pour supporter root sur nfs.
+  Voici les étapes :
+ </p>
+ <p>
+ <enum>
+  <item>Comme nous utilisons une RedHat 5.2 avec le noyau 2.2,
+   il faut s'assurer que notre distribution est prête pour ce noyau.
+    RedHat fournit un excellent HowTo à ce sujet.
+  <item>J'utilise le même noyau pour le serveur et les stations
+   pour éviter les conflits vu qu'ils partagent le même
+   répertoire /lib/modules. Si ce n'est pas possible
+   dans votre situation, produisez différentes versions
+   en éditant le numéro de version au début du Makefile.
+   Ces numéros différents devraient éviter les confilts.
+  <item>En plus des options habituelles, le noyau devrait supporter :
+  <itemize>
+   <item>ext2 compilé dans le noyau (pour le serveur, ou bien pour les deux)
+   <item>NFS et root-over-NFS compilé (pour le client ou pour les deux) ;
+    pour avoir l'option root-over-NFS, il faut activer
+    ip-autoconfig dans les options réseau. Nous utiliserons
+    bootp comme méthode de configuration.
+   <item>networkcard compilé (pour le client ou les deux)
+   <item>devfs compilé (requis pour le client, également intéressant
+    pour le serveur)
+   <item>tout ce que vous utilisez normalement,
+    les modules pour tous les périphériques présents sur le serveur
+     et les stations.
+  </itemize>
+  <item>Il faut éditer ensuite les sources du noyau pour
+   changer le montage root-over-NFS par défaut :
+   /tftpboot/&lt;ip&gt;/root au lieu de /tftpboot/&lt;ip&gt;,
+   de façon à avoir une arborescence propre sous /tftpboot
+   avec un répertoire par station contenant son répertoire racine
+   (un lien vers la racine du serveur en fait) et ses répertoires spécifiques.
+  <itemize>
+   <item>En 2.0, c'est une ligne de DEFINE dans &dquot;include/linux/nfs_fs.h&dquot; appelée
+ &dquot;NFS_ROOT&dquot;
+   <item>En 2.2, c'est un DEFINE dans  &dquot;fs/nfs/nfsroot.c&dquot;
+  </itemize>
+  <item>Il reste à compiler le noyau comme d'habitude (cf Kernel-HowTo).
+  <item>Si vous n'avez pas encore de noeud /dev/nfsroot, créez-le :
+  <quote>mknod /dev/nfsroot b 0 255
+  </quote>
+  <item>Après avoir compilé le noyau, changez la racine en tapant :
+  <quote>rdev &lt;path-to-zImage&gt;/zImage /dev/nfsroot
+  </quote>
+  <item>Avant de booter avec devfs, vous devez modifier conf.modules :
+   ajoutez le contenu du fichier conf.modules de la documentation
+   de devfs au conf.modules du système.
+  <item>Ce nouveau noyau est compilé avec la configuration
+  automatique de l'adresse IP, mais cela va échouer lors du boot
+  du serveur puisque c'est lui-même qui donne les adresses IP.
+  Pour éviter une trop longue attente, ajouter :
+  append=&dquot;ip=off&dquot; à la section linux de /etc/lilo.conf. 
+  <item>relancez lilo et bootez sur le nouveau noyau.
+  <item>avec devfs, sur le serveur, vous allez perdre tous les liens
+   qui existaient. Sur RedHat, c'est
+   le plus souvent /dev/mouse et /dev/cdrom. Recréez-les.
+   Remettez également vos propriétés personnalisées si vous avez
+   l'habitude d'avoir des particularités sur certaines entrées
+   de /dev. Ensuite enregistrez ce paramétrage de /dev (sous /etc/sysconfig
+   puisque c'est dépendant du type de machine) ainsi :
+  <itemize>
+   <item>Copiez le fichier rc.devfs de la documentation devfs
+    des sources du noyau vers /etc/rc.d/rc.devfs
+    et rendez-le exécutable
+   <item>Sauvegardez les paramétrages :
+   <quote>/etc/rc.d/rc.devfs save /etc/sysconfig
+   </quote>
+  </itemize>
+ </enum></p>
+ <sect1>Création et remplissage de /tftpboot, création des liens vers /tmp etc.
+ <p>
+ </p>
+ <sect2>La partie automagique
+ <p>Tout cela est pris en charge par le script ci-dessous.
+ Si on veut le faire manuellement, il suffit de suivre le script pas a pas.
+ </p>
+ <p>Ce script effectue des actions un peu osées telles que supprimer /tmp,
+  arrêter temporairement syslog, démonter /proc.
+  Donc assurez-vous d'abord que personne n'utilise la machine
+  pendant ce temps, et que X ne tourne pas. Il n'est pas
+  nécessaire de changer de niveau d'exécution, si vous êtes sûr d'être
+ le seul connecté et sur une console en mode texte.
+ </p>
+ <p>Déni : ce script a été testé mais s'il provoque un plantage
+  du serveur, vous êtes seul responsable. Je ne prends aucune responsabilité
+  quoi qu'il arrive. Je répète que ce HowTo est fait pour des administrateurs
+  expérimentés. De plus ce script est fait pour être lancé une fois
+  et une seule. Le lancer une seconde fois endommagera /etc/fstab,
+  /etc/X11/XF86Config, /etc/X11/X et /etc/conf.modules.
+ </p>
+ <p>Ceci dit, copiez-collez ce script et rendez le exécutable,
+ puis exécutez-le.
+ </p>
+ <p>
+ <code>&num;!/bin/sh
+
+SERVER_NAME=`hostname -s`
+
+&num;&num;&num;
+echo creating /etc/rc.d/rc.ws
+&num;this basicly just echos the entire script ;)
+echo &dquot;&num;root on nfs stuff
+
+SERVER=&dollar;SERVER_NAME
+
+&num; on a besoin de proc pour mtab, route, etc.
+mount -t proc /proc /proc
+
+IP=&bsol;`ifconfig eth0|grep inet|cut --field 2 -d ':'|cut --field 1 -d ' '&bsol;`
+
+&num; si le premier montage echoue, c'est qu'on est probablement
+&num; sur le serveur, ou bien que quelque chose ne va pas.
+&num; donc on ne fait la suite que si le premier montage est reussi
+mount &bsol;&dollar;SERVER:/tftpboot/&bsol;&dollar;IP/sysconfig /etc/sysconfig -o nolock &amp;&amp;
+&lcub;
+   &num; autres montages
+   mount &bsol;&dollar;SERVER:/home /home -o nolock
+   mount &bsol;&dollar;SERVER:/ /&bsol;&dollar;SERVER -o ro,nolock
+
+   &num; creation de /var
+   echo Creating /var ...
+   mke2fs -q -i 1024 /dev/ram1 1024
+   mount /dev/ram1 /var -o defaults,rw
+   cp -a /tftpboot/var /
+
+   &num; configuration reseau
+   . /etc/sysconfig/network
+   HOSTNAME=&bsol;`cat /etc/hosts|grep &bsol;&dollar;IP|cut --field 2&bsol;`
+   route add default gw &bsol;&dollar;GATEWAY
+   ifup lo
+&rcub;
+
+&num; restauration des périphériques installés
+/etc/rc.d/rc.devfs restore /etc/sysconfig
+
+umount /proc&dquot; &gt; /etc/rc.d/rc.ws
+
+&num;&num;&num;
+echo splitting runlevel 3 for the client and server
+mv /etc/rc.d/rc3.d /etc/rc.d/rc3.server
+cp -a /etc/rc.d/rc3.server /etc/rc.d/rc3.ws
+rm /etc/rc.d/rc3.ws/*network
+rm /etc/rc.d/rc3.ws/*nfs
+rm /etc/rc.d/rc3.ws/*nfsfs
+rm /etc/rc.d/rc3.ws/S99local
+ln -s /etc/sysconfig/rc.local /etc/rc.d/rc3.ws/S99local
+ln -s /etc/rc.d/rc3.server /etc/sysconfig/rc3.d
+ln -s /etc/sysconfig/rc3.d /etc/rc.d/rc3.d
+
+&num;&num;&num;
+echo making tmp a link to /var/tmp
+rm -fR /tmp
+ln -s var/tmp /tmp
+
+&num;&num;&num;
+echo moving various files around and create symlinks for them
+echo mtab
+/etc/rc.d/init.d/syslog stop
+umount /proc
+touch /proc/mounts
+mount /proc
+/etc/rc.d/init.d/syslog start
+rm /etc/mtab
+ln -s /proc/mounts /etc/mtab
+echo fstab
+mv /etc/fstab /etc/sysconfig
+ln -s sysconfig/fstab /etc/fstab
+echo X-config files
+mkdir /etc/sysconfig/X11
+mv /etc/X11/X /etc/sysconfig/X11
+ln -s ../sysconfig/X11/X /etc/X11/X
+mv /etc/X11/XF86Config /etc/sysconfig/X11
+ln -s ../sysconfig/X11/XF86Config /etc/X11/XF86Config
+echo conf.modules
+mv /etc/conf.modules /etc/sysconfig
+ln -s sysconfig/conf.modules /etc/conf.modules
+echo isapnp.conf
+mv /etc/isapnp.conf /etc/sysconfig
+ln -s sysconfig/isapnp.conf /etc/isapnp.conf
+
+&num;&num;&num;
+echo creating a template dir for the ws directories
+echo /tftpboot/template
+mkdir /home/tftpboot
+ln -s home/tftpboot /tftpboot
+mkdir /tftpboot/template
+mkdir /&dollar;SERVER_NAME
+echo root
+ln -s / /tftpboot/template/root
+echo sysconfig
+cp -a /etc/sysconfig /tftpboot/template/sysconfig
+rm -fR /tftpboot/template/sysconfig/network-scripts
+ln -s /&dollar;SERVER_NAME/etc/sysconfig/network-scripts &bsol;
+ /tftpboot/template/sysconfig/network-scripts
+echo NETWORKING=yes &gt; /tftpboot/template/sysconfig/network
+echo `grep &dquot;GATEWAY=&dquot; /etc/sysconfig/network` &gt;&gt; /tftpboot/template/sysconfig/network
+echo &dquot;/dev/nfsroot / nfs defaults 1 1&dquot; &gt; /tftpboot/template/sysconfig/fstab
+echo &dquot;none /proc proc defaults 0 0&dquot; &gt;&gt; /tftpboot/template/sysconfig/fstab
+echo &dquot;&num;!/bin/sh&dquot; &gt; /tftpboot/template/sysconfig/rc.local
+chmod 755 /tftpboot/template/sysconfig/rc.local
+rm /tftpboot/template/sysconfig/rc3.d
+ln -s /etc/rc.d/rc3.ws /tftpboot/template/sysconfig/rc3.d
+rm /tftpboot/template/sysconfig/isapnp.conf
+echo var
+cp -a /var /tftpboot/var
+rm -fR /tftpboot/var/lib
+ln -s /&dollar;SERVER_NAME/var/lib /tftpboot/var/lib
+rm -fR /tftpboot/var/catman
+ln -s /&dollar;SERVER_NAME/var/catman /tftpboot/var/catman
+rm -fR /tftpboot/var/log/httpd
+rm -f /tftpboot/var/log/samba/*
+for i in `find /tftpboot/var/log -type f`; do cat /dev/null &gt; &dollar;i; done
+rm `find /tftpboot/var/lock -type f`
+rm `find /tftpboot/var/run -type f`
+echo /sbin/fsck.nfs
+echo &dquot;&num;!/bin/sh
+exit 0&dquot; &gt; /sbin/fsck.nfs
+chmod 755 /sbin/fsck.nfs
+
+echo all done
+ </code></p>
+ <sect2>Ajustements manuels
+ <p>
+ </p>
+ <p>
+ <enum>
+  <item>Le script de configuration des stations
+   doit être exécuté au tout début de rc.sysinit,
+ donc il faut ajouter les lignes suivantes après avoir défini le PATH :
+  <code>&num; pour les stations montant root par NFS
+/etc/rc.d/rc.ws
+  </code>
+  <item>Réduisez /etc/rc.d/rc3.ws à un minimum.
+   Il peut être utile de créer un rc.local.ws, à vous de voir.
+   Réseau et nfs sont déja configurés. Voici d'ailleurs la liste
+   de ce qui a déjà été enlevé/mis à jour par le script :
+  <itemize>
+   <item>réseau
+   <item>système de fichiers NFS
+   <item>NFS
+   <item>rc.local
+  </itemize>
+ </enum></p>
+ <sect1>Export des systèmes de fichiers appropriés et configuration de bootp
+ <p>
+ </p>
+ <sect2>Export des systèmes de fichiers
+ <p>Par exemple ici à l'Université, j'ajouterai ceci à /etc/exports :
+ </p>
+ <p>
+ <code>/ *.st.hhs.nl(ro,no_root_squash)
+/home *.st.hhs.nl(rw,no_root_squash)
+ </code></p>
+ <p>Remplacez les noms de domaine par les vôtres et relancez NFS :
+ </p>
+ <p>
+ <quote>/etc/rc.d/init.d/nfs restart
+ </quote></p>
+ <p>Pour les utilisateurs de knfsd : il n'est pas possible
+ d'avoir plusieurs exports d'une partition avec des permissions
+ différentes. De même, knfsd ne permet pas de changer de partition
+ (par exemple si un client monte /, et /usr est sur une autre partition,
+ le client n'aura pas accès à /usr).
+ Ainsi, si vous utilisez knfsd, il faudra qu'au moins /home soit sur une
+ partition différente ; le script de préparation du serveur
+ a mis /tftpboot sous /home : il ne nécessite pas une partition
+ supplémentaire. Si vous voulez accéder à d'autres partitions
+ depuis vos clients, exportez les séparément et ajoutez les lignes
+ de montage correspondantes dans /etc/rc.d/rc.ws.
+ </p>
+ <sect2>Configurer bootp
+ <p>
+ <enum>
+  <item>Si bootp n'est pas encore installé, c'est le moment de le faire.
+  Il est inclus dans la RedHat.
+  <item>Editez /etc/inetd.conf et supprimez le commentaire sur
+  la ligne commençant par bootp ; si vous utilisez une bootprom,
+  enlevez également le commentaire pour tftp.
+  <item>Redémarrez inetd :
+  <quote>/etc/rc.d/init.d/inetd restart
+  </quote>
+ </enum></p>
+ <sect>Ajouter des stations
+ <p>
+ </p>
+ <sect1>Créer une disquette de démarrage (bootdisk) ou une bootprom
+ <p>
+ </p>
+ <sect2>Créer un bootdisk
+ <p>Même si vous avez l'intention d'utiliser une bootprom,
+ il est plus sage de tester d'abord avec un bootdisk. Pour le créer :
+ </p>
+ <p>
+ <quote>dd if=/&lt;path-to-zImage&gt;/zImage of=/dev/fd0
+ </quote></p>
+ <sect2>Créer une bootprom
+ <p>Il y a plusieurs paquets libres disponibles :
+ </p>
+ <p>
+ <enum>
+  <item>netboot, c'est le plus complet. Il utilise les pilotes
+  (packet drivers) DOS standards donc presque toutes les cartes
+  sont supportées.
+  Un truc très utile qui était passé sur la mailing list :
+  compresser les packetdrivers, la plupart des pilotes
+  commerciaux étant trop gros pour tenir dans une bootprom.
+  La documentation de netboot est assez complète : on ne la reprendra pas ici.
+  Avec elle, créer une bootprom et démarrer une station devrait aller de soi.
+  La page web de netboot : 
+  <htmlurl url="http://www.han.de/&tilde;gero/netboot/">
+  <item>etherboot, l'autre package libre
+  Il propose quelques améliorations comme le dhcp.
+  Mais il utilise son propre format de drivers donc supporte moins de cartes.
+  Je ne l'ai pas utilisé donc ne peux en dire plus.
+  La page web : <htmlurl url="http://www.slug.org.au/etherboot/">
+ </enum></p>
+ <p>A propos des roms : la plupart des cartes peuvent recevoir des eproms
+ de 28 pins. Celle-ci ont une taille maximale de 64 ko.
+ Pour la plupart des cartes,
+ on aura besoin de 32 ko avec netboot.
+ Quelques drivers tiendront dans une rom de 16 ko mais la différence de prix
+ est minime.
+ Ces eproms sont standards (on y écrit avec un <em>eprom burner</em>
+ ordinaire).
+ </p>
+ <sect1>Créer un répertoire station
+ <p>Il suffit de recopier le répertoire qui sert de 
+ modèle (template) en tapant :
+ </p>
+ <p>
+ <quote>cd /tftpboot ; cp -a template &lt;ip&gt;
+ </quote></p>
+ <p>On peut aussi, bien sûr, recopier le répertoire
+ d'une station ayant la même souris, carte graphique et moniteur.
+ Dans ce cas la configuration réalisée à l'étape 4.5 est inutile.
+ </p>
+ <sect1>Ajouter les entrées dans /etc/bootptab et /etc/hosts
+ <p>Editer /etc/bootptab et ajouter une entrée pour une station de test, par
+ exemple :
+ </p>
+ <p>
+ <code>nfsroot1:hd=/tftpboot:vm=auto:ip=10.0.0.237:&bsol; 
+:ht=ethernet:ha=00201889EE78:&bsol;
+:bf=bootImage:rp=/tftpboot/10.0.0.237/root
+ </code></p>
+ <p>Remplacer nfsroot1 par le nom d'hôte de la station.
+ Remplacer 10.0.0.237 par son adresse IP et 00201889EE78 par son adresse
+ MAC.
+ Si vous ne connaissez pas cette dernière, démarrez avec la disquette de boot
+ que vous venez de créer et vous la verrez apparaître dans
+ les messages affichés au boot.
+ Bootpd est certainement déjà lancé, mais pour en être sûr, essayons
+ de le redémarrer :
+ </p>
+ <p>
+ <quote>killall -HUP bootpd
+ </quote></p>
+ <p>Si cela échoue, c'est qu'il ne tournait pas. Dans ce cas inetd le
+ démarrera au moment voulu.
+ </p>
+ <sect1>Démarrer la station pour la première fois
+ <p>Démarrez simplement la station depuis le bootdisk.
+ Vous devriez avoir ainsi une station en mode texte,
+ avec exactement la même configuration que le serveur
+ exceptés l'adresse IP et les services lancés.
+ Même si vous comptez utiliser une bootprom, il est plus sage de tester
+ d'abord avec un bootdisk.
+ </p>
+ <sect1>Configuration spécifique à la station
+ <p>
+ </p>
+ <p>
+ <enum>
+  <item>Premièrement, lancez mouseconfig pour installer la souris.
+  Pour appliquer les changements, faites un :
+  <quote>/etc/rc.d/init.d restart
+  </quote>
+  <item>Lancez Xconfigurator ; quand Xconfigurator a détecté la carte et que
+  vous pouvez cliquer sur ok, ne le faites pas !
+  Comme nous avons déplacé le lien du serveur X de
+ /etc/X11/X vers /etc/sysconfig/X11/X,
+ Xconfigurator ne pourra pas créer le bon lien.
+ Ceci étant, pour être sûr que Xconfigurator continue correctement, basculez
+ sur une autre console et créez le lien sous /etc/sysconfig/X11 vers le
+ serveur X conseillé. Maintenant, quittez Xconfigurator et testez le serveur X.
+  <item>Configuration de tout ce qui diffère du serveur ou du template :
+  <itemize>
+   <item>son : il sera peut-être nécessaire de modifier isapnp.conf et
+   conf.modules, les deux étant déjà des liens vers
+   /etc/sysconfig (modification faite par le script de prépration du serveur).
+   <item>cdrom : lien sous /dev, entrée dans /etc/fstab, etc.
+   <item>rc.local : faites tous les changements nécessaires
+  </itemize>
+  <item>Sauvegarde des liens et autres changements effectués sous /dev :
+  <quote>/etc/rc.d/rc.devfs save /etc/sysconfig
+  </quote>
+  <item>Voilà, c'est terminé.
+ </enum></p>
+ <sect>Bonus : démarrer depuis un cdrom
+ <p>La plupart des opérations ci-dessus sont valables pour démarrer depuis
+ un cdrom. Comme je voulais également documenter cette façon de booter,
+ je le précise ici pour éviter de taper trop de choses une seconde fois.
+ </p>
+ <p>Pourquoi démarrer depuis un cdrom ?
+ C'est surtout intéressant partout où l'on veut faire tourner
+ une application spécifique comme un kiosque, une base de données de
+ bibliothèque ou un cyber-café, et qu'on n'a pas de réseau ou de serveur
+ pour utiliser root par NFS.
+ </p>
+ <sect1>Principe de base
+ <p>C'est simple : démarrer avec un cdrom en tant que racine.
+ Pour que ce soit possible, nous utiliserons l'extension rockridge
+ pour graver un système de fichiers unix et l'extension eltorito pour
+ rendre le cd amorçable.
+ </p>
+ <sect2>Les choses ne peuvent être si simples...
+ <p>Bien sûr cette configuration soulève quelques problèmes.
+ Ils sont à peu près les mêmes que précédemment :
+ </p>
+ <p>
+ <enum>
+  <item>Nous avons besoin d'accès en écriture sur : /dev, /var et /tmp.
+  <itemize>
+   <item>Nous utiliserons les mêmes solutions : 
+   <itemize>
+    <item>pour /dev nous utiliserons Devfs
+    <item>pour /var et /tmp nous utiliserons un ramdisk partagé de 1 Mo.
+    /tmp est remplacé par un lien vers /var/tmp.
+    <item>le remplissage du ramdisk peut être fait aussi bien à partir
+    d'une archive que d'un répertoire template. Nous retiendrons là
+    encore le répertoire template pour la simplicité des modifications.
+   </itemize>
+  </itemize>
+  <item>Certaines applications ont besoin d'un accès à /home en écriture.
+  <itemize>
+   <item>Dans ce cas, on mettra le répertoire de l'utilisateur de ces
+   applications sous /var, et on finira de remplir /var à chaque boot.
+  </itemize>
+  <item>/etc/mtab doit être accessible en écriture :
+  <itemize>
+   <item>Créer un lien vers /proc/mounts et créer un fichier vide sous /proc,
+   comme décrit précédemment.
+  </itemize>
+ </enum></p>
+ <sect1>Créer une configuration de test
+ <p>
+ </p>
+ <p>
+ <enum>
+  <item>Pour commencer, prenez une des machines que vous allez utiliser
+  et mettez dedans un gros disque et un graveur de cd.
+  <item>Installez la distribution de votre choix et laissez une
+  partition de 650 Mo pour le test. Cette installation servira à
+  créer l'image iso et à graver le cd, aussi il faut installer les outils
+  necessaires. Elle servira également à recommencer en cas de problème. 
+  <item>Sur la partition de 650 Mo, installez la distribution de votre choix
+  avec la configuration que vous voudrez avoir sur le cd. Ce sera la
+  configuration de test.
+  <item>Démarrez sur la configuration de test.
+  <item>Compilez le noyau comme décrit dans la section 3.1, en suivant toutes
+  les étapes. Les modifications pour devfs doivent être faites ici aussi.
+  A l'étape 3, ajoutez ce qui suit :
+  <itemize>
+   <item>isofs compilé dans le noyau 
+   <item>devfs compilé
+   <item>support du cdrom compilé
+   <item>tout ce dont vous avez besoin, compilé ou en module
+  </itemize>
+  <item>Configuration de la partition de test :
+  <itemize>
+   <item>créer l'utilisateur qui lancera les applications
+   <item>mettre son répertoire sous /var
+   <item>installer l'application (si nécessaire)
+   <item>configurer l'application si nécessaire
+   <item>configurer l'utilisateur de telle façon que l'application
+   démarre automatiquement après le login
+   <item>configurer linux pour démarrer une session en tant
+   que cet utilisateur
+   <item>configurer tout ce qui doit encore être configuré
+  </itemize>
+  <item>Vérifiez que la configuration démarre correctement sous l'application
+  et que tout fonctionne bien.
+  <item>Redémarrez sur l'installation principale et montez la partition de 
+  650 Mo sur /test.
+  <item>Mettez ce qui suit dans un fichier /test/etc/rc.d/rc.iso (il sera
+  exécuté au début de rc.sysinit pour créer /var) :
+  <code>&num;/var
+echo Creating /var ...
+mke2fs -q -i 1024 /dev/ram1 1024
+mount /dev/ram1 /var -o defaults,rw
+cp -a /lib/var /
+
+&num;restore devfs settings, needs proc
+mount -t proc /proc /proc
+/etc/rc.d/rc.devfs restore /etc/sysconfig
+umount /proc
+  </code>
+  <item>Editez /test/etc/rc.sysinit en commentant les lignes où / est
+  remonté en lecture-écriture et ajoutez les 2 lignes suivantes
+  après l'initialisation de la variable PATH :
+  <code>&num;to boot from cdrom
+. /etc/rc.d/rc.iso
+  </code>
+  <item>Copiez ce qui suit dans un script et exécutez-le : cela va créer
+  un répertoire modèle pour /var et des liens pour /tmp et /etc/mtab.
+  <code>&num;!/bin/sh
+echo tmp
+rm -fR /test/tmp
+ln -s var/tmp /test/tmp
+
+&num;&num;&num;
+echo mtab
+touch /test/proc/mounts
+rm /test/etc/mtab
+ln -s /proc/mounts /test/etc/mtab
+
+&num;&num;&num;
+echo var
+mv /test/var/lib /test/lib/var-lib
+mv /test/var /test/lib
+mkdir /test/var
+ln -s /lib/var-lib /test/lib/var/lib
+rm -fR /test/lib/var/catman
+rm -fR /test/lib/var/log/httpd
+rm -f /test/lib/var/log/samba/*
+for i in `find /test/lib/var/log -type f`; do cat /dev/null &gt; &dollar;i; done
+rm `find /test/lib/var/lock -type f`
+rm `find /test/lib/var/run -type f`
+
+  </code>
+  <item>Enlevez la création de /etc/issue* de /test/etc/rc.local (ça 
+  planterait à coup sûr).
+  <item>Maintenant, démarrez sur la partition de test : elle sera
+  en lecture seule comme un cdrom.
+  Si quelque chose ne fonctionne pas, redémarrez sur la partition de travail
+  et réparez puis réessayez. On peut aussi remonter / en lecture-écriture,
+  réparer puis redémarrer directement sur la partition de test.
+  Pour remonter / :
+  <quote>mount -o remount,rw /
+  </quote>
+ </enum></p>
+ <sect1>Créer le cd
+ <sect2>Créer une image de démarrage (image de boot)
+ <p>D'abord, démarrer sur la partition de travail. Pour créer un cd
+ amorçable, nous aurons besoin d'une image d'une disquette de démarrage.
+ Mais copier par dd une <em>zimage</em> ne suffit pas parce que,
+ au tout début du chargement de celle-ci, un pseudo lecteur de disquette est
+ créé et le chargeur du système ne s'y retrouve plus dans le cas
+ d'un cd amorçable.
+ Donc nous utiliserons plutôt syslinux.
+ </p>
+ <p>
+ <enum>
+  <item>récupérer boot.img sur un cdrom redhat
+  <item>monter boot.img quelque part par loopback en tapant :
+  <quote>mount boot.img somewhere -o loop -t vfat
+  </quote>
+  <item>enlever tout ce qui est dans boot.img sauf :
+  <itemize>
+   <item>ldlinux.sys
+   <item>syslinux.cfg
+  </itemize>
+  <item>copier le noyau de la partition de test vers boot.img
+  <item>editer syslinux.cfg pour ajouter ce qui suit, en remplaçant zImage
+  par le nom d'image approprié :
+  <code>default linux 
+
+label linux
+kernel zImage
+append root=/dev/&lt;insert your cdrom device here&gt;
+  </code>
+  <item>démonter boot.img :
+  <quote>umount somewhere
+  </quote>
+  <item>Si /etc/mtab est un lien vers /proc/mounts, le démontage
+  ne va pas automatiquement libérer /dev/loop0 donc il faut le libérer en
+  tapant :
+  <quote>losetup -d /dev/loop0
+  </quote>
+ </enum></p>
+ <sect2>Créer l'image iso
+ <p>Maintenant que nous avons l'image de boot et une installation qui peut
+ démarrer sur un montage en lecture seule, il est temps de créer une image
+ iso du cd :
+ </p>
+ <p>
+ <enum>
+  <item>copier boot.img sur /test
+  <item>aller dans le répertoire ou vous voulez stocker l'image (en prenant
+  garde qu'il y ait assez de place sur la partition)
+  <item>générer l'image :
+  <quote>mkisofs -R -b boot.img -c boot.catalog -o boot.iso /test
+  </quote>
+ </enum></p>
+ <sect2>Vérifier l'image iso
+ <p>
+ <enum>
+  <item>monter l'image en loopback en tapant :
+  <quote>mount boot.iso somewhere -o loop -t iso9660
+  </quote>
+  <item>vérifier que le contenu est correct
+  <item>démonter boot.iso :
+  <quote>umount somewhere
+  </quote>
+  <item>si /etc/mtab est un lien sur /proc/mounts, libérer /dev/loop0 :
+  <quote>losetup -d /dev/loop0
+  </quote>
+ </enum></p>
+ <sect2>Graver le cd
+ <p>Si cdrecord est installé et configuré :
+ </p>
+ <p>
+ <quote>cdrecord -v speed=&lt;desired writing speed&gt; dev=&lt;path to your writers
+ generic scsi device&gt; boot.iso
+ </quote></p>
+ <sect1>Démarrer sur le cd et le tester
+ <p>Hé bien le titre de ce paragraphe a tout dit ! ;)
+ </p>
+ <sect>Remerciements
+ <p>
+ <itemize>
+  <item>La HHS (Haagse Hoge School), l'établissement où j'ai développé
+  et testé cette configuration : elle était utilisée dans plusieurs labos.
+  C'est également là que j'ai écris la première version de ce HowTo.
+  <item>ISM : une société néerlandaise où j'ai réalisé mon projet
+  de fin d'études. Une partie de ce projet concernait des machines
+  sans disque, j'ai donc dû pousser un peu plus loin le développement
+  de cette configuration et j'ai eu le temps de mettre à jour ce HowTo.
+  <item>A tout ceux qui me donneront des conseils utiles une fois que cette
+  version sera sortie ;)
+ </itemize></p>
+ <sect>Commentaires
+ <p>Commentaires, suggestions et autres sont les bienvenus et peuvent être
+ adressés à Hans de Goede : j.w.r.degoede@et.tudelft.nl
+ </p>
+
+
+ </article>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

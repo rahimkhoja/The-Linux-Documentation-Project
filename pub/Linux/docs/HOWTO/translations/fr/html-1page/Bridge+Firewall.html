@@ -1,0 +1,588 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+<HEAD>
+ <META NAME="GENERATOR" CONTENT="LinuxDoc-Tools 0.9.21">
+ <TITLE>Linux Bridge+Firewall Mini-HOWTO version 1.2.0</TITLE>
+</HEAD>
+<BODY>
+<H1>Linux Bridge+Firewall Mini-HOWTO version 1.2.0</H1>
+
+<H2>Peter Breuer (
+<A HREF="mailto:ptb@it.uc3m.es">ptb@it.uc3m.es</A>)<BR>
+Adaptation française par Etienne BERNARD (
+<A HREF="mailto:eb@via.ecp.fr">eb@via.ecp.fr</A>)</H2>19 Décembre 1997
+<H2><A NAME="Introduction"></A> <A NAME="s1">1. Introduction</A></H2>
+
+<P>Vous devriez lire l'original 
+<A HREF="ftp://sunsite.unc.edu/pub/Linux/docs/HOWTO/mini/Bridge">Bridging mini-HOWTO</A> (NdT&nbsp;: ou 
+<A HREF="ftp://ftp.lip6.fr/pub/linux/french/docs/mini/Bridge">en version française</A>) par Chris Cole pour une vision différente sur le sujet. L'adresse email de Chris Cole est 
+<A HREF="mailto:chris@polymer.uakron.edu">chris@polymer.uakron.edu</A>. La version de cet HOWTO, à partir duquel ce document est construit est la version 1.03, daté du 23 août 1996.</P>
+
+<H2><A NAME="What and Why (and How?)"></A> <A NAME="s2">2. Quoi, et pourquoi (et comment&nbsp;?)</A></H2>
+
+
+
+<H2><A NAME="What"></A> <A NAME="ss2.1">2.1 Quoi</A>
+</H2>
+
+<P>Un pont est un élément qui connecte intelligement des brins grâce à deux cartes ethernet.
+Un <EM>firewall</EM> est un élément isolant intelligent.</P>
+
+<H2><A NAME="Why"></A> <A NAME="ss2.2">2.2 Pourquoi</A>
+</H2>
+
+<P>Si vous avez de nombreux ordinateur, vous pouvez désirer installer un pont&nbsp;:</P>
+<P>
+<OL>
+<LI>
+<A NAME="bridge1"></A> pour économiser le prix d'un nouveau <EM>hub</EM> lorsqu'il se trouve que vous avez une carte ethernet libre&nbsp;;
+</LI>
+<LI>
+<A NAME="bridge2"></A> pour éviter d'avoir à apprendre l'<EM>IP-forwarding</EM> et d'autres trucs alors que vous <EM>avez</EM> deux cartes dans votre ordinateur&nbsp;;
+</LI>
+<LI>
+<A NAME="bridge3"></A> pour éviter des travaux de maintenance pour d'éventuels changements futurs&nbsp;!</LI>
+</OL>
+</P>
+
+<P>Le terme ``nombreux ordinateurs'' peut même représenter seulement trois ordinateurs, si ceux-ci font du routage ou du pontage ou qu'ils changent de place dans la pièce de temps en temps&nbsp;! Vous pouvez même vouloir un pont pour vous amuser à trouver à quoi cela sert. Je voulais un pont pour la raison 
+<A HREF="#bridge2">2</A>.</P>
+
+<P>Si vous êtes intéressé par le point 
+<A HREF="#bridge1">1</A>, vous êtes peu dans votre cas. Lisez le 
+<A HREF="ftp://sunsite.unc.edu/pub/Linux/docs/HOWTO/NET-2-HOWTO">NET-2-HOWTO</A> et le 
+<A HREF="ftp://sunsite.unc.edu/pub/Linux/docs/HOWTO/Serial-HOWTO">Serial-HOWTO</A> pour de meilleurs astuces.</P>
+
+<P>Vous désirez un <EM>firewall</EM> si&nbsp;:</P>
+<P>
+<OL>
+<LI>vous essayez de protéger votre réseau des accès extérieur, ou
+<A NAME="firewall1"></A> </LI>
+<LI>vous désirez interdire l'accès au monde extérieur aux machines de votre réseau.
+<A NAME="firewall2"></A> </LI>
+</OL>
+</P>
+
+<P>Bizarrement, j'avais besoin du point 
+<A HREF="#firewall2">2</A> ici aussi. La politique de mon université pour le moment est de ne pas jouer le rôle de fournisseur d'accès à Internet pour les <EM>undergraduates</EM>.</P>
+
+<H2><A NAME="How?"></A> <A NAME="ss2.3">2.3 Comment</A>
+</H2>
+
+<P>J'ai commencé par du pontage entre deux cartes réseau sur une machine jouant le rôle de <EM>firewall</EM>, et j'ai fini par lancer le <EM>firewall</EM> sans avoir coupé le pont. Cela a l'air de fonctionner, et c'est beaucoup plus flexible que chaque configuration isolée. Je peux arrêter le  <EM>firewall</EM> et continuer à faire fonctionner le pont ou arrêter le pont lorsque je veux être plus prudent.</P>
+
+<P>Je suppose que la partie ``pont'' du noyau se trouve juste au-dessus de la couche physique et que la partie <EM>firewall</EM> se trouve dans une couche réseau supérieure, afin que les parties de pontage et de <EM>firewalling</EM> agissent en fait comme si elles étaient connectées en ``série'' et non pas en ``parallèle'' (aie&nbsp;!), selon le schéma suivant&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+-&gt; Pont-entrant -&gt; Firewall-entrant -&gt; Noyau -&gt; Firewall-sortant -&gt; Pont-sortant -&gt;
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Il n'y a pas d'autre façon d'expliquer comment une machine peut être en même temps ``conducteur'' et ``isolant''. Il existe quelques embuches, mais j'en parlerai plus tard. Schématiquement, vous devez router les paquets que vous  voulez filtrer. De toute façon, cela a l'air de fonctionner parfaitement pour moi, et voici comment...</P>
+
+<H2><A NAME="BRIDGING"></A> <A NAME="s3">3. PONT</A></H2>
+
+<H2><A NAME="Software"></A> <A NAME="ss3.1">3.1 Logiciel</A>
+</H2>
+
+<P>Récupérez l'
+<A HREF="ftp://shadow.cabi.net/pub/Linux/BRCFG.tgz">utilitaire de configuration du pont</A> depuis la page personnelle d'Alan Cox. C'est la même référence que dans le document de Chris. Je n'ai pas compris que c'était un URL <EM>ftp</EM> en non un URL <EM>http</EM>...</P>
+
+<H2><A NAME="Prior Reading"></A> <A NAME="ss3.2">3.2 Lecture préliminaires</A>
+</H2>
+
+<P>Lisez le 
+<A HREF="ftp://sunsite.unc.edu/pub/Linux/docs/HOWTO/mini/Multiple-Ethernet">Multiple Ethernet HOWTO</A> pour obtenir des conseils pour faire reconnaître et pour configurer plus d'une carte réseau.</P>
+
+<P>Vous pourrez trouver encore plus de détails sur le type de commandes magiques à passer au <EM>prompt</EM> se trouvent dans le 
+<A HREF="ftp://sunsite.unc.edu/pub/Linux/docs/HOWTO/BootPrompt-HOWTO">Boot Prompt HOWTO</A>.</P>
+
+<P>Pour compléter vos lectures, lisez le 
+<A HREF="ftp://sunsite.unc.edu/pub/Linux/docs/HOWTO/NET-2-HOWTO">NET-2 HOWTO</A>. C'est un document plutôt long, et vous devrez y piocher les détails qui vous intéressent.</P>
+
+<H2><A NAME="Boot configuration"></A> <A NAME="ss3.3">3.3 Configuration de lancement</A>
+</H2>
+
+<P>Les lectures précédentes vont vous indiquer ce dont vous avez besoin pour préparer le noyau à reconnaître un deuxième périphérique ethernet lors du démarrage, en ajoutant la ligne suivante dans votre fichier <CODE>/etc/lilo.conf</CODE>, et en relançant <CODE>lilo</CODE>&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+append = &quot;ether=0,0,eth1&quot; 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Notez le &quot;eth1&quot;. &quot;eth0&quot; représente la première carte. &quot;eth1&quot; est la seconde carte. Vous pouvez également ajouter les paramètres de démarrage à la ligne de commande que <CODE>lilo</CODE> vous offre. Pour trois cartes&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+linux ether=0,0,eth1 ether=0,0,eth2 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>J'utilise <CODE>loadlin</CODE> pour lancer mon noyau Linux depuis DOS&nbsp;: </P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+loadlin.exe c:\vmlinuz root=/dev/hda3 ro ether=0,0,eth1 ether=0,0,eth2 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Notez que cette astuce oblige le noyau à détecter les cartes au démarrage. La détection ne sera pas faite si vous chargez les gestionnaires de périphérique ethernet en <B>module</B> (par sécurité, puisque l'ordre de détection ne peut être déterminé), donc si vous utilisez des modules, vous aurez à ajouter l'IRQ appropriée et le paramètre de port pour le gestionnaire de périphérique dans votre fichier <CODE>/etc/conf.modules</CODE>. Dans mon cas, j'ai les lignes&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+ 
+<PRE>
+alias eth0 3c509
+alias eth1 de620
+options 3c509 irq=5 io=0x210
+options de620 irq=7 bnc=1
+</PRE>
+ 
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Vous pouvez savoir si vous utilisez les modules en utilisant ``ps -aux'' pour voir si <CODE>kerneld</CODE> est lancé, et en vérifiant qu'il y a des fichiers <CODE>.o</CODE> dans un sous-répertoire du répertoire <CODE>/lib/modules</CODE>. Utilisez le nom de répertoire que vous donne la commande <CODE>uname -r</CODE>. Si vous avez un <CODE>kerneld</CODE> lancé et/ou vous avez un fichier <CODE>foo.o</CODE>, éditez <CODE>/etc/conf.modules</CODE> et lisez avec soin la page de manuel de <CODE>depmod</CODE>.</P>
+
+<P>Notez également que jusque récemment (noyau 2.0.25), le <EM>driver</EM> pour la carte <B>3c509</B> ne pouvait pas être utilisé pour plus d'une carte s'il était utilisé en module. J'ai vu un <EM>patch</EM> quelque part pour corriger cette limitation. Il devrait être inclus dans le noyau à l'heure où vous lisez ces lignes.</P>
+
+<H2><A NAME="Kernel configuration"></A> <A NAME="ss3.4">3.4 Configuration du noyau</A>
+</H2>
+
+<P>Recompilez le noyau avec le <EM>bridging</EM>&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+CONFIG_BRIDGE=y 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>J'ai également compilé mon noyau avec le <EM>firewalling</EM>, l'<EM>IP-forwarding</EM> et l'<EM>IP-masquerading</EM>. C'est seulement si vous désirez utiliser le <EM>firewalling</EM> également...</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+CONFIG_FIREWALL=y           
+CONFIG_NET_ALIAS=y          
+CONFIG_INET=y               
+CONFIG_IP_FORWARD=y         
+CONFIG_IP_MULTICAST=y       
+CONFIG_IP_FIREWALL=y        
+CONFIG_IP_FIREWALL_VERBOSE=y
+CONFIG_IP_MASQUERADE=y
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Vous aurez besoin en plus de la configuration réseau standard&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+CONFIG_NET=y
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>et je ne pense pas que vous deviez vous préocupper des autres options réseau. Les options que je n'ai pas compilé dans le noyau sont sélectionnées en tant que modules afin que je puisse les ajouter éventuellement plus tard.</P>
+
+<P>Installez le nouveau noyau, relancez <CODE>lilo</CODE> et redémarrez sur le nouveau noyau. Rien ne devrait avoir changé pour l'instant&nbsp;!</P>
+
+<H2><A NAME="Network addresses"></A> <A NAME="ss3.5">3.5 Adresses réseau</A>
+</H2>
+
+<P>Chris dit qu'un pont ne doit pas avoir d'adresse IP mais ce n'est pas la configuration qui est présenté ici.</P>
+
+<P>Vous allez utiliser la machine pour vous connecter au réseau donc vous avez besoin d'une adresse et vous devez vous assurer que le device <EM>loopback</EM> configuré normalement afin que vos logiciels puisse communiquer avec ce à quoi ils s'attendent. Si <EM>loopback</EM> est désactivé, le <EM>résolveur de noms</EM> ou d'autres services ne fonctionneront pas. Voyez le NET-2-HOWTO, mais votre configuration standard devrait déjà avoir fait cela&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ifconfig lo 127.0.0.1
+route add -net 127.0.0.0
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Vous allez devoir donner des adresses à vos cartes réseau. J'ai changé le fichier <CODE>/etc/rc.d/rc.inet1</CODE> de ma slackware (3.x) pour configurer deux cartes et vous devrez juste regarder votre fichier de configuration du réseau et doubler ou tripler le nombre d'instructions s'y trouvant. Supposons que vous ayez déjà une adresse à</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+192.168.2.100
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>(cette adresse fait partie des adresses réservées pour des réseaux privés, mais ne faites pas attention, cela ne cassera rien si vous utilisez cette adresse par erreur) alors vous avez probablement une ligne ressemblant à</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ifconfig eth0 192.168.2.100 netmask 255.255.255.0 metric 1
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>dans votre fichier de configuration. La première chose que vous allez probablement vouloir faire est couper l'espace des adresses atteintes par cette carte en deux afin de pouvoir éventuellement faire un pont ou filtrer entre les deux moitiés. Ajoutez donc une ligne qui réduit le masque de sous-réseau pour adresser un plus petit nombre de machines&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ifconfig eth0 netmask 255.255.255.128
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Essayez cette configuration. Cela restreint la carte à l'espace des adresses entre .0 et .127.</P>
+
+<P>A présent, vous pouvez configurer votre deuxième carte dans la deuxième moitié de l'espace des adresses locales. Assurez vous que personne n'utilise l'adresse que vous allez prendre. Pour des raisons de symétrie, j'utiliserai ici 228=128+100. N'importe quelle adresse conviendra, à condition qu'elle ne se trouve pas dans le masque de l'autre carte. Évitez les adresses spéciales comme .0, .1, .128, etc... à moins que vous sachiez ce que vous faites.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ifconfig eth1 192.168.2.228 netmask 255.255.255.128 metric 1
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Cela restreint la deuxième carte aux adresses entre .128 et .255. </P>
+
+<H2><A NAME="Network routing"></A> <A NAME="ss3.6">3.6 Routage réseau</A>
+</H2>
+
+<P>C'est ici que les défauts de l'utilisation simultannée du pont et du firewall&nbsp;: vous ne pouvez pas filtrer des paquets qui ne sont pas routés. Pas de route, pas de firewall. Cette règle est vérifiée en tout cas dans les version 2.0.30 ou suivantes du noyau. Les filtres du firewall sont étroitement liés au code source de l'IP-Forwarding.</P>
+
+<P>Cela ne signifie pas que vous ne pouvez pas utiliser le pont. Vous pouvez installer un pont entre deux cartes et filtrer à partir d'une troisième. Vous pouvez n'avoir que deux cartes et les faire filtrer une adresse IP externe, comme celle d'un routeur proche, à condition que le routeur relié à une seule carte.</P>
+
+<P>En d'autres termes, puisque je veux utiliser la machine comme firewall, je dois contrôler avec précision la destination physique de certains paquets.</P>
+
+<P>J'ai le petit réseau de machines sur un <EM>hub</EM> connecté à <CODE>eth0</CODE>, je configure donc un réseau de ce côté&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+route add -net 192.168.2.128 netmask 255.255.255.128 dev eth0
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Remplacez le 128 par un 0 pour un réseau de classe C entier. Ici, je ne le fais pas puisque j'ai juste divisé en deux l'espace d'adressage. Le &quot;dev eth0&quot; n'est pas nécessaire ici, puisque l'adresse de la carte fait partie de ce réseau, mais il peut être nécessaire de l'écrire chez vous. On pourrait désirer plus d'une carte prenant ce sous réseau en charge (127 machines sur un segment, bravo&nbsp;!) mais ces cartes utiliseraient le même masque de sous-réseau et seraient considérées comme une seule par la partie routage du noyau.</P>
+
+<P>Sur l'autre carte, j'ai une ligne qui passe directement à travers un gros routeur, auquel je fais confiance.</P>
+<P>
+<PRE>
+                                             client 129
+         __                                        |    __ 
+client 1   \    .0                    .128         |   /   net 1
+client 2 --- Hub - eth0 - Kernel - eth1 - Hub - Router --- net 2
+client 3 __/       .100            .228         .2 |   \__ net 3
+                                                   |
+                                             client 254
+</PRE>
+</P>
+
+<P>J'utilise une route fixe (c'est-à-dire &quot;statique&quot;) depuis la carte vers ce routeur, puisque sinon il ferait partie du masque de sous-réseau de la première carte et le noyau se tromperait sur la manière d'envoyer les paquets au routeur. Je veux filtrer ces paquets et c'est une raison de plus de les router explicitement.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+route add 192.168.2.2 dev eth1
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Je n'en ai pas besoin, puisque je n'ai pas d'autres machines dans cette moitié de l'espace d'adressage, mais je déclare un réseau sur la seconde carte. La séparation de mes interfaces réseau en deux groupes grâce au routage me permettra éventuellement de faire du filtrage très précis, mais vous pouvez très bien vous en sortir avec beaucoup moins de routage que cela.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+route add -net 192.168.2.128 netmask 255.255.255.128 dev eth1
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>J'ai également besoin d'envoyez tous les paquets non-locaux au monde et je dis donc au noyau de les envoyer au gros routeur&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+route add default gw 192.168.2.2
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H2><A NAME="Card configuration"></A> <A NAME="ss3.7">3.7 configuration de la carte</A>
+</H2>
+
+<P>Nous avions auparavant une configuration standard pour le réseau, mais comme nous faisons du <EM>bridging</EM>, nous devons écouter sur chaque carte les paquets qui ne nous sont pas destinés. Ceci doit aller dans le fichier de configuration réseau&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ifconfig promisc eth0
+ifconfig promisc eth1
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>La page de manuel indique d'utiliser <CODE>allmulti=promisc</CODE>, mais cela ne fonctionnait pas pour moi.</P>
+
+<H2><A NAME="Additional routing"></A> <A NAME="ss3.8">3.8 Routage additionnel</A>
+</H2>
+
+<P>J'ai remarqué une chose&nbsp;: j'ai dû passer la seconde carte dans un mode lui permettant aux questions du gros routeur à propos des machines que je cache sur mon réseau local.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ifconfig arp eth1
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Pour faire bonne mesure, j'ai effectué cette opération pour l'autre carte aussi.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ifconfig arp eth0
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H2><A NAME="Bridge Configuration"></A> <A NAME="ss3.9">3.9 Configuration du pont</A>
+</H2>
+
+<P>Ajoutez la mise en route du pont dans votre fichier de configuration&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+brcfg -enable
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>La configuration du pont mettra en route certains ports. Vous pouvez expérimenter l'allumage et l'extinction des ports un à la fois&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+brcfg -port 0 -disable/-enable
+brcfg -port 1 -disable/-enable 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Vous pouvez obtenir un rapport sur l'état courant avec&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+brcfg
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>sans aucun paramètres. Vous pourrez voir que le pont écoute, apprend, et effectue le <EM>forwarding</EM>. (Je ne comprends pas pourquoi le code répète la même adresse matérielle pour mes deux cartes, mais peu importe... le HOWTO de Chris affirme que c'est correct).</P>
+
+<H2><A NAME="Try it out"></A> <A NAME="ss3.10">3.10 Essais</A>
+</H2>
+
+<P>Si le réseau est encore en fonction, essayez votre script de configuration en vrai en arrêtant les deux cartes et en l'exécutant&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ifconfig eth0 down
+ifconfig eth1 down
+/etc/rc.d/rc.inet1
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Avec un peu de chance, les divers systèmes tel <B>nfs</B>, <B>ypbind</B>, etc... ne s'en rendront pas compte. <I>N'essayez pas ceci si vous n'êtes pas derrière le clavier&nbsp;!</I></P>
+
+<P>Si vous désirez être plus prudent que cela, vous devrez arrêter le plus de démons possible, et démonter les répertoires NFS. Le pire qu'il puisse vous arriver est d'avoir à rebooter en mode <EM>single-user</EM> (le paramètre &quot;<B>single</B>&quot; de <CODE>lilo</CODE> ou <CODE>loadlin</CODE>), et de restaurer les fichiers à leur valeur d'avant les modifications.</P>
+
+<H2><A NAME="ss3.11">3.11 Vérifications</A>
+</H2>
+
+<P>Vérifiez qu'il existe un trafic différent sur chaque interface&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+tcpdump -i eth0
+</PRE>
+ (dans une fenêtre)
+<PRE>
+tcpdump -i eth1
+</PRE>
+ (dans une autre fenêtre)
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Vous devriez être habitué à l'utilisation de <B>tcpdump</B> pour trouver des évènements qui ne devraient pas se passer, ou qui existent mais ne devraient pas.</P>
+
+<P>Par exemple, recherchez les paquets qui ont traversé le pont vers la seconde carte depuis le réseau interne. Ici, je cherche les paquets venant de la machine avec l'adresse .22&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+tcpdump -i eth1 -e host 192.168.2.22
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>A présent, envoyez un ping depuis l'hôte en .22 vers le routeur. Vous devriez voir le paquet affiché par tcpdump.</P>
+
+<P>A présent, vous devriez avoir un pont, et qui possède également deux adresses réseau. Vérifiez que vous pouvez les <CODE>ping</CODE>er depuis l'extérieur de votre réseau local et depuis l'intérieur, que vous pouvez utiliser <CODE>telnet</CODE> et <CODE>ftp</CODE> depuis et vers l'intérieur du réseau.</P>
+
+<H2><A NAME="FIREWALLING"></A> <A NAME="s4">4. FIREWALLING</A></H2>
+
+<H2><A NAME="Software and reading"></A> <A NAME="ss4.1">4.1 Logiciel et lectures</A>
+</H2>
+
+<P>Vous devriez lire le 
+<A HREF="ftp://sunsite.unc.edu/pub/Linux/docs/HOWTO/Firewall-HOWTO">Firewall-HOWTO</A>.</P>
+
+<P>Il vous indiquera où trouver <CODE>ipfwadm</CODE> si vous ne l'avez pas déjà. Vous pouvez également récupérer d'autres outils, mais seulement <CODE>ipfwadm</CODE> m'a été utile. C'est pratique et de bas niveau&nbsp;! Vous pouvez voir exactement ce qu'il fait.</P>
+
+<H2><A NAME="Preliminary checks"></A> <A NAME="ss4.2">4.2 Vérifications préliminaires</A>
+</H2>
+
+<P>Vous avez compilé l'IP-forwarding et le masquerading dans le noyau, et vous allez vérifier que le <EM>firewall</EM> est dans son état par défaut (il accepte) grâce à&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipfwadm -I -l
+ipfwadm -O -l
+ipfwadm -F -l
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Ce qui, dans l'ordre, &quot;affiche les règles affectant la partie ..&quot;entrante ou sortante ou qui fait suivre (<EM>masquerading</EM>) &quot;.. du <EM>firewall</EM>&quot;. L'option &quot;-l&quot; signifie &quot;lister&quot;.</P>
+
+<P>Si vous avez compilé l'IP accounting également&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipfwadm -A -l
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Vous devriez constater qu'aucune règle n'est définir et que l'action par défaut est d'accepter tous les paquets. Vous pouvez retourner à cet état à tout moment, avec&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipfwadm -I -f
+ipfwadm -O -f
+ipfwadm -F -f
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>L'option &quot;-f&quot; signifie &quot;flush&quot; (en français, &quot;vider&quot;). Vous pourriez en avoir besoin.</P>
+
+
+<H2><A NAME="Default rule"></A> <A NAME="ss4.3">4.3 Règle par défaut</A>
+</H2>
+
+<P>Je veux interdire l'accès au monde entier depuis mon réseau interne, et rien d'autre, donc je vais donner comme dernière règle (comme règle par défaut) une règle indiquant d'ignorer les paquets venant du réseau interne et dirigés vers l'extérieur. Je place toutes les règles (dans cet ordre) dans le fichier <CODE>/etc/rc.d/rc.firewall</CODE> que j'execute depuis <CODE>/etc/rc.d/rc.local</CODE> au démarrage.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipfwadm -I -a reject -S 192.168.2.0/255.255.255.128 -D 0.0.0.0/0.0.0.0
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Le &quot;-S&quot; représente l'adresse source/masque de sous-réseau. L'option &quot;-D&quot; est pour l'adresse destination/masque de sous-réseau.</P>
+
+<P>Ce format n'a plus le vent en poupe. <CODE>ipfwadm</CODE> est intelligent et connaît des abréviations courantes. Vérifier les pages de manuel.</P>
+
+<P>Il peut être plus pratique de placer certaines ou toutes les règles sur la partie sortante du firewall en utilise &quot;-O&quot; au lieu de &quot;-I&quot;, mais je supposerai que les règles sont conçues pour être utilisées sur la moitié entrante.</P>
+
+<H2><A NAME="Holes per address"></A> <A NAME="ss4.4">4.4 Accès par adresse</A>
+</H2>
+
+<P>Avant la règle par défaut, je dois placer des règles qui servent d'exceptions pour cette interdiction générale des services extérieurs aux clients intérieurs.</P>
+
+<P>Je veux traiter les adresses des machines derrière le firewall de manière spéciale. Je veux empêcher aux gens de se loguer sur la machine qui sert de firewall à moins qu'elles aient une permission spéciale, mais une fois connectées, elles devraient être capables de parler au monde extérieur.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipfwadm -I -i accept -S 192.168.2.100/255.255.255.255 \
+ -D 0.0.0.0/0.0.0.0
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Je veux également que les clients internes soient capables de parler à la machine faisant <EM>firewall</EM>. Peut-être pourront-elles la persuader de les laisser sortir&nbsp;!</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipfwadm -I -i accept -S 192.168.2.0/255.255.255.128 \
+ -D 192.168.2.100/255.255.255.255
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Vérifiez que vous pouvez joindre les machines à l'intérieur du firewall depuis l'extérieur par <CODE>telnet</CODE>, mais que vous ne pouvez pas sortir. Vous pouvez faire le premier pas, mais les clients ne peuvent pas vous envoyer de messages. Essayez également <CODE>rlogin</CODE> et <CODE>ping</CODE> avec <CODE>tcpdump</CODE> lancé sur une carte ou l'autre. Vous devriez être capable de comprendre ce que vous lirez.</P>
+
+<H2><A NAME="Holes per protocol"></A> <A NAME="ss4.5">4.5 Accès par protocole</A>
+</H2>
+
+<P>J'assouplis les règles protocole par protocole. Je veux que les <CODE>ping</CODE>s depuis l'extérieur vers l'intérieur obtiennent une réponse, par exemple, donc j'ai ajouté la règle&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipfwadm -I -i accept -P icmp -S 192.168.2.0/255.255.255.128 \
+ -D 0.0.0.0/0.0.0.0
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>L'option &quot;<CODE>-P icmp</CODE>&quot; correspond au protocole tout entier.</P>
+
+<P>Avant que j'installe un <EM>proxy ftp</EM>, j'autorise également les appels ftp sortants en relâchant les restrictions sur un port donné. Ceci vise les ports 20, 21 et 115 sur les machines externes&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipfwadm -I -i accept -P tcp -S 192.168.2.0/255.255.255.128 \
+ -D 0.0.0.0/0.0.0.0 20 21 115
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Je n'ai pas pu faire fonctionner <CODE>sendmail</CODE> entre les clients locaux sans serveur de noms. Au lieu d'installer un serveur de nom directement sur le <EM>firewall</EM>, j'ai juste autorisé les requêtes TCP de résolution de nom visant le plus proche serveur de nom, et j'ai placé son adresse dans le fichier <CODE>/etc/resolv.conf</CODE> des clients. (&quot;<CODE>nameserver 123.456.789.31</CODE>&quot; sur une ligne séparée).</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipfwadm -I -i accept -P tcp -S 192.168.2.0/255.255.255.128 \
+ -D 123.456.789.31/255.255.255.255 54
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Vous pouvez trouver quel numéro de port et protocole requiert un service grâce à <CODE>tcpdump</CODE>. Utilisez ce service avec un <CODE>ftp</CODE> ou un <CODE>telnet</CODE> ou autre vers ou depuis une machine interne, et observez-le sur les ports d'entrée et de sortie du <EM>firewall</EM> avec <CODE>tcpdump</CODE>&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+tcpdump -i eth1 -e host client04
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>par exemple. Le fichier <CODE>/etc/services/</CODE> est une importante source d'indices. Pour laisser ENTRER le <CODE>telnet</CODE> et le <CODE>ftp</CODE> depuis l'extérieur, vous devez autoriser un client local à envoyer des données vers l'extérieur sur un port donné. Je comprends pourquoi ceci est nécessaire pour le <CODE>ftp</CODE> (c'est le serveur qui établit la connexion de données), mais je me demande pourquoi <CODE>telnet</CODE> en a également besoin.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipfwadm -I -i accept -P tcp -S 192.168.2.0/255.255.255.128 ftp telnet \
+ -D 0.0.0.0/0.0.0.0
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Il existe un problème particulier avec certains démons qui cherchent le nom d'hôte de la machine <EM>firewall</EM> afin de décider quelle est leur adresse réseau. J'ai eu des problèmes avec <CODE>rpc.yppasswdd</CODE>. Il insiste sur des informations <EM>broadcast</EM> qui indiquent qu'il se trouve en dehors du <EM>firewall</EM> (sur la seconde carte). Cela signifie que les clients à l'intérieur ne peuvent pas le contacter.</P>
+
+<P>Au lieu de lancer l'IP aliasing ou de changer le code source du démon, j'ai traduit le nom vers l'adresse de la carte du côté intérieur sur les clients, dans leur fichier <CODE>/etc/hosts</CODE>.</P>
+
+<H2><A NAME="ss4.6">4.6 Vérifications</A>
+</H2>
+
+<P>Vous voudrez tester que vous pouvez toujours utiliser <CODE>telnet</CODE>, <CODE>rlogin</CODE> et <CODE>ping</CODE> depuis l'extérieur. Depuis l'intérieur, vous devriez être capable d'utiliser <CODE>ping</CODE> vers la sortie. Vous devriez également être capables d'utiliser le <CODE>telnet</CODE> vers la machine <EM>firewall</EM> depuis l'intérieur, et cette dernière manipulation devrait vous permettre d'accéder au reste.</P>
+
+<P>Et voilà. A présent, vous voulez probablement apprendre <B>rpc</B>/<B>Y</B>ellow <B>P</B>ages et leur interaction avec le fichier de mots de passe. Le réseau derrière le firewall devrait vouloir empêcher aux utilisateurs non privilégiés de se logguer sur le <EM>firewall</EM>, et donc de sortir. C'est traité dans un autre HOWTO&nbsp;!</P>
+
+</BODY>
+</HTML>

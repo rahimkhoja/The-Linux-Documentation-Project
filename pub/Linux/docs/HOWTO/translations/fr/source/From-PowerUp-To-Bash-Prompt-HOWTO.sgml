@@ -1,0 +1,1846 @@
+<!DOCTYPE article PUBLIC "-//OASIS//DTD DocBook V4.1//EN" [
+<!ENTITY howto         "http://www.traduc.org/docs/HOWTO/lecture/">
+<!ENTITY mini-howto    "http://www.traduc.org/docs/HOWTO/mini/lecture/">
+]>
+
+<article lang="fr">
+
+<articleinfo>
+
+<title>De la mise sous tension à l'invite de commande de Bash</title>
+
+<author>
+      <firstname>Greg</firstname>
+      <surname>O'Keefe</surname>
+      <affiliation>
+        <address>
+          <email>gcokeefe@postoffice.utas.edu.au</email>
+        </address>
+      </affiliation>
+</author>
+<othercredit role="traduction">
+    <firstname>Dominique</firstname>
+    <surname>van den Broeck</surname>
+    <affiliation>
+      <jobtitle>Traduction française</jobtitle>
+      <address><email>dvandenbroeck@free.fr</email></address>
+    </affiliation>
+    <contrib>Traduction française</contrib>
+</othercredit>
+<othercredit role="relecture">
+    <firstname>Jean-Philippe</firstname>
+    <surname>Guérard</surname>
+    <affiliation>
+      <jobtitle>Relecture de la version française</jobtitle>
+      <address><email>jean-philippe.guerard@laposte.net</email></address>
+    </affiliation>
+    <contrib>Relecture de la version française</contrib>
+</othercredit>
+
+<pubdate>v0.9, novembre 2000</pubdate>
+
+<abstract>
+
+<para>
+Voici une description rapide de ce qui se passe dans un système Linux,
+depuis l'instant où vous mettez celui-ci sous tension, jusqu'au moment où vous
+vous connectez et obtenez l'invite de commande de Bash. Comprendre ces 
+mécanismes vous sera très utile lorsque vous aurez besoin de résoudre 
+des problèmes ou de configurer votre système.
+</para>
+
+</abstract>
+
+</articleinfo>
+
+<sect1>
+<title>Introduction</title>
+
+<para>
+Je trouve frustrant qu'il se passe dans ma machine Linux des choses que je
+ne comprends pas. Si, comme moi, vous souhaitez vraiment comprendre votre
+système plutôt que simplement savoir comment l'utiliser, ce document devrait
+être un bon point de départ. Ce genre de connaissance de fond est aussi 
+requis si vous voulez devenir un as de la résolution de problèmes sous 
+Linux.
+</para>
+
+<para>
+Je pars du principe que vous avez une machine Linux en état de marche, et
+que vous maîtrisez les bases d'Unix et de l'architecture matérielle des PC.
+Si ce n'est pas le cas, <ulink url="&howto;Unix-and-Internet-Fundamentals-HOWTO.html">Les
+notions fondamentales d'Unix et d'Internet</ulink> est un excellent 
+endroit pour débuter. C'est un document concis, lisible, et qui couvre 
+toutes les bases.
+</para>
+
+<para>
+Le sujet principal de ce document est la façon dont Linux démarre.
+Mais il se veut également être une ressource d'apprentissage plus large.
+J'ai inclus des exercices dans chaque section. Si vous en faites
+vraiment quelques-uns, vous en apprendrez bien plus qu'en vous 
+contentant de lire ce document.
+</para>
+
+<para>
+J'espère que certains lecteurs s'attaqueront au meilleur exercice 
+d'apprentissage de Linux que je connaisse&nbsp;: construire un système à 
+partir du code source. Giambattista Vico, un philosophe italien 
+(1668-1744) disait <foreignphrase>verum ipsum factum</foreignphrase> ce 
+qui signifie &laquo;&nbsp;de l'expérience naît la 
+compréhension&nbsp;&raquo; (NdT&nbsp;: traduction libre). Merci à Alex 
+(voir <xref linkend="acknowledge">) pour cette citation.
+</para>
+
+<para>
+Si vous souhaitez vous réaliser votre propre installation Linux, je vous 
+conseille d'aller voir le document de Gerard Beekmans
+<ulink url="http://www.fr.linuxfromscratch.org/">Comment faire un 
+système Linux à partir de zéro</ulink> (<foreignphrase>Linux from 
+scratch - LFS</foreignphrase>). LFS fournit des instructions détaillées 
+pour bâtir un système complet et exploitable à partir du code source. 
+Sur le site web de LFS, vous trouverez aussi une liste de discussion à 
+la disposition des personnes qui construisent de tels systèmes. Les 
+instructions jadis incluses à ce guide se trouvent maintenant dans un 
+document distinct nommé «&nbsp;<ulink url="&howto;Build-Minimal-Linux-from-Source-HOWTO.html">Construire 
+un système Linux minimum à partir du code source</ulink>&nbsp;» et qui 
+peut être récupéré sur le site <ulink url="http://www.netspace.net.au/~gok/power2bash/">From PowerUp to Bash 
+Prompt</ulink> pour construire un système jouet, purement pour 
+l'exercice.
+</para>
+
+<para>
+Les paquets sont présentés dans l'ordre où ils apparaissent dans le 
+processus de démarrage du système.
+Cela signifie que si vous installez les paquets dans cet ordre vous
+pouvez redémarrer après chaque installation, et voir à chaque fois le 
+système se rapprocher petit à petit de l'état où il vous donnera la 
+ligne de commande. Il y a une notion de progression rassurante dans cela.
+</para>
+
+<para>
+Je vous recommande de commencer par lire le texte principal de chaque 
+section, en ignorant les exercices et références, puis de décider du point
+jusqu'auquel vous souhaitez comprendre votre système. Reprenez alors 
+depuis le début, en faisant les exercices et en relisant en détail.
+</para>
+</sect1>
+
+<sect1>
+<title>Partie matérielle</title>
+
+<para>
+Lorsque vous allumez votre ordinateur, celui-ci se teste lui-même pour
+s'assurer que tous ses composants sont en état de marche. Cela s'appelle 
+l'auto-test à l'allumage (<foreignphrase>Power On Self Test - 
+POST</foreignphrase>). Ensuite, un programme nommé chargeur d'amorçage 
+(<foreignphrase>bootstrap loader</foreignphrase>), situé dans le BIOS en 
+ROM, recherche un secteur d'amorçage. Un secteur d'amorçage est le 
+premier secteur d'un disque et contient un petit programme capable de 
+charger un système d'exploitation. Les secteurs d'amorçage sont marqués 
+par un nombre magique (i.e. une valeur fixe caractéristique) 0xAA55 = 
+43603 à l'octet 0x1FE = 510. Ce sont les deux derniers octets du 
+secteur. C'est de cette façon que la partie matérielle peut déterminer 
+s'il s'agit d'un secteur d'amorçage ou pas.
+</para>
+
+<para>
+Le chargeur d'amorçage a une liste d'endroits où chercher un secteur 
+d'amorçage. Ma vieille machine regarde d'abord sur le lecteur de 
+disquette, puis sur le disque dur. Les machines modernes peuvent aussi 
+rechercher un secteur d'amorçage sur un CD-ROM. S'il trouve un secteur 
+d'amorçage, il le charge en mémoire et passe ainsi le contrôle au 
+programme qui charge le système d'exploitation en mémoire. Sur un 
+système Linux classique, ce programme sera la première étape du chargeur 
+de Lilo. Il existe malgré tout plusieurs manières différentes de 
+configurer l'amorçage de votre système. Voir le <emphasis>Guide de 
+l'utilisateur de Lilo</emphasis> pour plus de détails. Voir la section 
+<xref linkend="lilo-links"> pour l'url.
+</para>
+
+<para>
+Évidement, il y a bien plus à dire sur ce que fait la partie matérielle 
+du PC. Mais ce n'est pas l'objet de ce document. Lisez un des nombreux 
+livres traitant de l'architecture matérielle des PC.
+</para>
+
+<sect2>
+<title>Configuration</title>
+
+<para>
+La machine stocke des informations sur son propre état dans son CMOS. Cela
+inclut la RAM et les types de disques installés dans le système. Le BIOS de
+la machine contient un programme de configuration, Setup, qui vous 
+permet de modifier ces informations. Pour savoir comment y accéder, 
+regardez attentivement les messages qui apparaissent sur votre écran 
+lorsque vous mettez votre machine sous tension. Sur ma machine, il faut 
+appuyer sur la touche <keycap>Suppr</keycap> avant qu'elle ne commence à 
+charger le système d'exploitation.
+</para>
+
+</sect2>
+
+<sect2 id="hardware-ex" xreflabel="exercices sur la partie matérielle">
+<title>Exercices
+</title>
+
+<para>
+Une bonne façon d'en apprendre plus sur la partie matérielle d'un PC est 
+de monter une machine à partir de composants d'occasion. Prenez au moins 
+un 386 pour pouvoir y installer Linux facilement. Cela ne vous coûtera 
+pas très cher. Posez la question autour de vous, quelqu'un pourrait bien 
+vous donner une partie des pièces qu'il vous faut.
+</para>
+
+<para>
+Allez voir <ulink 
+url="http://www.netspace.net.au/~gok/resources">Unios</ulink>, (ils 
+avaient une page sur http://www.unios.org, mais elle a disparu) et 
+téléchargez, compilez et fabriquez votre disquette amorçable. Ce n'est 
+qu'un programme d'amorçage affichant &laquo;&nbsp;Hello 
+World!&nbsp;&raquo;, contenant à peine plus de 100 lignes d'assembleur. 
+Il serait intéressant de le voir converti en un format exploitable par 
+l'assembleur <command>as</command> de GNU.
+</para>
+
+<para>
+Ouvrez l'image de la disquette d'amorçage pour Unios avec un éditeur
+hexadécimal. Cette image fait 512 octets de long. Exactement la longueur
+d'un secteur. Trouvez-y le nombre magique 0xAA55. Faites la même chose pour
+une disquette amorçable de votre propre ordinateur.
+</para>
+
+<para>
+Vous pouvez utiliser la commande <command>dd</command> pour la copier 
+dans un fichier&nbsp;: <command>dd if=/dev/fd0 
+of=<replaceable>secteur.d.amorcage</replaceable></command>. Faites 
+<emphasis>très</emphasis> 
+attention à paramétrer <parameter class="command">if</parameter> 
+(fichier source) et <parameter class="command">of</parameter> (fichier 
+destination) comme il faut&nbsp;!
+</para>
+
+<para>
+Essayez d'en extraire le code source du chargeur de Lilo.
+</para>
+
+</sect2>
+
+<sect2>
+<title>Aller plus loin</title>
+
+<itemizedlist>
+
+<listitem><para>
+<ulink url="&howto;Unix-and-Internet-Fundamentals-HOWTO.html">Les
+notions fondamentales d'Unix et d'Internet</ulink>, par Eric S. Raymond,
+et particulièrement la section 3, <emphasis>Que se passe-t-il lorsque 
+vous allumez un ordinateur&nbsp;?</emphasis>
+</para></listitem>
+
+<listitem><para>
+Le premier chapitre du <emphasis>Guide de l'utilisateur de 
+Lilo</emphasis> donne une excellente explication des partitions de 
+disques sur PC et de l'amorçage. Voir la section <xref linkend="lilo-links"> pour l'url.
+</para></listitem>
+
+<listitem><para>
+<foreignphrase>Peter Norton Programmer's Guide to the IBM PC & 
+PS/2</foreignphrase> (Guide Peter Norton du programmeur pour l'IBM PC et 
+PS/2), par Peter Norton et Richard Wilton, Microsoft Press, 1988.
+Il existe un nouveau livre Norton, qui a l'air bien, mais que je ne peux
+m'offrir pour le moment.
+</para></listitem>
+
+<listitem><para>
+Un des nombreux ouvrages disponibles sur la manière de faire évoluer son PC.
+</para></listitem>
+
+</itemizedlist>
+
+</sect2>
+
+</sect1>
+
+<sect1>
+<title>Lilo</title>
+
+<para>
+Lorsque l'ordinateur charge le secteur d'amorce d'un système sous Linux
+normal, ce qu'il charge est en fait une partie de Lilo, appelée chargeur 
+d'amorçage de premier niveau (<foreignphrase>first stage boot 
+loader</foreignphrase>). Il s'agit d'un mini-programme dont la seule 
+tâche est de charger et d'exécuter le chargeur d'amorçage de deuxième 
+niveau (<foreignphrase>second stage boot loader</foreignphrase>).
+</para>
+
+<para>
+Le chargeur d'amorçage de deuxième niveau vous donne une invite de 
+commande (s'il a été installé de cette manière) et charge le système 
+d'exploitation de votre choix.
+</para>
+
+<para>
+Lorsque votre système est monté et en état de marche, et que vous 
+exécutez <command>lilo</command>, ce que vous exécutez en réalité est 
+l'outil de définition des localisations (<foreignphrase>map 
+installer</foreignphrase>). Celui-ci lit le fichier de configuration 
+<filename>/etc/lilo.conf</filename> et écrit le chargeur d'amorçage sur 
+le disque dur, avec les informations concernant les systèmes 
+d'exploitation qu'il peut charger.
+</para>
+
+<para>
+Il y a de nombreuses manières de rendre votre système amorçable. Celle 
+que je viens de décrire est la manière la plus évidente et 
+&laquo;&nbsp;normale&nbsp;&raquo;, au moins pour une machine dont le 
+système d'exploitation principal est Linux. Le Guide de l'utilisateur 
+Lilo explique plusieurs exemples de méthodes d'amorçage. Cela vaut la 
+peine de les lire, et d'en essayer quelques-uns.
+</para>
+
+<sect2>
+<title>Configuration</title>
+
+<para>
+Le fichier de configuration de Lilo est 
+<filename>/etc/lilo.conf</filename>. Il existe une page de manuel (man 
+page) à son sujet&nbsp;: tapez <command>man lilo.conf</command> dans un 
+shell pour l'afficher. La principale caractéristique de 
+<filename>lilo.conf</filename> est qu'il existe une entrée pour chaque 
+chose que Lilo doit pouvoir lancer. Pour une entrée Linux, cela inclut 
+l'emplacement du noyau, et la partition à monter comme racine du 
+système de fichier. Pour les autres systèmes, la principale information 
+est la partition sur laquelle démarrer.
+</para>
+
+</sect2>
+
+<sect2>
+<title>Exercices</title>
+
+<para>
+<emphasis>DANGER</emphasis>&nbsp;: soyez prudent avec ces exercices. Il 
+est assez facile de faire une erreur quelque part et de bloquer votre 
+bloc de démarrage (<foreignphrase>master boot record - 
+MBR</foreignphrase>, premier secteur du disque dur, qui 
+contient le chargeur d'amorçage et la table des partitions) et de rendre 
+ainsi votre système inutilisable. Assurez-vous que vous avez une 
+disquette de réparation qui fonctionne, et que vous savez comment vous 
+en servir pour remettre les choses en état. Voir ci-dessous un lien vers 
+tomsrtbt, la disquette de réparation que j'utilise et recommande. La 
+meilleure des précautions est d'utiliser une machine qui ne contienne 
+pas de données sensibles.
+</para>
+
+<para>
+Installez Lilo sur une disquette. Peu importe s'il n'y a rien d'autre 
+sur la disquette que le noyau - vous obtiendrez un <errorname>kernel 
+panic</errorname> quand le noyau sera prêt à charger init, mais au 
+moins vous saurez que Lilo fonctionne.
+</para>
+
+<para>
+Si vous le souhaitez, vous pouvez essayer de voir jusqu'à quel point 
+vous pouvez faire tenir un système sur une disquette. C'est sûrement la
+deuxième meilleure activité pour apprendre Linux. Voir le 
+&laquo;&nbsp;Comment faire une disquette d'amorçage&nbsp;&raquo; (url 
+ci-dessous), et tomsrtbt (url ci-dessous) pour avoir des pistes.
+</para>
+
+<para>
+Configurez Lilo afin qu'il lance Unios (voir section <xref 
+linkend="hardware-ex"> pour une url). Comme défi supplémentaire, voyez
+si vous pouvez le faire sur une disquette.
+</para>
+
+<para>
+Faites une boucle d'amorçage. Configurez le Lilo du bloc de 
+démarrage pour qu'il lance le Lilo du secteur d'amorçage d'une des 
+partitions principales, puis configurez ce Lilo pour qu'il relance celui 
+du bloc de démarrage. Ou alors utilisez le bloc de démarrage et vos 
+quatre partitions principales pour faire une boucle en cinq 
+points&nbsp;! Marrant&nbsp;!
+</para>
+
+</sect2>
+
+<sect2 id="lilo-links" xreflabel="liens sur Lilo">
+<title>Aller plus loin</title>
+
+<para>
+
+<itemizedlist>
+
+<listitem><para>
+La page de manuel de Lilo
+</para></listitem>
+
+<listitem><para>
+Le paquet Lilo (<ulink 
+url="ftp://lrcftp.epfl.ch/pub/linux/local/lilo/"></ulink>) contient le 
+&laquo;&nbsp;Guide l'utilisateur de Lilo&nbsp;&raquo; 
+<filename>lilo-u-21.ps.gz</filename> (ou une version plus récente). Il 
+se peut que vous disposiez déjà de ce document. Regardez dans <filename 
+class="directory">/usr/share/doc/lilo</filename> ou à un 
+endroit similaire. La version PostScript est meilleure que la version en 
+texte brut, car elle contient des diagrammes et des tables.
+</para></listitem>
+
+<listitem><para>
+<ulink url="http://www.toms.net/rb/">tomsrtbt</ulink>&nbsp;: le Linux 
+mono-disquette le plus cool&nbsp;! Constitue une excellente disquette de 
+secours.
+</para></listitem>
+
+<listitem><para>
+<ulink url="&howto;Bootdisk-HOWTO.html">Comment faire une disquette 
+d'amorçage</ulink> (<foreignphrase>Bootdisk HOWTO</foreignphrase>).
+</para></listitem>
+
+</itemizedlist>
+</para>
+
+</sect2>
+
+</sect1>
+
+<sect1>
+<title>Le noyau Linux</title>
+
+<para>
+Le noyau (<foreignphrase>kernel</foreignphrase>) fait vraiment beaucoup 
+de choses. Je pense qu'une bonne manière de résumer tout cela est de 
+dire qu'il fait faire au matériel ce que les programmes veulent, 
+proprement et efficacement.
+</para>
+
+<para>
+Le processeur ne peut exécuter qu'une seule instruction à la fois, mais
+Linux semble faire tourner beaucoup de choses simultanément. Le noyau 
+accomplit cela en sautant de tâche en tâche très rapidement. Il fait
+le meilleur usage possible du processeur en gardant trace des processus qui
+sont prêts à être exécutés et de ceux qui attendent quelque chose comme un
+enregistrement en provenance d'un disque, ou une saisie clavier
+quelconque. Cette tâche du noyau est appelée ordonnancement.
+</para>
+
+<para>
+Si un programme ne fait rien, alors il n'a pas besoin d'être conservé 
+en mémoire (RAM). Même un programme qui travaille peut avoir certaines 
+parties inactives, qui n'ont donc pas besoin d'être en mémoire. L'espace 
+adressable est divisé en pages. Le noyau garde une trace des pages les 
+plus utilisées. Les pages qui sont moins souvent utilisées peuvent être 
+déplacées dans la partition d'échange 
+(<foreignphrase>swap</foreignphrase>). Lorsqu'une page est à nouveau 
+sollicitée, une autre page inutilisée est retirée de l'espace 
+adressable pour lui faire de la place. Cela s'appelle la gestion de la 
+mémoire virtuelle.
+</para>
+
+<para>
+Si vous avez un jour compilé votre propre noyau, vous avez remarqué qu'il y
+a un grand nombre d'options pour des périphériques spécifiques. Le noyau
+contient une grande quantité de code spécifique pour interagir avec tous 
+types de matériels, et pouvoir les présenter d'une façon propre et 
+uniforme aux programmes.
+</para>
+
+<para>
+Le noyau prend aussi en charge la gestion des fichiers, les communications
+entre processus, et une grande partie du travail concernant le réseau.
+</para>
+
+<para>
+Une fois le noyau chargé, la première chose qu'il fait est de rechercher
+un programme appelé <systemitem>init</systemitem> et l'exécuter.
+</para>
+
+<sect2>
+<title>Configuration</title>
+
+<para>
+La majorité de la configuration du noyau est effectuée quand vous le 
+construisez, en utilisant <command>make menuconfig</command>, ou 
+<command>make xconfig</command> dans le répertoire 
+<filename class="directory">/usr/src/linux/</filename> (là ou se 
+trouvent les sources de votre noyau Linux). La commande 
+<command>rdev</command> vous permet réinitialiser le mode vidéo par 
+défaut, la racine du système de fichiers, le périphérique d'échange et 
+la taille du disque virtuel (disque RAM). Ces paramètres ainsi que 
+d'autres peuvent aussi être passés au noyau depuis Lilo. Vous pouvez 
+indiquer à Lilo les paramètres à passer au noyau soit dans lilo.conf, 
+soit à l'invite de Lilo. Par exemple, si vous souhaitiez utiliser hda3 
+comme racine du système de fichiers plutôt que hda2, vous pourriez 
+taper&nbsp;:
+</para>
+
+<screen>
+	LILO: linux root=/dev/hda3
+</screen>
+
+<para>
+Si vous mettez en place un système à partir de ses sources, vous pouvez 
+vous simplifier la vie en créant un noyau 
+&laquo;&nbsp;monolithique&nbsp;&raquo;, c'est-à-dire sans module. Vous 
+n'aurez donc pas à copier ceux-ci sur le système cible.
+</para>
+
+<note><para>
+Le fichier <filename>System.map</filename> est utilisé lors de 
+l'écriture d'entrées dans le journal système pour déterminer les 
+noms des modules générant les messages. Le programme 
+<command>top</command> utilise également ces informations. Lorsque vous 
+copiez le noyau vers un système cible, copiez aussi 
+<filename>System.map</filename>.
+</para></note>
+
+</sect2>
+
+<sect2>
+<title>Exercices</title>
+
+<para>
+Réfléchissez à ceci&nbsp;: <filename 
+class="devicefile">/dev/hda3</filename> est un type de fichier spécial 
+qui décrit une partition d'un disque dur. Mais il vit sur le système de 
+fichiers comme tous les autres fichiers. Le noyau veut savoir quelle 
+partition monter à la racine - donc il n'a pas encore de système de 
+fichiers. Alors comme peut-il lire <filename 
+class="devicefile">/dev/hda3</filename> pour trouver la partition à 
+monter&nbsp;?
+</para>
+
+<para>
+Si vous ne l'avez pas encore fait, compilez votre noyau. Lisez l'aide 
+pour chaque option.
+</para>
+
+<para>
+Essayez de voir jusqu'à quel point vous pouvez réduire la taille de votre
+noyau avant qu'il ne cesse de fonctionner. Vous pouvez apprendre beaucoup
+en écartant les parties non nécessaires.
+</para>
+
+<para>
+Lisez &laquo;&nbsp;Le noyau Linux&nbsp;&raquo; (url ci-dessous) et ce 
+faisant, trouvez les parties des sources auxquelles il se réfère. Le 
+livre (au moment où j'écris ces lignes) se réfère au noyau version 
+2.0.33, qui commence à être franchement dépassé. Il pourrait être 
+plus facile de suivre si vous téléchargiez cette ancienne version et y 
+lisiez le source. Il est très excitant de trouver des morceaux de code C 
+appelés &laquo;&nbsp;process&nbsp;&raquo; et 
+&laquo;&nbsp;page&nbsp;&raquo;.
+</para>
+
+<para>
+Programmez&nbsp;! Faites des essais&nbsp;! Voyez si vous pouvez faire 
+cracher au noyau des messages supplémentaires ou quoi que ce soit.
+</para>
+
+</sect2>
+
+<sect2 id="kernel" xreflabel="aller plus loin - le noyau Linux">
+<title>Aller plus loin
+</title>
+
+<para>
+
+<itemizedlist>
+
+<listitem><para>
+Le fichier <filename>/usr/src/linux/README</filename> et le contenu du 
+répertoire <filename 
+class="directory">/usr/src/linux/Documentation/</filename>. Leurs 
+emplacements peuvent varier selon votre système.
+</para></listitem>
+
+<listitem><para>
+Le <ulink url="&howto;Kernel-HOWTO.html">Comment faire un noyau 
+Linux</ulink> (<foreignphrase>Kernel HOWTO</foreignphrase>).
+</para></listitem>
+
+<listitem><para>
+L'aide disponible quand vous configurez un noyau en utilisant 
+<command>make menuconfig</command> ou <command>make xconfig</command>.
+Il existe une version française de cet aide disponible sur <ulink 
+url="http://traduc.org/kernelfr/"></ulink>.
+</para></listitem>
+
+<listitem><para>
+&laquo;&nbsp;Le noyau Linux&nbsp;&raquo; et les autres <ulink 
+url="http://www.tldp.org">guides du projet de documentation Linux 
+(LDP)</ulink>
+</para></listitem>
+
+<listitem><para>
+Pour le code source, suivre les hyperliens dans <ulink 
+url="&howto;Build-Minimal-Linux-from-Source-HOWTO.html">Construire 
+un système Linux minimum à partir du code source</ulink>
+</para></listitem>
+
+</itemizedlist>
+
+</para>
+
+</sect2>
+
+</sect1>
+
+<sect1>
+<title>La bibliothèque C de GNU</title>
+
+<para>
+L'étape suivante qui se produit au démarrage de votre ordinateur est
+le chargement d'init et son exécution. Cependant, init, comme la plupart
+des programmes, utilise des fonctions issues de bibliothèques.
+</para>
+
+<para>
+Vous avez peut-être déjà vu un exemple de programme C comme celui-ci&nbsp;:
+</para>
+
+<programlisting>
+	main() {
+        	printf("Hello World!\n");
+	}
+</programlisting>
+
+<para>
+Le programme ne définit nullement <literal>printf</literal>, alors d'où 
+vient-il&nbsp;? Il provient des bibliothèques C standard. Pour un 
+système GNU/Linux, il s'agit de glibc. Si vous les compilez sous Visual 
+C++, alors il provient d'une mise en &oelig;uvre Microsoft de ces mêmes 
+fonctions standard. Il existe des masses de ces fonctions standard, 
+pour les mathématiques, la gestion des chaînes de caractères, de l'heure 
+et de la date, des allocations de mémoire et ainsi de suite. Tout, dans 
+Unix (y compris Linux) est soit écrit en C, soit doit faire de son mieux 
+pour faire comme si, de sorte que tous les programmes utilisent ces 
+fonctions.
+</para>
+
+<para>
+Si vous jetez un &oelig;il dans <filename 
+class="directory">/lib</filename> sur votre système Linux, vous verrez 
+un grand nombre de fichiers appelés <filename 
+class="libraryfile">libquelquechose.so</filename> ou <filename 
+class="libraryfile">libquelquechose.a</filename> et cætera. Ce 
+sont les bibliothèques de ces fonctions. Glibc est simplement 
+la mise en &oelig;uvre GNU de ces fonctions.
+</para>
+
+<para>
+Les programmes peuvent utiliser ces fonctions de deux manières. Si vous
+réalisez une édition de liens <emphasis>statique</emphasis>, ces 
+fonctions seront copiées à l'intérieur de l'exécutable généré. C'est à 
+cela que servent les bibliothèques <filename 
+class="libraryfile">libquelquechose.a</filename>. Si vous réalisez 
+une édition de liens <emphasis>dynamique</emphasis> (cas par défaut),
+lorsque le programme aura besoin du code d'une bibliothèque, il 
+l'appellera directement depuis le fichier <filename 
+class="libraryfile">libquelquechose.so</filename>
+</para>
+
+<para>
+La commande <command>ldd</command> vous apporte une aide précieuse 
+lorsque vous cherchez à retrouver les bibliothèques utilisées par un 
+programme particulier. Par exemple, voici les bibliothèques utilisées 
+par <command>bash</command>:
+</para>
+
+<screen>
+	[greg@Curry power2bash]$ ldd /bin/bash
+        	libtermcap.so.2 =&#62; /lib/libtermcap.so.2 (0x40019000)
+        	libc.so.6 =&#62; /lib/libc.so.6 (0x4001d000)
+        	/lib/ld-linux.so.2 =&#62; /lib/ld-linux.so.2 (0x40000000)
+</screen>
+
+<sect2>
+<title>Configuration</title>
+
+<para>
+Certaines fonctions des bibliothèques dépendent de la région 
+géographique où vous vous trouvez. Par exemple, en français, on écrit 
+les dates sous la forme jj/mm/aa, mais les américains les écrivent 
+sous la forme mm/jj/aa. Ceci est configurable via un programme appelé 
+<command>localdef</command> livré avec <productname>glibc</productname>.
+</para>
+
+</sect2>
+
+<sect2>
+<title>Exercices</title>
+
+<para>
+Utilisez <command>ldd</command> pour déterminer les bibliothèques 
+qu'utilise votre application préférée.
+</para>
+
+<para>
+Utilisez <command>ldd</command> pour déterminer les bibliothèques 
+utilisées par <systemitem>init</systemitem>.
+</para>
+
+<para>
+Créez une bibliothèque gadget, avec seulement une ou deux fonctions dedans.
+On utilise le programme <command>ar</command> pour les créer. La page de 
+manuel d'<citerefentry><refentrytitle>ar</refentrytitle></citerefentry> pourrait être un bon point de départ pour 
+commencer à enquêter sur la manière dont cette opération est effectuée. 
+Écrivez, compilez, et liez un programme utilisant cette bibliothèque.
+</para>
+
+</sect2>
+
+<sect2>
+<title>Aller plus loin</title>
+
+<itemizedlist>
+
+<listitem><para>
+Pour le code source, suivre les liens dans <ulink url="&howto;Build-Minimal-Linux-from-Source-HOWTO.html">Construire 
+un système Linux minimum à partir du code source</ulink>
+</para></listitem>
+
+</itemizedlist>
+
+</sect2>
+
+</sect1>
+
+<sect1>
+<title>Init</title>
+
+<para>
+Je ne parlerai que du style d'initialisation &laquo;&nbsp;System 
+V&nbsp;&raquo; que les systèmes Linux utilisent le plus souvent. Il 
+existe des alternatives. En fait, vous pouvez mettre n'importe quel 
+programme dans <filename>/sbin/init</filename>, que le noyau exécutera 
+lorsqu'il aura fini de se charger.
+</para>
+
+<para>
+Le travail d'<systemitem>init</systemitem> est de faire en sorte que tout se 
+lance correctement. Il vérifie que les systèmes de fichier sont en bon 
+état et les monte. Il démarre les démons 
+(<foreignphrase>daemons</foreignphrase>) qui enregistrent les messages
+système, gèrent le réseau, distribuent les pages web, écoutent les 
+signaux de la souris, et cætera. Init démarre aussi les processus 
+<systemitem>getty</systemitem> qui vous donnent l'invite de connexion sur vos 
+terminaux virtuels.
+</para>
+
+<para>
+Il y a un processus compliqué concernant le changement de niveau  
+d'exécution (&laquo;&nbsp;run-levels&nbsp;&raquo;), mais je vais sauter 
+tout ça, et ne parler que du démarrage du système.
+</para>
+
+<para>
+Init lit le fichier <filename>/etc/inittab</filename>, qui lui dit quoi 
+faire. En général, la première chose demandée est l'exécution d'un 
+script d'initialisation. Le programme qui exécute (ou interprète) ce 
+script est <command>bash</command>, le même programme qui vous donne la 
+ligne de commande. Sur les systèmes Debian, le script d'initialisation 
+est <filename>/etc/init.d/rcS</filename>, sur Red Hat, 
+<filename>/etc/rc.d/rc.sysinit</filename>. C'est là que les systèmes de 
+fichiers sont vérifiés puis montés, l'horloge mise à l'heure, le fichier 
+ou la partition d'échange (swap) activés, les noms de machines définis, 
+et cætera.
+</para>
+
+<para>
+Ensuite, un autre script est invoqué pour nous placer dans le niveau 
+d'exécution par défaut. Cela implique simplement le démarrage d'un 
+ensemble de sous-systèmes. Il existe un ensemble de sous-répertoires
+<filename class="directory">/etc/rc.d/rc0.d</filename>, <filename 
+class="directory">/etc/rc.d/rc1.d</filename>,&nbsp;&hellip;&nbsp;,&nbsp;<filename 
+class="directory">/etc/rc.d/rc6.d</filename> sous Red Hat, ou
+<filename class="directory">/etc/rc0.d</filename>, <filename 
+class="directory">/etc/rc1.d</filename>,&nbsp;&hellip;&nbsp;,&nbsp;<filename 
+class="directory">/etc/rc6.d</filename> sous Debian, correspondant aux 
+niveaux d'exécution (<foreignphrase>runlevels</foreignphrase>). Si nous 
+entrons dans le niveau d'exécution 3 sur un système Debian, le script 
+exécute tous les scripts de <filename 
+class="directory">/etc/rc3.d</filename> commençant par 
+&laquo;&nbsp;S&nbsp;&raquo; (pour <foreignphrase>Start</foreignphrase>). 
+Ces scripts sont en réalité des liens vers un autre répertoire appelé 
+généralement <filename class="directory">init.d</filename>.
+</para>
+
+<para>
+Donc, le script de notre niveau d'exécution est appelé par 
+<systemitem>init</systemitem>, et recherche dans un répertoire les
+scripts dont le nom débute par la lettre &laquo;&nbsp;S&nbsp;&raquo;. Il 
+se peut qu'il tombe sur <filename class="symlink">S10syslog</filename> 
+en premier. Les chiffres indiquent au script de gestion des niveaux 
+d'exécution l'ordre dans lequel il doit les lancer. En l'occurrence, 
+<filename class="symlink">S10syslog</filename> est lancé en premier 
+parce qu'il n'y pas de script commençant par S00&nbsp;&hellip;&nbsp;S09. 
+Mais S10syslog est en fait un lien vers 
+<filename>/etc/init.d/syslog</filename> qui est un script chargé du 
+démarrage et de l'arrêt du démon de gestion du journal système. Parce 
+que le nom du lien commence par un &laquo;&nbsp;S&nbsp;&raquo;, le 
+script de gestion des niveaux d'exécution sait qu'il doit exécuter le 
+script <command>syslog</command> avec le paramètre 
+<literal>start</literal>. Il y a aussi des liens dont le nom débute par 
+&laquo;&nbsp;K&nbsp;&raquo; (pour <foreignphrase>Kill</foreignphrase>), 
+qui spécifient ce qui doit être arrêter, et dans quel ordre, lorsque 
+l'on entre dans ce niveau d'exécution.
+</para>
+
+<para>
+Pour changer ce que le sous-système lance par défaut, vous devez configurer
+ces liens dans le répertoire <filename 
+class="directory">rc<replaceable>N</replaceable>.d</filename>, où 
+<replaceable>N</replaceable> est le niveau d'exécution par défaut défini 
+dans votre fichier <filename>inittab</filename>.
+</para>
+
+<para>
+La dernière chose importante qu'effectue init est de démarrer les
+<systemitem>getty</systemitem>. Ceux-ci sont ressuscités 
+(<foreignphrase>respawned</foreignphrase>), ce qui signifie qu'ils sont 
+automatiquement relancés par <systemitem>init</systemitem> s'ils 
+viennent à se terminer. La plupart des distributions fournissent six 
+terminaux virtuels. Il se peut que vous souhaitiez en enlever pour 
+économiser de la mémoire, ou en ajouter pour pouvoir faire tourner 
+plus de choses à la fois, et passer rapidement de l'une à l'autre. Vous 
+pourriez aussi avoir besoin de lancer un <systemitem>getty</systemitem> 
+vers un terminal texte ou vers un modem. Vous devrez alors éditer 
+<filename>inittab</filename>.
+</para>
+
+<sect2>
+<title>Configuration</title>
+
+<para>
+<filename>/etc/inittab</filename> est le fichier de configuration 
+principale d'<systemitem>init</systemitem>.
+</para>
+
+<para>
+Les répertoires <filename 
+class="directory">rc<replaceable>N</replaceable>.d</filename>, 
+où <replaceable>N</replaceable> = <literal>0</literal>, 
+<literal>1</literal>,&nbsp;&hellip;&nbsp;,&nbsp;<literal>6</literal>
+détermine les sous-systèmes à lancer.
+</para>
+
+<para>
+Quelque part dans les scripts invoqués par init, se trouve la commande 
+<command>mount&nbsp;-a</command>. Cela signifie&nbsp;: 
+&laquo;&nbsp;Monte 
+tous les systèmes de fichiers censés être montés&nbsp;&raquo;. Le 
+fichier <filename>/etc/fstab</filename> définit ce qui est censé être 
+monté. Si vous souhaitez changer ce qui est monté par défaut au 
+démarrage, c'est ce fichier que vous devez modifier. Il existe une page 
+de manuel pour <filename>fstab</filename>.
+</para>
+
+</sect2>
+
+<sect2>
+<title>Exercices</title>
+
+<para>
+Trouvez le répertoire <filename 
+class="directory">rc<replaceable>N</replaceable>.d</filename> du 
+niveau d'exécution par défaut de votre système puis faites un 
+<command>ls -l</command> pour voir les fichiers pointés par les
+liens.
+</para>
+
+<para>
+Changez le nombre de <systemitem>getty</systemitem> tournant sur votre 
+système.
+</para>
+
+<para>
+Retirez tous les sous-systèmes dont vous n'avez pas besoin de votre niveau
+d'exécution par défaut.
+</para>
+
+<para>
+Essayez de déterminer le minimum nécessaire pour démarrer.
+</para>
+
+<para>
+Fabriquez une disquette avec Lilo, un noyau et un programme statique
+affichant &laquo;&nbsp;Bonjour tout le monde&nbsp;!&nbsp;&raquo; nommé
+<filename>/sbin/init</filename>, puis regardez-la démarrer et dire 
+bonjour.
+</para>
+
+<para>
+Regardez attentivement votre système démarrer, et notez les événements
+signalés. Ou imprimez une section de votre journal système
+<filename>/var/log/messages</filename> à partir du moment où votre système a
+démarré. Ensuite, en partant d'<filename>inittab</filename>, explorez tous les
+scripts et essayez de voir quel code fait quoi. Vous pouvez également
+ajouter des messages, comme
+</para>
+
+<programlisting>
+	echo "Bonjour, moi c'est rc.sysinit"
+</programlisting>
+
+<para>
+C'est aussi un bon exercice pour apprendre le langage de script de Bash,
+certains scripts étant assez compliqués. Ayez un bon document de 
+référence sur Bash à portée de la main.
+</para>
+
+</sect2>
+
+<sect2>
+<title>Aller plus loin</title>
+
+<itemizedlist>
+
+<listitem><para>
+Il y a des pages de manuel pour les fichiers <filename>inittab</filename> et <filename>fstab</filename>. 
+Tapez (par exemple) <command>man inittab</command> dans un shell pour l'afficher.
+</para></listitem>
+
+<listitem><para>
+Le guide Linux de l'administrateur système du <ulink 
+url="http://www.tldp.org/guides.html">projet de documentation 
+Linux (LDP)</ulink> contient une section intéressante sur init.
+</para></listitem>
+
+<listitem><para>
+Pour le code source, suivre les liens du 
+<ulink url="&howto;Build-Minimal-Linux-from-Source-HOWTO.html">Construire 
+un système Linux minimum à partir du code source</ulink>
+</para></listitem>
+
+</itemizedlist>
+
+</sect2>
+
+</sect1>
+
+<sect1>
+<title>Le système de fichiers</title>
+
+<para>
+Dans cette section, j'emploierai l'expression &laquo;&nbsp;système de 
+fichiers&nbsp;&raquo; pour deux notions différentes. Il y a les systèmes 
+de fichiers installés sur des partitions de disque ou d'autres 
+périphériques, et il y a le système de fichier tel qu'il vous est 
+présenté par un système Linux en état de marche. Sous Linux, vous 
+&laquo;&nbsp;montez&nbsp;&raquo; le système de fichiers d'un disque sur 
+le système de fichiers de Linux.
+</para>
+
+<para>
+Dans la section précédente, j'ai mentionné le fait que des scripts
+d'initialisation vérifiaient et montaient les systèmes de fichiers. Les 
+commandes qui effectuent ces opérations sont respectivement <command>fsck</command> et
+<command>mount</command>.
+</para>
+
+<para>
+Un disque dur n'est qu'un grand espace dans lequel vous pouvez écrire
+des zéros et des uns. Un système de fichiers impose une structure à tout
+cela, et le présente sous la forme de fichiers, à l'intérieur de
+sous-répertoires, à l'intérieur de répertoires&nbsp;&hellip; Chaque 
+fichier est représenté par un <foreignphrase>inode</foreignphrase>, 
+indiquant le fichier dont il s'agit, sa date de création, et où 
+trouver son contenu. Les répertoires sont aussi représentés par des 
+inodes, mais ceux-ci indiquent où trouver les inodes des fichiers
+que les répertoires contiennent. Si le système veut lire 
+<filename>/home/greg/groslolos.jpeg</filename>, il commence par lire 
+l'inode du répertoire racine <filename class="directory">/</filename> 
+dans le &laquo;&nbsp;superbloc&nbsp;&raquo;, puis trouve l'inode du
+répertoire <filename class="directory">home</filename> dans le contenu 
+de <filename class="directory">/</filename>, puis trouve l'inode
+du répertoire <filename class="directory">greg</filename> dans le 
+contenu de <filename class="directory">home</filename>, et enfin
+l'inode de <filename>groslolos.jpeg</filename> qui lui dira quels blocs 
+du disque il doit lire.
+</para>
+
+<para>
+Si nous ajoutons des données à la fin d'un fichier, il peut arriver que les
+données soient écrites avant que l'inode ne soit mis à jour (indiquant que
+le nouveau bloc appartient désormais au fichier), ou vice-versa. Si le
+courant est coupé à cet instant précis, le système de fichiers sera 
+cassé. C'est ce genre de chose que <command>fsck</command> essaie de 
+détecter et de réparer.
+</para>
+
+<para>
+La commande <command>mount</command> prend le système de fichiers d'un 
+périphérique, et l'ajoute à la hiérarchie de fichiers de votre système. 
+En général le noyau monte son système de fichiers racine en lecture 
+seule. La commande mount est ensuite utilisée pour le remonter en 
+lecture-écriture après que fsck aie vérifié que tout est en ordre.
+</para>
+
+<para>
+Linux prend aussi en charge d'autres types de systèmes de 
+fichiers&nbsp;: msdos, vfat, minix, et cætera. Les détails d'un système 
+de fichiers spécifique sont masqués par le système de fichier virtuel 
+(Virtual File System - VFS), qui est une couche d'abstraction. Je ne 
+rentrerai pas dans ces détails. Il existe une discussion sur ce sujet 
+dans &laquo;&nbsp;Le noyau Linux&nbsp;&raquo; (voir la section <xref 
+linkend="kernel"> pour l'url).
+</para>
+
+<para>
+Un type de système de fichiers complètement différent est monté sur 
+/proc. C'est une véritable projection de ce qui se passe dans le noyau. 
+On y trouve un répertoire pour chaque processus existant sur le système, 
+dont le nom correspond au numéro dudit processus. Il existe aussi des 
+fichiers comme <filename>interrupts</filename> et 
+<filename>meminfo</filename> qui donnent des informations sur 
+l'utilisation du matériel. Vous pouvez découvrir énormément de choses 
+en explorant <filename class="directory">/proc</filename>.
+</para>
+
+<sect2>
+<title>Configuration</title>
+
+<para>
+Il est possible d'indiquer à <command>mke2fs</command>, la commande de 
+création des système de fichiers ext2, des paramètres définissant
+la taille des blocs, le nombre d'inodes, et cætera. Voir la page de 
+manuel de <citerefentry><refentrytitle>mke2fs</refentrytitle></citerefentry> 
+pour plus de détails.
+</para>
+
+<para>
+Ce qui doit être monté sur votre système de fichiers est contrôlé par le 
+fichier <filename>/etc/fstab</filename>, qui a lui aussi sa page de 
+manuel.
+</para>
+
+</sect2>
+
+<sect2>
+<title>Exercices</title>
+
+<para>
+Fabriquez un tout petit système de fichiers, et visualisez-le avec un éditeur
+hexadécimal. Identifiez les inodes, les superblocs, et le contenu des
+fichiers.
+</para>
+
+<para>
+Je crois qu'il existe des outils qui vous donnent une vue graphique d'un
+système de fichiers. Trouvez-en un, essayez-le, et envoyez moi l'url par 
+courrier électronique (en anglais) avec vos commentaires&nbsp;!
+</para>
+
+<para>
+Explorez le code du système de fichiers ext2 dans le noyau.
+</para>
+
+</sect2>
+
+<sect2>
+<title>Aller plus loin</title>
+
+<itemizedlist>
+
+<listitem><para>
+Le chapitre 9 du livre &laquo;&nbsp;Le noyau linux&nbsp;&raquo; du LDP donne une
+excellente description des systèmes de fichiers. Vous pouvez le trouver
+sur le site du <ulink url="http://www.tldp.org">projet de documentation Linux (LDP)</ulink>.
+</para></listitem>
+
+<listitem><para>
+La commande <command>mount</command> fait partie du paquet util-linux, il y a un
+lien vers celui-ci dans <ulink url="&howto;Build-Minimal-Linux-from-Source-HOWTO.html">Construire un 
+Système Linux Minimum à partir du Code Source</ulink>
+</para></listitem>
+
+<listitem><para>
+Les pages de manuel de 
+<citerefentry><refentrytitle>mount</refentrytitle></citerefentry>, 
+<citerefentry><refentrytitle>fstab</refentrytitle></citerefentry>,
+<citerefentry><refentrytitle>fsck</refentrytitle></citerefentry>, 
+<citerefentry><refentrytitle>mke2fs</refentrytitle></citerefentry>
+et <citerefentry><refentrytitle>proc</refentrytitle></citerefentry>.
+</para></listitem>
+
+<listitem><para>
+Le fichier <filename>Documentation/proc.txt</filename>, distribué 
+avec les sources du noyau Linux, décrit le fonctionnement du système de 
+fichier <filename class="directory">/proc</filename>.
+</para></listitem>
+
+<listitem><para>
+La page principale des utilitaires du système de fichier Ext2 <ulink 
+url="http://web.mit.edu/tytso/www/linux/e2fsprogs.html">ext2fsprogs</ulink>.
+On y trouve également un document donnant une vue d'ensemble d'Ext2fs, 
+bien qu'il ne soit plus à jour, et moins lisible que le chapitre 9
+du livre &laquo;&nbsp;Le noyau Linux&nbsp;&raquo;.
+</para></listitem>
+
+<listitem><para>
+Le <ulink url="http://www.pathname.com/fhs/">standard de système de 
+fichier Unix</ulink>. Ce document décrit où doit se trouver quoi, dans 
+un système Unix, et pourquoi. Il indique aussi le minimum nécessaire à 
+placer dans <filename class="directory">/bin</filename>, <filename 
+class="directory">/sbin</filename>, et cætera. C'est une bonne référence 
+si votre objectif est un système minimal mais complet.
+</para></listitem>
+
+</itemizedlist>
+
+</sect2>
+
+</sect1>
+
+<sect1>
+<title>Les démons du noyau</title>
+
+<para>
+Si vous saisissez la commande <command>ps aux</command>, vous verrez 
+quelque chose ressemblant à ce qui suit&nbsp;:
+</para>
+
+<screen>
+USER       PID %CPU %MEM  SIZE   RSS TTY STAT START   TIME COMMAND
+root         1  0.1  8.0  1284   536   ? S    07:37   0:04 init [2] 
+root         2  0.0  0.0     0     0   ? SW   07:37   0:00 (kflushd)
+root         3  0.0  0.0     0     0   ? SW   07:37   0:00 (kupdate)
+root         4  0.0  0.0     0     0   ? SW   07:37   0:00 (kpiod)
+root         5  0.0  0.0     0     0   ? SW   07:37   0:00 (kswapd)
+root        52  0.0 10.7  1552   716   ? S    07:38   0:01 syslogd -m 0 
+root        54  0.0  7.1  1276   480   ? S    07:38   0:00 klogd 
+root        56  0.3 17.3  2232  1156   1 S    07:38   0:13 -bash 
+root        57  0.0  7.1  1272   480   2 S    07:38   0:01 /sbin/agetty 38400 tt
+root        64  0.1  7.2  1272   484  S1 S    08:16   0:01 /sbin/agetty -L ttyS1
+root        70  0.0 10.6  1472   708   1 R   Sep 11   0:01 ps aux 
+</screen>
+
+<para>
+C'est une liste de processus en cours d'exécution sur le système. Les
+informations proviennent du système de fichiers <filename 
+class="directory">/proc</filename> que j'ai mentionné dans la section 
+précédente. Remarquez que <systemitem>init</systemitem> est le processus 
+numéro un. Les processus 2, 3, 4 et 5 sont kflushd, kupdate, kpiod et 
+kswapd. Il y a quand même quelque chose d'étrange&nbsp;: dans les deux 
+colonnes de la taille virtuelle de stockage (SIZE) et la taille réelle 
+de stockage (Real Storage Size, RSS), ces processus renvoient zéro. 
+Comment un processus peut-il ne pas utiliser de mémoire&nbsp;?
+</para>
+
+<para>
+Il s'agit des démons propres au noyau. La majeure partie du noyau 
+n'apparaît même pas dans la liste des processus, et le seul moyen de 
+connaître la mémoire qu'il utilise est de soustraire la mémoire 
+disponible à la quantité totale de mémoire installée. Les démons du 
+noyau sont démarrés après init, et obtiennent de ce fait des numéros de 
+processus normaux, mais leur code et leurs données n'existent qu'au sein 
+de la zone de mémoire occupée par le noyau.
+</para>
+
+<para>
+Les noms des démons du noyau dans la liste sont écrits entre 
+crochets car le système de fichiers <filename 
+class="directory">/proc</filename> ne contient pas d'information sur la 
+ligne de commande utilisée pour lancer ces processus.
+</para>
+
+<para>
+Alors, à quoi servent ces démons ? Les versions précédentes de ce document
+présentaient ici un appel à contribution, car mes connaissances dans ce 
+domaine sont limitées. L'explication (partielle) qui suit est
+une fusion de différentes réponses à cet appel, pour lesquelles j'ai 
+une grande reconnaissance. Toutes indications, références et corrections
+sont bienvenues.
+</para>
+
+<para>
+Toutes les entrées et sorties sont effectuées via des 
+<emphasis>tampons</emphasis> en mémoire, ce qui accélère grandement les 
+choses. Tout ce qu'un programme écrit peut être conservé en mémoire, 
+puis être écrit sur le disque par blocs plus grands et plus efficaces. 
+C'est le travail des démons <systemitem>kflushd</systemitem> et 
+<systemitem>kupdate</systemitem>.
+</para>
+
+<para>
+Très souvent, les processus sont au repos, et ceux qui tournent n'ont pas
+besoin d'avoir l'intégralité de leur code et de leurs données chargée en
+mémoire. Cela signifie que l'on peut faire un meilleur usage de notre
+mémoire vive, en faisait glisser les pages inutilisées des programmes en
+cours d'exécution vers la ou les partitions d'échange du disque dur. Le 
+transfert des données depuis et vers la mémoire selon les besoins est 
+assuré par <systemitem>kpiod</systemitem> et 
+<systemitem>kswapd</systemitem>. Toutes les secondes environ, 
+<systemitem>kswapd</systemitem> se réveille et vérifie la situation de 
+la mémoire, et, si une page devient  nécessaire en mémoire ou que l'on 
+commence à manquer de place, invoque <systemitem>kpiod</systemitem>.
+</para>
+
+<para>
+Il peut aussi exister un démon <systemitem>kapmd</systemitem> si vous 
+avez activé la gestion avancée de l'énergie (apm) dans votre noyau.
+</para>
+
+<sect2>
+<title>Configuration</title>
+
+<para>
+Le programme <command>update</command> vous permet de configurer 
+<systemitem>kflushd</systemitem> et <systemitem>kswapd</systemitem>. 
+Essayez update -h pour avoir plus d'information.
+</para>
+
+<para>
+L'espace d'échange (<foreignphrase>swap</foreignphrase>) est mis en 
+service avec <command>swapon</command> et hors service par 
+<command>swapoff</command>. Ce sont les scripts d'initialisation 
+<filename>/etc/rc.sysinit</filename> ou 
+<filename>/etc/rc.d/rc.sysinit</filename> qui appellent généralement 
+<command>swapon</command>, lorsque le système démarre. J'ai entendu dire 
+que <command>swapoff</command> était pratique pour économiser l'énergie 
+des ordinateurs portables.
+</para>
+
+</sect2>
+
+<sect2>
+<title>Exercices</title>
+
+<para>
+Faites un <command>update -t</command>, notez les commentaires des dernières
+lignes parlant de &laquo;&nbsp;threshold for buffer 
+fratricide&nbsp;&raquo; (seuil fratricides des tampons). Voilà un 
+concept bien intriguant ! Enquêtez&nbsp;!
+</para>
+
+<para>
+Entrez dans le répertoire <filename 
+class="directory">/proc/sys/vm</filename> et faites un 
+<command>cat</command> sur tous les fichiers s'y trouvant. Voyez ce que 
+vous pouvez en tirer.
+</para>
+
+</sect2>
+
+<sect2>
+<title>Aller plus loin</title>
+
+<para>
+Le livre &laquo;&nbsp;Le noyau Linux&nbsp;&raquo; du projet de 
+documentation Linux (LDP). Suivre les liens dans la section 
+<xref linkend="kernel">.
+</para>
+
+<para>
+Le code source du noyau, si vous êtes courageux ! Le programme source de 
+<systemitem>kswapd</systemitem> se trouve dans 
+<filename>linux/mm/vmscan.c</filename>, ceux de 
+<systemitem>klushd</systemitem> et <systemitem>kupdate</systemitem> se 
+trouvent eux dans <filename>linux/fs/buffer.c</filename>.
+</para>
+
+</sect2>
+
+</sect1>
+
+<sect1>
+<title>Le journal système</title>
+
+<para>
+Init démarre les démons <systemitem>syslogd</systemitem> et 
+<systemitem>klogd</systemitem>. Ils écrivent les messages à consigner 
+dans le journal système. Les messages du noyau sont pris en main par 
+<systemitem>klogd</systemitem>, alors que <systemitem>syslogd</systemitem> gère les messages des
+autres processus. Le fichier journal principal est <filename>/var/log/messages</filename>.
+C'est un bon endroit où aller voir quand quelque chose tourne mal sur 
+votre système. Vous y trouverez souvent de précieux indices.
+</para>
+
+<sect2>
+<title>Configuration</title>
+
+<para>
+Le fichier <filename>/etc/syslog.conf</filename> indique au démon 
+de gestion du journal système où mettre quels messages. Les messages 
+sont identifiés par le service dont ils proviennent, et leur niveau de 
+priorité. Ce fichier de configuration est constitué de lignes indiquant 
+que les messages du service x avec une priorité y vont vers z, où z est 
+un fichier, un terminal, une imprimante, une machine distante, ou autre 
+chose encore.
+</para>
+
+<note><para>
+Syslog a besoin que le fichier <filename>/etc/services</filename> 
+existe. Ce fichier alloue des ports (UDP et TCP). Je ne sais pas 
+vraiment si syslog a besoin d'un port réservé uniquement pour pouvoir 
+enregistrer les messages des machines distantes, ou si même 
+l'enregistrement en local se fait au travers d'un port, ou même s'il 
+ne se contente pas d'utiliser <filename>/etc/services</filename> pour 
+convertir les noms de services indiqués dans 
+<filename>/etc/syslog.conf</filename> en numéros de port.
+</para></note>
+
+</sect2>
+
+<sect2>
+<title>Exercices</title>
+
+<para>
+Jetez un &oelig;il à votre journal système. Prenez un message que vous ne
+comprenez pas, et essayez de trouver ce qu'il signifie.
+</para>
+
+<para>
+Redirigez tous les messages du journal vers un terminal.
+(Revenez à la normale une fois que c'est fait).
+</para>
+
+</sect2>
+
+<sect2>
+<title>Aller plus loin</title>
+
+<para>
+Le <ulink 
+url="ftp://ftp.lip6.fr/pub/linux/sunsite/system/daemons">miroir</ulink> 
+français de sysklogd.
+</para>
+
+</sect2>
+
+</sect1>
+
+<sect1>
+<title>Getty et Login</title>
+
+<para>
+Getty est le programme qui vous permet de vous connecter à travers un
+périphérique série, comme une console virtuelle, un terminal en mode texte,
+ou un modem. Il affiche l'invite de connexion. Une fois que vous avez 
+saisi votre nom d'utilisateur, getty le transmet à  
+<systemitem>login</systemitem>, qui vous demande un mot de passe, le 
+vérifie, puis vous donne l'interpréteur de commandes (le shell).
+</para>
+
+<para>
+Il existe plusieurs getty disponibles. Certaines distributions, comme Red Hat,
+en utilisent un très petit appelé <systemitem>mingetty</systemitem> et qui ne gère que 
+les terminaux virtuels.
+</para>
+
+<para>
+Le programme <systemitem>login</systemitem> fait partie du paquet util-linux,
+qui contient aussi un getty nommé <systemitem>agetty</systemitem>, qui fonctionne bien.
+Ce paquet contient également <command>mkswap</command>, <command>fdisk</command>,
+<command>passwd</command>, <command>kill</command>, <command>setterm</command>, <command>mount</command>,
+<command>swapon</command>, <command>rdev</command>, <command>renice</command>, 
+<command>more</command> et bien d'autres.
+</para>
+
+<sect2>
+<title>Configuration</title>
+
+<para>
+Le message qui apparaît en haut de votre écran avec l'invite de login
+provient du fichier <filename>/etc/issue</filename>. Les getty sont en 
+général démarrés depuis <filename>/etc/inittab</filename>. Login 
+recherche les informations spécifiques à l'utilisateur dans 
+<filename>/etc/passwd</filename>, et si vous utilisez un fichier de 
+mot de passe ombre (<foreignphrase>shadow password</foreignphrase>), 
+dans 
+<filename>/etc/shadow</filename>.
+</para>
+
+</sect2>
+
+<sect2>
+<title>Exercices</title>
+
+<para>
+Créez un fichier <filename>/etc/passwd</filename> à la main. Les mots de passe peuvent
+être nuls, puis changés avec le programme <command>passwd</command> une fois connecté.
+Voir la page de manuel de ce fichier. Utilisez <command>man 5 passwd</command> pour obtenir 
+la page de manuel du fichier plutôt que celle du programme.
+</para>
+
+</sect2>
+
+</sect1>
+
+<sect1>
+<title>Bash</title>
+
+<para>
+Si vous donnez à <systemitem>login</systemitem> une combinaison valide 
+de nom d'utilisateur et de mot de passe, il ira regarder dans 
+<filename>/etc/passwd</filename> pour savoir quel interpréteur de commandes vous donner. La 
+plupart du temps, dans un système Linux, ce sera 
+<systemitem>bash</systemitem>. Le travail de <systemitem>bash</systemitem> consiste 
+à lire vos commandes et voir ce sur quoi elles agissent. C'est à la fois 
+une interface utilisateur, et l'interpréteur d'un langage de 
+programmation.
+</para>
+
+<para>
+Dans son rôle d'interface, il lit vos commandes, et les exécute lui-même 
+si ces commandes sont internes, comme <command>cd</command>, ou bien 
+trouve et exécute un programme s'il s'agit de commandes externes comme 
+<command>cp</command> ou <command>startx</command>. Bash propose 
+également plusieurs options fort sympathiques comme un historique des 
+commandes, ou la capacité de finir automatiquement les noms de fichiers 
+que vous entrez (lorsque vous utiliser la touche <keycap>Tab</keycap>).
+</para>
+
+<para>
+Nous avons déjà vu <systemitem>bash</systemitem> à l'action dans son rôle de 
+langage de programmation. Les scripts qu'<systemitem>init</systemitem> 
+lance pour démarrer le système sont généralement des scripts shell, et 
+sont exécutés par <systemitem>bash</systemitem>.
+Avoir un langage de programmation propre, parallèlement aux utilitaires
+systèmes disponibles depuis l'invite de commande forme une combinaison très
+puissante, si vous savez ce que vous faites. Par exemple (séquence 
+frime&nbsp;!), j'ai eu besoin l'autre jour d'appliquer une pile entière 
+de correctifs à un répertoire de codes source. J'ai été capable de le 
+faire en une seule commande, la suivante&nbsp;:
+</para>
+
+<programlisting>
+for f in /home/greg/sh-utils-1.16*.patch; do patch -p0 &#60; $f; done;
+</programlisting>
+
+<para>
+Ceci recherche tous les fichiers de mon répertoire personnel dont
+les noms commencent par <filename>sh-utils-1.16</filename> et finissent par
+<filename>.patch</filename>, puis affecte un par un ces noms à la 
+variable <varname>f</varname> et exécute les commandes invoquées entre 
+<literal>do</literal> et <literal>done</literal>. Il y avait en 
+l'occurrence 11 correctifs, mais il aurait pu aussi bien y en avoir 3000.
+</para>
+
+<sect2>
+<title>Configuration</title>
+
+<para>
+Le fichier <filename>/etc/profile</filename> agit sur le comportement de bash au niveau
+du système entier. Ce que vous mettez dans ce fichier affectera toute
+personne qui utilise bash sur votre système. Cela sert par exemple à ajouter
+des répertoires dans la variable <envar>PATH</envar>, ou à définir celui de la
+variable <envar>MAIL</envar>.
+</para>
+
+<para>
+Le comportement par défaut du clavier laisse souvent à désirer. En fait,
+c'est readline qui contrôle cela. Readline est un paquet distinct qui
+prend en main les interfaces de ligne de commande, en fournissant
+l'historique des commandes, et la capacité à terminer automatiquement 
+de noms de fichiers, tout comme les facilités évoluées d'édition de 
+ligne. Il est compilé dans bash. Par défaut, Readline est configuré à 
+l'aide du fichier <filename>.inputrc</filename>, dans votre répertoire 
+personnel. La variable INPUTRC peut être utilisée pour outrepasser les 
+règles de ce fichier pour le bash. Par exemple, dans Red Hat 6, 
+<envar>INPUTRC</envar> reçoit la valeur 
+<filename>/etc/inputrc</filename> dans le fichier 
+<filename>/etc/profile</filename>. Ce qui signifie que les touches 
+<keycap>Effacement arrière</keycap>, <keycap>Suppr</keycap>, 
+<keycap>Début</keycap> et <keycap>Fin</keycap> fonctionnent correctement 
+et pour tout le monde.
+</para>
+
+<para>
+Une fois que bash a lu le fichier de configuration général, commun au
+système entier, il recherche votre fichier de configuration personnel. Il
+teste l'existence des fichiers <filename>.bash&lowbar;profile</filename>, <filename>.bash&lowbar;login</filename>
+et <filename>.profile</filename> dans votre répertoire personnel. Il lance le premier
+qu'il trouve. Si vous voulez modifier le comportement de bash à votre égard,
+sans le changer pour les autres, faites-le ici. Par exemple, de nombreuses
+applications utilisent les variables d'environnement pour contrôler leur
+fonctionnement. J'ai une variable <envar>EDITOR</envar> contenant la valeur
+<command>vi</command> pour pouvoir utiliser vi sous Midnight Commander (un excellent
+gestionnaire de fichier orienté console) au lieu de son propre éditeur.
+</para>
+
+</sect2>
+
+<sect2>
+<title>Exercices</title>
+
+<para>
+Les bases de bash sont faciles à apprendre. Mais ne vous y limitez pas&nbsp;: on
+peut aller incroyablement loin avec. Prenez l'habitude de rechercher de
+meilleures façons de faire les choses.
+</para>
+
+<para>
+Lisez des scripts shell, analysez les choses que vous ne comprenez pas.
+</para>
+
+</sect2>
+
+<sect2>
+<title>Aller plus loin</title>
+
+<itemizedlist>
+
+<listitem><para>
+Il existe le &laquo;&nbsp;Manuel de référence Bash&nbsp;&raquo;, clair, 
+mais assez lourd.
+</para></listitem>
+
+<listitem><para>
+Il existe également un livre O'Reilly sur Bash, je ne sais pas s'il est 
+bon.
+</para></listitem>
+
+<listitem><para>
+Je ne connais pas de bon tutoriel bash gratuit et à jour. Si vous
+en connaissez un, merci de me faire connaître le lien.
+</para></listitem>
+
+<listitem><para>
+Le code source. Suivre les liens dans
+<ulink url="&howto;Build-Minimal-Linux-from-Source-HOWTO.html">Construire 
+un système Linux Minimum à partir du Code Source</ulink>
+</para></listitem>
+
+</itemizedlist>
+
+</sect2>
+
+</sect1>
+
+<sect1>
+<title>Les commandes</title>
+
+<para>
+Vous effectuez la plupart des choses sous bash en saisissant des commandes
+comme <command>cp</command>. La majorité de ces commandes sont des 
+petits programmes, bien que quelques-unes, comme <command>cd</command> 
+soient intégrées à l'interpréteur de commandes.
+</para>
+
+<para>
+Les commandes viennent de paquets, la plupart de la Free Software Foundation
+(projet GNU). Plutôt que de dresser ici la liste des paquets, je préfère vous
+renvoyer vers le <ulink 
+url="http://www.fr.linuxfromscratch.org/">Comment faire un système Linux 
+à partir de zéro</ulink>.
+
+Il contient une liste complète et à jour de tous les paquets allant dans un
+système Linux, aussi bien que des indications pour les construire.
+</para>
+
+</sect1>
+
+<sect1>
+<title>Conclusion</title>
+
+<para>
+L'un des meilleurs côtés de Linux, à mon humble avis, est que vous pouvez
+entrer dedans et voir réellement comment il fonctionne. J'espère que vous
+apprécierez cela autant que moi. Et j'espère que ces quelques
+notes vous y auront aidé.
+</para>
+
+</sect1>
+
+<sect1>
+<title>Section administrative</title>
+
+<sect2>
+<title>Copyright</title>
+
+<para>
+Copyright &copy; 1999, 2000 Greg O'Keefe. Vous êtes libre d'utiliser, de 
+copier, de distribuer ou de modifier ce document, sans obligation, selon
+les termes de la Licence publique générale GNU (GPL&nbsp;: <ulink 
+url="http://www.gnu.org/copyleft/gpl.html">GNU General Public 
+Licence</ulink>). Merci de citer l'auteur si vous utilisez tout ou 
+partie de ce document dans un autre.
+</para>
+
+</sect2>
+
+<sect2>
+<title>Page principale</title>
+
+<para>
+Les mises à jour de ce document évoluent sur le site <ulink 
+url="http://www.netspace.net.au/~gok/power2bash">From Powerup To Bash 
+Prompt</ulink> avec son compagnon &laquo;&nbsp;Building a 
+Minimal Linux System from Source Code&nbsp;&raquo;.
+</para>
+
+<para>
+Il existe une traduction française sur <ulink 
+url="&howto;From-PowerUp-To-Bash-Prompt.html">From Powerup to Bash 
+Prompt</ulink>. Merci à Dominique van den Broeck.
+Une traduction japonaise par Yuji Senda est en cours et sera disponible 
+sur le site du <ulink url="http://www.linux.or.jp/JF/">Projet 
+des documentations et FAQ japonaises</ulink> si elle ne s'y trouve pas 
+déjà.
+</para>
+
+</sect2>
+
+<sect2>
+<title>Réactions</title>
+
+<para>
+J'aimerais recevoir vos commentaires, critiques et suggestions. Veuillez
+s'il vous plaît me les envoyer en anglais à Greg O'Keefe 
+<email>gcokeefe@postoffice.utas.edu.au</email>
+</para>
+
+</sect2>
+
+<sect2 id="acknowledge" xreflabel="références et remerciements">
+<title>Références et remerciements
+</title>
+
+<para>
+Les noms de produits cités sont des marques déposées par leurs
+propriétaires respectifs, et considérés par cette note comme reconnus 
+comme tels.
+</para>
+
+<para>
+Il y a quelques personnes que je voudrais remercier, pour m'avoir aidé à
+réaliser tout ceci.
+</para>
+
+<variablelist>
+
+<varlistentry>
+  <term>Michael Emery</term>
+  <listitem><para>
+  Pour m'avoir rappelé Unios.
+  </para></listitem>
+</varlistentry>
+
+<varlistentry>
+  <term>Tim Little</term>
+  <listitem><para>
+  Pour de bonnes indications concernant <filename>/etc/passwd</filename>
+  </para></listitem>
+</varlistentry>
+
+<varlistentry>
+  <term>sPaKr dans &num;linux sur efnet</term>
+  <listitem><para>
+  Qui a soupçonné l'utilisation de <filename>/etc/services</filename> 
+  par syslog, et m'a fait connaître l'expression &laquo;&nbsp;rolling 
+  your own&nbsp;&raquo; (réaliser soi-même) pour décrire la construction 
+  d'un système à partir des sources.
+  </para></listitem>
+</varlistentry>
+
+<varlistentry>
+  <term>Alex Aitkin</term>
+  <listitem><para>
+  Pour avoir porté Vico et son &laquo;&nbsp;verum ipsum 
+  factum&nbsp;&raquo; (La compréhension découle de l'expérience) à mon 
+  attention.
+  </para></listitem>
+</varlistentry>
+
+<varlistentry>
+  <term>Dennis Scott</term>
+  <listitem><para>
+  Pour avoir corrigé mon arithmétique en hexadécimal.
+  </para></listitem>
+</varlistentry>
+
+<varlistentry>
+  <term>jdd</term>
+  <listitem><para>
+  Pour avoir mis en évidence quelques erreurs typographiques.
+  </para></listitem>
+</varlistentry>
+
+<varlistentry>
+  <term>David Leadbeater</term>
+  <listitem><para>
+  Pour avoir contribué aux &laquo;&nbsp;pérégrinations&nbsp;&raquo; dans 
+  les démons noyau.
+  </para></listitem>
+</varlistentry>
+
+<varlistentry>
+  <term>Dominique van den Broeck</term>
+  <listitem><para>
+  Pour avoir traduit cette doc en français. (NdT&nbsp;: Merci à 
+  Guillaume Allègre et Anthony Boureux pour la relecture ainsi qu'à tous 
+  les membres de projet de traduction linux français).
+  </para></listitem>
+</varlistentry>
+
+<varlistentry>
+  <term>Matthieu Peeters</term>
+  <listitem><para>
+  Pour ses très bonnes informations sur les démons du noyau.
+  </para></listitem>
+</varlistentry>
+
+<varlistentry>
+  <term>John Fremlin</term>
+  <listitem><para>
+  Pour ses très bonnes informations sur les démons du noyau.
+  </para></listitem>
+</varlistentry>
+
+<varlistentry>
+  <term>Yuji Senda</term>
+  <listitem><para>
+  Pour la traduction en japonais.
+  </para></listitem>
+</varlistentry>
+
+<varlistentry>
+  <term>Antonius de Rozari</term>
+  <listitem><para>
+  Pour avoir apporté une version en assembleur GNU de Unios (voir la 
+  section ressources sur la page principale).
+  </para></listitem>
+</varlistentry>
+
+</variablelist>
+
+</sect2>
+
+<sect2>
+<title>Historique des changements</title>
+
+<variablelist>
+
+<varlistentry>
+<term>0.8 -&gt; 0.9 (novembre 2000)</term>
+
+<listitem><para>
+Incorporation des informations de Matthieu Peeters
+sur les démons du noyau et le système de fichiers <filename 
+class="directory">/proc</filename>.
+</para></listitem>
+</varlistentry>
+
+<varlistentry>
+<term>0.7 -&gt; 0.8 (septembre 2000)</term>
+
+<listitem><para>
+Suppression des informations sur la manière de construire
+un système, pour les placer dans un document distinct. Correction
+de quelques liens en conséquence.
+</para>
+
+<para>
+Changement de site internet: de <ulink url="http://learning.taslug.org.au/power2bash">learning@TasLUG</ulink>
+vers <ulink url="http://www.netspace.net.au/~gok/power2bash">mon propre site</ulink>.
+</para>
+
+<para>
+Impossible d'incorporer toutes les bonnes informations reçues
+d'horizons variés. La prochaine fois, peut-être :(
+</para></listitem>
+</varlistentry>
+
+<varlistentry>
+<term>0.6 -&gt; 0.7</term>
+
+<listitem><para>
+L'accent est plus porté sur l'explication, et moins sur la façon
+de monter un système, ces informations ayant été regroupées
+dans une section distincte, et le système une fois construit
+a été revu à la baisse, voir directement la documentation de
+Gerard Beekmans &laquo;&nbsp;Linux From Scratch&nbsp;&raquo; pour construire un
+système sérieux.
+</para>
+
+<para>
+Ajout de quelques hypothèses de la part de David Leadbeater
+</para>
+
+<para>
+Correction de deux url, ajout d'un lien vers le téléchargement d'Unios
+sur learning.taslug.org.au/resources
+</para>
+
+<para>
+Test et correction d'url.
+</para>
+
+<para>
+Grand nettoyage et réécriture générale.
+</para></listitem>
+</varlistentry>
+
+<varlistentry>
+<term>0.5 -&#62; 0.6</term>
+
+<listitem><para>
+Ajout de l'historique des changements
+</para>
+
+<para>
+Ajout de quelques éléments dans la liste des améliorations prévues.
+</para></listitem>
+
+</varlistentry>
+</variablelist>
+
+</sect2>
+
+<sect2>
+<title>Améliorations prévues</title>
+
+<itemizedlist>
+
+<listitem><para>
+Expliquer les modules noyau, depmod, modprobe, insmod et tout
+(il faut d'abord que je trouve moi-même).
+</para></listitem>
+
+<listitem><para>
+Mentionner le système de fichiers /proc. Exercices potentiels.
+</para></listitem>
+
+<listitem><para>
+Convertir en documentation sgml
+</para></listitem>
+
+<listitem><para>
+Ajouter plus d'exercices, peut-être une section entière d'exercices
+plus poussés, comme créer un système de fichiers minimal fichier par 
+fichier à partir de l'installation d'une distribution.
+</para></listitem>
+
+</itemizedlist>
+
+</sect2>
+
+<sect2 id="adaptation-francaise" xreflabel="adaptation française">
+  <title>Adaptation française</title>
+  <sect3>
+  <title>Traduction</title>
+    <para>
+    La traduction française de ce document a été réalisée par
+    Dominique van den Broeck <email>dvandenbroeck@free.fr</email>, mai 
+    2000 (v0.7), février 2001 (v0.9).
+    </para>
+  </sect3>
+
+  <sect3>
+  <title>Relecture</title>
+
+  <para>
+  La relecture de ce document a été réalisée par Jean-Philippe Guérard 
+  <email>jean-philippe.guerard@laposte.net</email>. Les version 
+  précédentes ont été relues par Guillaume Allègre et Anthony Boureux.
+  </para>
+  </sect3>
+
+</sect2>
+
+</sect1>
+
+</article>

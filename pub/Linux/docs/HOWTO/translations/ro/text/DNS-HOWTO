@@ -1,0 +1,2298 @@
+  DNS HOWTO
+  Nicolai Langfeldt (janl@linpro.no), Jamie Norrish and others
+  Version 3.1, 2001-01-18
+  Traducerea: Victor Plugaru(vuk@go.ro). Cu scuzele de rigoare
+  pentru eventualele greseli si/sau inadvertente.
+
+  CUM SA administrati rapid un DNS.
+  ______________________________________________________________________
+
+  Cuprins
+
+
+  1. Preambul
+
+     1.1 Chestiuni legale
+     1.2 Credit si cereri de suport.
+     1.3 Dedicatie
+
+  2. Introducere.
+
+  3. Caching name server.
+
+     3.1 Pornirea lui named
+     3.2 Resolvere
+     3.3 Felicitari
+
+  4. Forwarding
+
+  5. Un domeniu simplu
+
+     5.1 Intai teorie seaca
+     5.2 Propriul nostru domeniu
+     5.3 Zona reverse
+     5.4 Cuvinte de atentionare
+     5.5 De ce nu functioneaza interogarile inverse.
+        5.5.1 Zona reverse nu este investita.
+        5.5.2 Aveti un subnet fara clase
+     5.6 Servere slave (sclav)
+
+  6. Optiuni de securitate fundamentale.
+
+     6.1 Restrictionarea transferurilor pe zone
+     6.2 Protectia in situatii de spoofing
+     6.3 Rularea lui named ca non-root
+
+  7. Un exemplu real de domeniu
+
+     7.1 /etc/named.conf (sau /var/named/named.conf)
+     7.2 /var/named/root.hints
+     7.3 /var/named/zone/127.0.0
+     7.4 /var/named/zone/land-5.com
+     7.5 /var/named/zone/206.6.177
+
+  8. Intretinere
+
+  9. Conversia de la versiunea 4 la versiunea 8
+
+  10. Intrebari si raspunsuri
+
+  11. Cum sa deveniti un administrator DNS la scara mare.
+
+
+
+  ______________________________________________________________________
+
+
+  1. Preambul
+
+  Cuvinte cheie: DNS, BIND, BIND 4, BIND 8, named, dialup, ppp, slip, ISDN, 
+internet, domeniu, nume, rezolutie, hosturi, caching.
+
+
+Acest document este parte din Proiectul Documentatiei Linux (Linux
+Documentation Project)
+
+  1.1. Chestiuni legale
+
+  (C)opyright 1995-2001 Nicolai Langfeldt, Jamie Norrish & Co.
+Nu distribuiti modificand fara copyright, distribuiti liberi dar
+pastrati mesajul de copyright.
+
+  1.2. Credite si cereri de suport
+
+Vreau sa multumesc lui Arnt Gulbrandsen caruia i-am cauzat suferinta
+cu aceste tiparituri si care mi-a oferit multe sugestii utile. Vreau
+sa multumesc de asemeni numeroselor persoane care mi-au trimis sugestii si
+note prin e-mail.
+
+Acesta nu va fi niciodata un document final; va rog sa imi trimiteti
+e-mailuri despre problemele si succesele dumneavoastra. Puteti da o mana
+de ajutor la imbunatatirea acestui HOWTO. Asa ca va rog sa trimiteti
+comentarii si/sau sugestii la janl@linpro.no. Sau cumparati cartea mea
+despre DNS. Vedeti bibliografia despre informatii in legatura cu aceasta
+chestiune. Daca trimiteti un e-mail si asteptati raspunsuri, dati dovada de
+curtoazie si asigurati-va ca adresa de reply este corecta si functioneaza.
+Tot astfel, va rog sa cititi sectiunea "qanda" inainte de a-mi trimite
+e-mail. Inca un lucru, inteleg doar limbile norvegiana si engleza.
+
+Acesta este un HOWTO (CUM_SA). L-am intretinut ca parte a LDP din 1995. Am
+scris, in timpul anului 2000 o carte pe aceiasi tema. Vreau sa spun ca,
+desi acest HOWTO este asemanator cartii din multe puncte de vedere, nu
+este o versiune redusa astfel incat sa promovez vinderea cartii. Veti gasi
+cartea in bibliografie in finalul acestui HOWTO. Cititorii acestui HOWTO
+m-au ajutat sa inteleg ceea ce e dificil de inteles in legatura cu
+DNS. Aceasta m-a ajutat la carte, iar cartea m-a ajutat de asemeni
+sa inteleg la ce ar servi acest HOWTO. Acest HOWTO a completat cartea.
+Cartea a completat versiunea 3 a acestui HOWTO. Multumirile mele
+editorului cartii, care si-a incercat norocul cu mine :-)
+
+1.3. Dedicatie
+
+Acest HOWTO este dedicat lui Anne Line Norheim Langfeldt, desi dansa nu il
+va citi niciodata pentru ca nu e genul.
+
+1. Introducere
+
+Ce este si ce nu este aceasta.
+
+
+DNS este Domain Name System (Sistemul Domeniului de Nume). DNS converteste
+numele masinilor (de calcul) in adrese IP pe care toate masinile de pe
+Internet le au.  Translateaza (sau "mapeaza" cum se zice in jargon) din
+nume in adrese si din adrese in nume, precum si alte cateva lucruri. Acest
+HOWTO documenteaza definirea acestor mapari folosind sisteme UNIX, cu
+cateva lucruri specifice Linux-ului.
+
+O mapare este o simpla asociere intre doua lucruri, in acest caz un nume
+de masina, ca ftp.linux.org, si IP-ul masinii (sau adresa)
+199.249.150.4. DNS-ul contine de asemeni mapari si in alt sens, din
+IP catre numele masinii; aceasta se numeste "mapare inversa"
+
+DNS este, pentru neinitiati (dumneavoastra :-), una dintre
+cele mai obscure domenii din administrarea retelelor. Din fericire, DNS nu
+este chiar asa de greu. Acest HOWTO va incerca sa va clarifice
+cateva lucruri. Descrie cum sa setati un server de nume DNS simplu,
+incepand doar cu un server cache si pana la a seta un sever DNS primar 
+pentru domeniu. Pentru setari mai complexe consultati sectiunea "qanda" 
+din acest document. Daca nu este descris acolo (ceea ce va trebuie),
+va trebui sa consultati documentatie "adevarata". Voi reveni si voi arata
+in ce consta aceasta documentatie "adevarata" in "ultimul capitol".
+
+Inainte de a incepe ar trebui sa va configurati masina astfel incat sa
+puteti folosi telnet de la si catre aceasta masina si sa puteti face tot
+felul de conexiuni in retea, si in special sa puteti da telnet 127.0.0.1 
+si sa reusiti sa intrati pe propria masina (ar trebui sa incercati
+asta chiar acum!). Va trebuie de asemeni fisierele /etc/nsswitch.conf,
+/etc/resolv.conf si /etc/hosts corecte, ca punct de plecare pentru ca nu
+le voi explica functiile aici. Daca nu aveti toate acestea configurate si
+in stare de functionare, Networking-HOWTO si/sau Networking-Overview-HOWTO
+explica cum sa le configurati. CItiti-le.
+
+Cand spun "masina dumneavoastra" inteleg masina pe care vreti
+sa configurati DNS, nu orice alta masina pe care o aveti si care ar fi
+implicata in efortul de a pune la punct reteaua.
+
+Presupun ca nu sunteti in spatele nici unui fel de firewall care blocheaza
+interogarile de nume. Daca sunteti in atare situatie, vedeti sectiunea
+"quanda".
+
+Serverul de nume in UNIX este indeplinit de un program numit named. Acesta
+este o parte a pachetului "BIND" coordonat de The Internet
+Software Cosortium. Named este inclus in majoritatea distributiilor de Linux 
+si este de obicei instalat in /usr/sbin/named, de obicei dintr-un pachet
+BIND.
+
+Daca aveti un named probabil ca il puteti si folosi. Daca nu aveti unul,
+puteti lua distributia binara de de pe un site ftp Linux, sau luati ultima
+si cea mai "tare" sursa de la <ftp://ftp.isc.org/isc/bind/src/>. Acest
+HOWTO se refera la BIND versiunea 8. Versiunea veche a acestui document,
+despre BIND 4 este inca disponibila la <http://www.math.uio.no/~janl/DNS/>.
+in caz ca folositi BIND 4. Daca paginile man ale named (chiar la sfarsit,
+in sectiunea FILES) fac referire la named.conf, aveti BIND 8. Daca fac
+referire la named.boot, aveti BIND 4. Daca aveti BIND 4
+si sunteti constient de problemele de securitate, ar fi bine sa faceti
+uprade la BIND 8. Acum.
+
+DNS este o baza de date distribuita in retea. Aveti grija ce puneti in ea.
+Daca puneti "balarii" in ea, dumneavoastra si altii, tot "balarii"
+veti avea. Mentineti DNS-ul restrans si consistent si veti avea parte de
+servicii de buna calitate de la el. Invatati sa il folositi, administrati,
+depanati si veti fi inca un bun administrator, evitand ingenuncherea
+Internetului din cauza prostului management.
+
+Indicatie: faceti copii de rezerva a tuturor fisierelor pe care va indic
+sa le modificati, daca le aveti deja, asa incat daca trecand
+prin acestea (configurari, modificari) nimic nu mai merge, sa puteti
+reveni la vechea dumneavoastra stare de functionare.
+
+  3. Caching name server
+
+Un prim model de configurarie DNS, foarte util pentru dialup, modem
+de cablu si utilizatori ADSL.
+
+In distributiile Redhat si inrudite puteti obtine aceleasi rezultate
+practice ca in prima sectiune a acestui HOWTO, instaland
+pachetul BIND, utilitarele bind si caching-nameserver-ul. Daca
+folositi Debian, instalati bind si bind-doc. Bine inteles ca
+doar instaland aceste pachete nu veti invata atat de mult ca si cand ati
+citi acest HOWTO. Asa ca instalati pachetele si verificati fisierele
+instalate. 
+
+Un server cache de nume va gasi raspunsuri la interogarile de nume si va
+memora aceste raspunsuri pentru data viitoare cand veti
+avea nevoie. Aceasta va scurta semnificativ timpul de asteptare urmatoarea
+data, in special daca aveti o conexiune lenta.
+
+In primul rand aveti nevoie de un fisier numit /etc/named.conf
+(Debian: /etc/bind/named.conf). Acesta este citit cand named porneste.
+Deocamdata ar trebui sa contina pur si simplu:
+
+  ______________________________________________________________________
+  // Config file for caching only name server
+
+  options {
+          directory "/var/named";
+
+          // Uncommenting this might help if you have to go through a
+          // firewall and things are not working out.  But you probably
+          // need to talk to your firewall admin.
+
+          // query-source port 53;
+  };
+
+  zone "." {
+          type hint;
+          file "root.hints";
+  };
+
+  zone "0.0.127.in-addr.arpa" {
+          type master;
+          file "pz/127.0.0";
+  };
+  ______________________________________________________________________
+
+Pachetele distributiilor Linux pot folosi diferite nume de fisiere
+pentru fiecare tip de fisier mentionat aici, cu toate acestea, continutul
+va fi identic.
+
+Linia "directory" ii spune lui named unde sa caute fisiere. Toate fisierele
+ named subsecvente vor fi relative la aceasta. pz este un director sub
+/var/named, de ex. /var/named/pz. /var/named este directorul corect
+potrivit Standardului de Fisiere Linux.
+
+Fisierul /var/named/root.hints ar trebui sa contina urmatoarele: (daca
+execuati cut si paste dintr-o versiune electronica a acestui document,
+aveti in vedere ca nu trebuie sa existe spatii de inceput in acest fisier,
+de exemplu toate liniile trebuie sa inceapa cu un caracter
+non-blank. Anumite programe de procesare de text vor insera spatii
+la inceputul liniilor, cauzand confuzie. In acest caz va rog
+sa indepartati spatiile goale.)
+
+  ______________________________________________________________________
+  ;
+  ; There might be opening comments here if you already have this file.
+  ; If not don't worry.
+  ;
+  .                       6D IN NS        M.ROOT-SERVERS.NET.
+  .                       6D IN NS        I.ROOT-SERVERS.NET.
+  .                       6D IN NS        E.ROOT-SERVERS.NET.
+  .                       6D IN NS        D.ROOT-SERVERS.NET.
+  .                       6D IN NS        A.ROOT-SERVERS.NET.
+  .                       6D IN NS        H.ROOT-SERVERS.NET.
+  .                       6D IN NS        C.ROOT-SERVERS.NET.
+  .                       6D IN NS        G.ROOT-SERVERS.NET.
+  .                       6D IN NS        F.ROOT-SERVERS.NET.
+  .                       6D IN NS        B.ROOT-SERVERS.NET.
+  .                       6D IN NS        J.ROOT-SERVERS.NET.
+  .                       6D IN NS        K.ROOT-SERVERS.NET.
+  .                       6D IN NS        L.ROOT-SERVERS.NET.
+  ;
+  M.ROOT-SERVERS.NET.     6D IN A         202.12.27.33
+  I.ROOT-SERVERS.NET.     6D IN A         192.36.148.17
+  E.ROOT-SERVERS.NET.     6D IN A         192.203.230.10
+  D.ROOT-SERVERS.NET.     6D IN A         128.8.10.90
+  A.ROOT-SERVERS.NET.     6D IN A         198.41.0.4
+  H.ROOT-SERVERS.NET.     6D IN A         128.63.2.53
+  C.ROOT-SERVERS.NET.     6D IN A         192.33.4.12
+  G.ROOT-SERVERS.NET.     6D IN A         192.112.36.4
+  F.ROOT-SERVERS.NET.     6D IN A         192.5.5.241
+  B.ROOT-SERVERS.NET.     6D IN A         128.9.0.107
+  J.ROOT-SERVERS.NET.     6D IN A         198.41.0.10
+  K.ROOT-SERVERS.NET.     6D IN A         193.0.14.129
+  L.ROOT-SERVERS.NET.     6D IN A         198.32.64.12
+  ______________________________________________________________________
+
+
+Fisierul descrie serverele de nume "radacina" din lume. Acestea se schimba
+in timp si trebuie mentinute permanent. Vedeti sectiunea "intretinere"
+despre cum sa mentineti la curent acest fisier. 
+
+Urmatoarea sectiune in named.conf este ultima zona. II voi explica
+utilizarea intr-un capitol ulterior. Deocamdata creati din aceasta un
+fisier numit 127.0.0 in subdirectorul pz (din nou, indepartati
+spatiile goale daca executati cut si paste).
+
+  ______________________________________________________________________
+  $TTL 3D
+  @               IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. (
+                                  1       ; Serial
+                                  8H      ; Refresh
+                                  2H      ; Retry
+                                  4W      ; Expire
+                                  1D)     ; Minimum TTL
+                          NS      ns.linux.bogus.
+  1                       PTR     localhost.
+  ______________________________________________________________________
+
+
+Pe urma, aveti nevoie de un fisier /etc/resolv.conf care sa arate cam asa:
+(indepartati spatiile!)
+
+  ______________________________________________________________________
+  search subdomain.your-domain.edu your-domain.edu
+  nameserver 127.0.0.1
+  ______________________________________________________________________
+
+Linia "search" specifica ce domenii ar trebui cautate pentru un nume de
+host la care vreti sa va conectati. Linia "nameserver" indica serverul
+dumneavoastra de nume, in acest caz propria dumneavoastra masina,
+daca acolo ruleaza named (127.0.0.1 e perfect, nu conteaza ca mai aveti si
+alta adresa IP). Daca doriti sa apara mai multe servere de nume, puneti
+cate o linie "nameserver" pentru fiecare. (Nota: named niciodata
+nu citeste acest fisier, ci rezolverul, programul care il utilizeaza
+pe named. Nota2 :in unele fisiere resolv.conf gasiti o linie "domain". E
+in regula, dar nu folositi si "search" si "domain", doar una dintre ele va
+merge). 
+
+Pentru a ilustra ce face acest fisier: daca un client incearca
+sa caute (hostul) "foo", atunci foo.subdomeniu.domeniul-tau.edu este
+incercat primul, apoi foo.domeniul-tau.edu si apoi foo. Nu e de preferat
+sa puneti prea multe domenii in linia "search" pentru ca va dura mult sa
+le interogheze pe toate.
+
+Exemplul de mai sus presupune ca apartineti domeniului
+subdomeniu.domeniul-tau.edu; atunci masina dumneavoastra este numita
+probabil masina-ta.subdomeniu.domeniul-tau.edu Linia "search" n-ar trebui
+sa contina TLD-ul dumneavoastra (Top Level Domain "edu"- Domeniul de Nivel
+Inalt) in acest caz. Daca aveti nevoie sa va conectati
+la hosturi din alt domeniu, in mod frecvent, puteti adauga acel domeniu in
+linia "search" astfel: (indepartati spatiile!) 
+
+  ______________________________________________________________________
+  search subdomain.your-domain.edu your-domain.edu other-domain.com
+  ______________________________________________________________________
+
+si asa mai departe. Evident, trebuie sa puneti nume reale de domeniu
+in locul celor din exemplu. Importat: observati lipsa punctelor de
+la sfarsitul numelor de domeniu.
+
+
+
+  3.1 Pornirea lui named
+
+
+Dupa toate acestea este timpul sa pornim named. Daca folositi o conexiune 
+dialup, conectati-va intai. Dati comanda "ndc start" si apasati Enter,
+fara nici o optiune. Daca nu merge asa, incercati "/usr/sbin/ndc start".
+Daca tot nu merge, vedeti sectiunea "qanda". Daca observati in
+fisierul mesajelor syslog (de obicei /var/adm/messages sau
+/var/log/messages) in timp ce porniti named (incercati tail -f
+/var/log/messages), ar trebui sa vedeti ceva asemanator :
+
+(liniile care se incheie in \ continua pe linia urmatoare)
+
+
+       Dec 15 23:53:29 localhost named[3768]: starting.  named 8.2.2-P7 \
+                       Fri Nov 10 04:50:23 EST 2000^Iprospector@porky.\
+                       devel.redhat.com:/usr/src/bs/BUILD/bind-8.2.2_P7/\
+                       src/bin/named
+       Dec 15 23:53:29 localhost named[3768]: hint zone "" (IN) loaded\
+                       (serial 0)
+       Dec 15 23:53:29 localhost named[3768]:Zone "0.0.127.in-addr.arpa"\
+                       (file pz/127.0.0): No default TTL set using SOA\
+                       minimum instead
+       Dec 15 23:53:29 localhost named[3768]: master zone\
+                       "0.0.127.in-addr.arpa" (IN) loaded (serial 1)
+       Dec 15 23:53:29 localhost named[3768]:listening on [127.0.0.1].53 (lo)
+       Dec 15 23:53:29 localhost named[3768]: listening on [10.0.0.129].53\
+                       (wvlan0)
+       Dec 15 23:53:29 localhost named[3768]: Forwarding source address is\
+                       [0.0.0.0].1034
+       Dec 15 23:53:29 localhost named[3769]: Ready to answer queries.
+
+
+Daca sunt multe mesaje de eroare, trebuie sa fie o greseala
+pe undeva. Named va indica fisierul unde se afla greseala. Reveniti si
+verificati fisierul respectiv. Dati comanda "ndc restart" si ati
+rezolvat problema. 
+
+Acum puteti testa configurarea. In mod traditional, un program numit
+nslookup e folosit pentru aceasta. In mod curent, dig e recomandat.
+
+
+  $ dig -x 127.0.0.1
+  
+    ; <<>> DiG 8.2 <<>> -x
+    ;; res options: init recurs defnam dnsrch
+    ;; got answer:
+    ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 4
+    ;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY:1, ADDITIONAL: 0
+    ;; QUERY SECTION:
+    ;;      1.0.0.127.in-addr.arpa, type = ANY, class = IN
+    
+    ;; ANSWER SECTION:
+    1.0.0.127.in-addr.arpa.  1D IN PTR  localhost.
+        
+    ;; AUTHORITY SECTION:
+    0.0.127.in-addr.arpa.   1D IN NS        ns.penguin.bv.
+            
+    ;; Total query time: 30 msec
+    ;; FROM: lookfar to SERVER: default -- 127.0.0.1
+    ;; WHEN: Sat Dec 16 00:16:12 2000
+    ;; MSG SIZE  sent: 40  rcvd: 110
+                    
+ 
+Daca ati obtinut aceasta, serviciul functioneaza. Speram. Daca treburile
+stau altfel, reveniti si verificati totul. De fiecare data cand moficati
+fisierul named.conf, trebuie sa reporniti named cu comanda ndc restart.
+
+Acum puteti efectua o interogare. Incercati sa cautati o masina apropiata.
+pat.uio.no este apropiata de mine, la Universitatea din Oslo.
+
+
+       $ dig pat.uio.no
+       
+       ; <<>> DiG 8.2 <<>> pat.uio.no
+       ;; res options: init recurs defnam dnsrch
+       ;; got answer:
+       ;; ->>HEADER<<- opcode:QUERY, status: NOERROR, id: 4
+       ;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY:3, ADDITIONAL: 3
+       ;; QUERY SECTION:
+       ;;      pat.uio.no, type = A, class = IN
+              
+       ;; ANSWER SECTION:
+       pat.uio.no.             1D IN A		 129.240.130.16
+ 
+       ;; AUTHORITY SECTION:
+       uio.no.                 1D IN NS        nissen.uio.no.
+       uio.no.                 1D IN NS        ifi.uio.no.
+       uio.no.                 1D IN NS        nn.uninett.no.
+
+       ;; ADDITIONAL SECTION:
+       nissen.uio.no.          1D IN A         129.240.2.3
+       ifi.uio.no.             1H IN A         129.240.64.2
+       nn.uninett.no.          1D IN A         158.38.0.181
+ 
+       ;; Total query time: 112 msec
+       ;; FROM: lookfar to SERVER: default -- 127.0.0.1
+       ;; WHEN: Sat Dec 16 00:23:07 2000
+       ;; MSG SIZE  sent: 28  rcvd: 162
+       
+De data aceasta dig a cerut lui named sa caute masina pat.uio.no. 
+A contactat una dintre masinile server de nume indicate in fisierul
+root.hints si a cerut calea de acolo. Poate dura putin pana obtine
+rezultatul, dupa cum va trebui sa caute in domeniile din /etc/resolv.conf.
+Observati "aa" in linia "flags:". Inseamna ca raspunsul este
+autoritativ, venit proaspat de la un server autoritativ. Voi explica
+ce inseamna "autoritativ" mai tarziu. 
+
+Daca veti face aceiasi interogare din nou, veti obtine aceasta:
+
+
+$ dig pat.uio.no
+
+       ; <<>> DiG 8.2 <<>> pat.uio.no
+       ;; res options: init recurs defnam dnsrch
+       ;; got answer:
+       ;; ->>HEADER<<- opcode: QUERY, status:NOERROR, id: 4
+       ;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 3, ADDITIONAL: 3
+       ;; QUERY SECTION:
+       ;;      pat.uio.no, type = A, class = IN
+                     
+       ;; ANSWER SECTION:
+       pat.uio.no.             23h59m58s IN A  129.240.130.16
+
+       ;; AUTHORITY SECTION:
+       UIO.NO.                 23h59m58s IN NS  nissen.UIO.NO.
+       UIO.NO.                 23h59m58s IN NS  ifi.UIO.NO.
+       UIO.NO.                 23h59m58s IN NS  nn.uninett.NO.
+
+       ;; ADDITIONAL SECTION:
+       nissen.UIO.NO.          23h59m58s   IN A  129.240.2.3
+       ifi.UIO.NO.             1d23h59m58s IN A  129.240.64.2
+       nn.uninett.NO.          1d23h59m58s IN A  158.38.0.181
+ 
+       ;; Total query time: 4 msec
+       ;; FROM: lookfar to SERVER: default -- 127.0.0.1
+       ;; WHEN: Sat Dec 16 00:23:09 2000
+       ;; MSG SIZE  sent: 28  rcvd: 162
+
+
+Observati lipsa flagului "aa" din acest rezultat. Inseamna ca named
+nu a mai iesit in retea pentru a afla acest raspuns, daca informatia se
+afla in cache acum. Dar informatia din cache poate fi veche (stale). Asa
+ca sunteti informati despre aceasta (foarte subtil)
+prin lipsa lui "aa". Dar oricum, acum stiti ca serviciul cache functioneaza.
+
+  3.2. Rezolvere
+
+Toate sistemele de operare care implementeaza standardul C API fac uz de
+apelul gethostbyname si gethostbyaddr. Acestea pot obtine informatii din
+diverse surse. Din ce surse se alimenteaza, este indicat in fisierul
+/etc/nsswitch.conf in Linux (si alte UNIX-uri). Acesta este un fisier lung
+care specifica din ce fisier sau baza de date se vor obtine diferitele
+tipuri de date. De obicei contine informatii folositoare la inceput, pe
+care ar trebui sa le cititi. Dupa aceasta, cautati linia incapand cu
+"hosts:"; va trebui sa aveti:
+
+
+  ______________________________________________________________________
+  hosts:      files dns
+  ______________________________________________________________________
+
+(va aduceti aminte de spatiile de inceput, nu-i asa? Nu le voi mai mentiona) 
+
+Daca nu exista nici o linie cu "hosts:", puneti una ca mai
+sus. Aceasta indica cum ca programele ar trebui sa examineze
+fisierul /etc/hosts intai, apoi sa verifice DNS-ul conform /etc/resolv.conf.
+
+
+ 3.3. Felicitari 
+
+Acum deja stiti cum sa configurati un named cu caching. Luati o bere, un
+lapte acru si sarbatoriti. 
+
+
+ 4. Forwarding
+
+In retele mari, bine organizate, academice sau ISP (Internet Service
+Provider - Furnizor de Servicii Internet), veti constata uneori ca
+administratorii de retea au pus la punct o ierarhie de servere DNS
+pentru forwarding (inaintare- transfer), care usureaza
+incarcarea retelei interiorare si exterioare. Nu e usor de stiut daca va
+aflati intr-o asemenea retea sau nu. Oricum, nu este important si,
+folosind serverul DNS al furnizorului dumneavoastra din retea ca "forwarder"
+puteti obtine raspunsurile mai rapid si cu o incarcare mai mica a retelei.
+Daca folositi un modem, aceasta poate fi chiar un castig. De
+dragul acestui exemplu sa presupunem ca furnizorul are doua servere de
+nume pe care vrea sa le folositi cu IP-urile 10.0.0.1 si 10.1.0.1. Atunci,
+in named.conf la dumneavoastra, in interiorul sectiunii "options",
+inserati aceste linii:
+
+  ______________________________________________________________________
+             forward first;
+             forwarders {
+                  10.0.0.1;
+                  10.1.0.1;
+              };
+  ______________________________________________________________________
+
+
+Exista de asemeni o smecherie draguta pentru masinile dialup care folosesc
+"forwardere". Este descrisa in sectiunea "qanda".
+
+Restartati serverul de nume si testati-l cu dig. Ar trebui sa mearga perfect.
+
+
+  5. Un domeniu simplu
+
+Cum configurati propriul domeniu.
+
+  5.1. Intai teorie seaca
+
+
+ In primul rand: ati citit tot pana aici, nu? Trebuie.
+
+ Inainte de a porni intr-adevar aceasta sectiune, va voi expune ceva
+teorie si un exemplu despre cum functioneaza DNS. Si o veti citi pentru ca
+va este necesara. Daca nu doriti, ar trebui macar sa o parcurgeti rapid.
+Opriti-va din cititul printre randuri cand ajungeti la ceea ce ar trebui
+sa aveti in fisierul named.conf.
+
+DNS este un sistem ierarhic, arborescent. Varful este notat "." si
+este denumit "root", cum este uzual pentru structurile de
+date arborescente. Dedesubt exista un numar de Top Level Domain - Domenii
+de Nivel Inalt - TLD-uri. Cele mai cunoscute sunt .COM .ORG .EDU .NET, dar
+sunt mai multe. Ca si la un arbore, exista o radacina care se imparte pe
+ramuri. Daca aveti ceva cunostinte despre computere, veti recunoaste DNS
+ca un arbore de cautare si veti fi capabili sa gasiti nodurile nodurile
+mici (leaf nodes) si marginile (edges). Punctele sunt noduri, marginile
+sunt in nume. Cand cautati o masina, interogarea porneste recursiv
+in ierarhie, plecand de la radacina (root). Daca doriti sa aflati adresa
+pentru prep.ai.mit.edu, serverul dumneavoastra de nume va incepe
+sa caute undeva. Incepe prin a cauta in cache. Daca stie raspunsul,
+avandu-l in cache mai dinainte, va raspunde imediat, asa cum am vazut in
+ultima sectiune. Daca nu stie, va indeparta partea din nume incepand de la
+stanga, verificand daca stie ceva despre ai.mit.edu, apoi mit.edu., apoi
+edu., si apoi daca nu cumva "." are cunostinta, pentru ca asa s-a specificat in
+fisierul hints (indicii). Apoi va intreba un server "." (root)
+despre prep.ai.mit.edu. Acest server "." nu va sti raspunsul dar
+va ajuta serverul dumneavoastra in calea sa, dandu-i o referinta,
+spunandu-i unde sa mai caute. Aceste referinte vor conduce eventual
+serverul dumneavoastra catre un server de nume care cunoaste
+raspunsul. Voi ilustra aceasta acum, "+norec" inseamna ca "dig" aplica
+interogari ne-recursive, asa ca va trebui sa aplicam chiar noi
+recursivitatea. Cealalta optiune ar fi sa reducem cantitatea de date 
+pe care "dig" o produce asa incat sa nu avem de-a face cu prea multe pagini:
+
+
+  $ dig +norec +noH +noques +nostats +nocmd prep.ai.mit.edu.
+  ;; res options: init defnam dnsrch
+  ;; got answer:
+  ; flags: qr ra; QUERY: 1, ANSWER: 0, AUTHORITY: 13, ADDITIONAL: 13
+  ;; AUTHORITY SECTION:
+  .                       5d23h48m47s IN NS  I.ROOT-SERVERS.NET.
+  .                       5d23h48m47s IN NS  E.ROOT-SERVERS.NET.
+  .                       5d23h48m47s IN NS  D.ROOT-SERVERS.NET.
+  .                       5d23h48m47s IN NS  A.ROOT-SERVERS.NET.
+  .                       5d23h48m47s IN NS  H.ROOT-SERVERS.NET.
+  .                       5d23h48m47s IN NS  C.ROOT-SERVERS.NET.
+  .                       5d23h48m47s IN NS  G.ROOT-SERVERS.NET.
+  .                       5d23h48m47s IN NS  F.ROOT-SERVERS.NET.
+  .                       5d23h48m47s IN NS  B.ROOT-SERVERS.NET.
+  .                       5d23h48m47s IN NS  J.ROOT-SERVERS.NET.
+  .                       5d23h48m47s IN NS  K.ROOT-SERVERS.NET.
+  .                       5d23h48m47s IN NS  L.ROOT-SERVERS.NET.
+  .                       5d23h48m47s IN NS  M.ROOT-SERVERS.NET.
+
+  ;; ADDITIONAL SECTION:
+  I.ROOT-SERVERS.NET.     6d23h48m47s IN A  192.36.148.17
+  E.ROOT-SERVERS.NET.     6d23h48m47s IN A  192.203.230.10
+  D.ROOT-SERVERS.NET.     6d23h48m47s IN A  128.8.10.90
+  A.ROOT-SERVERS.NET.     6d23h48m47s IN A  198.41.0.4
+  H.ROOT-SERVERS.NET.     6d23h48m47s IN A  128.63.2.53
+  C.ROOT-SERVERS.NET.     6d23h48m47s IN A  192.33.4.12
+  G.ROOT-SERVERS.NET.     6d23h48m47s IN A  192.112.36.4
+  F.ROOT-SERVERS.NET.     6d23h48m47s IN A  192.5.5.241
+  B.ROOT-SERVERS.NET.     6d23h48m47s IN A  128.9.0.107
+  J.ROOT-SERVERS.NET.     6d23h48m47s IN A  198.41.0.10
+  K.ROOT-SERVERS.NET.     6d23h48m47s IN A  193.0.14.129
+  L.ROOT-SERVERS.NET.     6d23h48m47s IN A  198.32.64.12
+  M.ROOT-SERVERS.NET.     6d23h48m47s IN A  202.12.27.33
+
+ Aceasta este referinta. Ne ofera doar o "sectiune autoritativa"
+nu o "sectiune de raspuns". Propriul nostru nameserver ne raporteaza
+la alt nameserver. Alegeti la intamplare:
+
+
+       $ dig +norec +noH +noques +nostats +nocmd
+prep.ai.mit.edu. @H.ROOT-SERVE
+       ; (1 server found)
+       ;; res options: init defnam dnsrch
+       ;; got answer:
+       ; flags: qr; QUERY: 1, ANSWER: 0, AUTHORITY: 3, ADDITIONAL: 3
+       ;; AUTHORITY SECTION:
+       MIT.EDU.                2D IN NS        BITSY.MIT.EDU.
+       MIT.EDU.                2D IN NS        STRAWB.MIT.EDU.
+       MIT.EDU.                2D IN NS        W20NS.MIT.EDU.
+
+       ;; ADDITIONAL SECTION:
+       BITSY.MIT.EDU.          2D IN A         18.72.0.3
+       STRAWB.MIT.EDU.         2D IN A         18.71.0.151
+       W20NS.MIT.EDU.          2D IN A         18.70.0.160
+
+
+ Se refera la serverele MIT.EDU odata. Din nou, alegeti unul la intamplare:
+
+  $ dig +norec +noH +noques +nostats +nocmd prep.ai.mit.edu. @bitsy.mit.edu
+  ; (1 server found)
+  ;; res options: init defnam dnsrch
+  ;; got answer:
+  ; flags: qr ra; QUERY: 1, ANSWER: 1, AUTHORITY: 4, ADDITIONAL: 4
+  ;; ANSWER SECTION:
+  prep.ai.mit.edu.        3h50m7s IN A    198.186.203.18
+
+  ;; AUTHORITY SECTION:
+  AI.MIT.EDU.             6H IN NS        FEDEX.AI.MIT.EDU.
+  AI.MIT.EDU.             6H IN NS        LIFE.AI.MIT.EDU.
+  AI.MIT.EDU.             6H IN NS        ALPHA-BITS.AI.MIT.EDU.
+  AI.MIT.EDU.             6H IN NS        BEET-CHEX.AI.MIT.EDU.
+
+  ;; ADDITIONAL SECTION:
+  FEDEX.AI.MIT.EDU.       6H IN A         192.148.252.43
+  LIFE.AI.MIT.EDU.        6H IN A         128.52.32.80
+  ALPHA-BITS.AI.MIT.EDU.  6H IN A         128.52.32.5
+  BEET-CHEX.AI.MIT.EDU.   6H IN A         128.52.32.22
+
+
+ DE data aceasta avem o "sectiune de raspuns" si un raspuns la interogarea
+noastra. "Sectiunea autoritativa" contine informatii despre ce servere
+sa interogam despre ai.mit.edu data viitoare. Asa ca le puteti interoga
+data viitoare direct despre ce nume va intereseaza din domeniul ai.mit.edu.
+
+Deci pornind de la "." am gasit serverele de nume pentru fiecare nivel
+in numele de domeniu, prin referinte. Daca ati folosit propriul
+server de nume in loc de alte servere,
+nameserverul dumneavoastra a stocat, bineinteles in cache, toata
+informatia pe care a gasit-o "sapand" (comanda "dig") pentru aceasta, si
+nu va trebui sa cerceteze mult pentru raspunsuri, un timp.
+
+In structura arborescenta analoga, fiecare "." este un punct
+de ramificatie si fiecare parte intre "." reprezinta
+numele ramurilor individuale in arbore. Unul urca pe arbore luand numele
+pe care il dorim (prep.ai.mit.edu) intreband root-ul "." sau orice
+server parinte dinspre root  catre prep.ai.mit.edu despre care
+avem informatii in cache. Odata ce limitele cache-ului
+sunt atinse, rezolverul recursiv "iese" interogand serverele, obtinand
+referinte (margini - edges) in nume.
+
+Un domeniu mai putin discutat, dar la fel de important
+este in-addr.arpa. Este de asemeni catalogat ca un domeniu "normal" ne
+permite sa obtinem numele host-ului cand ii cunoastem adresa. Un lucru
+important de retinut aici este ca adresele IP sunt scrise in
+ordine inversa in domeniul in-addr.arpa. Daca aveti adresa unei masini, de
+exemplu 192.148.52.43, named procedeaza ca in exemplul cu
+prep.ai.mit.edu:
+cauta serverele arpa. , cauta serverele in-addr.arpa, cauta serverele
+192.in-addr.arpa. , cauta serverele 148.192.in-addr.arpa., cauta serverele
+ 52.148.192.in-addr.arpa. , cauta inregistrarile necesare pentru  
+43.52.148.192.in-addr.arpa. Inteligent, nu? (Spuneti "da".) Reversia
+numerelor poate crea confuzie.
+
+  5.2. Propriul nostru domeniu
+
+
+Acum sa definim propriul nostru domeniu. Vom face domeniul linux.bogus
+si vom defini masini in el. Voi folosi nume de domenii total aiurea,
+astfel incat sa ne asiguram ca nu deranjam pe nimeni Acolo Afara.
+
+Inca un lucru inainte de a incepe. Nu toate caracterele sunt permise
+in numele de domenii. Suntem restrictionati la caracterele din alfabetul
+englez: a-z si numere 0-9 si caracterul "-". Limitati-va la aceste
+caractere. Caracterele majuscule si minuscule sunt identice pentru DNS,
+deci pat.uio.no este identic cu Pat.Uio.No.
+
+Am pornit deja aceasta parte cu o linie in named.conf:
+
+  ______________________________________________________________________
+  zone "0.0.127.in-addr.arpa" {
+          type master;
+          file "pz/127.0.0";
+  };
+  ______________________________________________________________________
+
+
+Va rog sa observati lipsa lui "." la sfarsitul numelor de domeniu in acest
+fisier. Acesta spune ca acum vom definit zona 0.0.127.in-addr.arpa, care
+este serverul master pentru ea si care este stocat in fisierul numit
+pz/127.0.0. Deja am configurat acest fisier, care arata:
+
+
+  ______________________________________________________________________
+  $TTL 3D
+  @               IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. (
+                                  1       ; Serial
+                                  8H      ; Refresh
+                                  2H      ; Retry
+                                  4W      ; Expire
+                                  1D)     ; Minimum TTL
+                          NS      ns.linux.bogus.
+  1                       PTR     localhost.
+  ______________________________________________________________________
+
+Observati "." la sfarsitul fiecarui nume de domeniu in acest fisier,
+in contrast cu named.conf de mai sus. Unii prefera sa inceapa fiecare zona
+cu directiva $ORIGIN, dar aceasta configurare este superflua. Originea
+(din care face parte ierarhia DNS) unei fisier zona este specificata
+in sectiunea "zone" din fisierul named.conf; in acest caz este
+0.0.127.in-addr.arpa.
+
+Acest "fisier zona" contine 3 "inregistrari resursa" (RR): A SOA RR.  A NS
+  RR si un PTR RR. SOA este prescurtarea pentru Start of Authority. "@"
+este notatia speciala semnificand originea, si cum coloana "domain" pentru
+acest fisier indica 0.0.127.in-addr.arpa, prima linie inseamna in realitate:
+
+
+       0.0.127.in-addr.arpa.   IN      SOA ...
+
+
+NS este name server RR. Nu este nici un "@" la inceputul acestei linii;
+este implicit pentru ca inceputul liniei anterioare incepe cu un "@". Va
+scuteste de redactat. Astfel, linia NS poate fi scrisa deasemeni:
+
+       0.0.127.in-addr.arpa.   IN      NS      ns.linux.bogus
+
+Aceasta spune DNS-ului ce masina este name-serverul pentru
+domeniul 0.0.127.in-addr.arpa, este ns.linux.bogus. "ns" este un nume
+uzitat pentru serverele de nume, dar ca si pentru serverele web care
+sunt numite www.ceva numele poate fi oricare.
+
+Si, in final, inregistrarea PTR (Domain Name Pointer - Pointerul Numelui 
+de Domeniu) arata ca hostul de la adresa 1 din
+subnetul 0.0.127.in-addr.arpa, de exemplu 127.0.0.1 este numit localhost.
+
+Inregistrarea SOA este preambulul tuturor fisierelor de zona, si ar trebui
+sa fie exact cate una pentru fiecare fisier de zona. Aceasta descrie zona,
+de unde vine (o masina numita ns.linux.bogus), cine este responsabil
+pentru continutul ei (hostmaster@linux.bogus; ar trebui sa inserati adresa
+dumneavoastra de e-mail aici), ce versiune a fisierului zona este (serial:1)
+si alte lucruri care au de-a face cu cachingul si serverele DNS secundare.
+Pentru restul campurilor (refresh, retry, expire si minimum)
+folositi numerele utilizate in acest HOWTO si ar trebui sa fiti in
+siguranta. Inainte de SOA apare o linie esentiala, linia $TTL 3D. Puneti
+in ea toate fisierele de zona. 
+
+Acum reporniti named (cu comanda ndc restart) si folositi "dig" pentru a
+examina rezultatele. -x cere o interogare inversa:
+
+       $ dig -x 127.0.0.1
+
+       ; <<>> DiG 8.2 <<>> -x
+       ;; res options: init recurs defnam dnsrch
+       ;; got answer:
+       ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 4
+       ;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 1, ADDITIONAL: 0
+       ;; QUERY SECTION:
+       ;;      1.0.0.127.in-addr.arpa, type = ANY, class = IN
+
+       ;; ANSWER SECTION:
+       1.0.0.127.in-addr.arpa.  1D IN PTR  localhost.
+
+       ;; AUTHORITY SECTION:
+       0.0.127.in-addr.arpa.   1D IN NS        ns.penguin.bv.
+
+       ;; Total query time: 5 msec
+       ;; FROM: lookfar to SERVER: default -- 127.0.0.1
+       ;; WHEN: Sat Dec 16 01:13:48 2000
+       ;; MSG SIZE  sent: 40  rcvd: 110
+
+Deci se descurca sa obtina localhostul din 127.0.0.1, e OK. Acum, pentru
+scopul nostru principal, inserati o noua sectiune zona ("zone") in
+named.conf:
+
+  ______________________________________________________________________
+  zone "linux.bogus" {
+          notify no;
+          type master;
+          file "pz/linux.bogus";
+  };
+  ______________________________________________________________________
+
+
+Observati din nou lipsa "." din numele de domeniu din fisierul named.conf.
+In fisierul zona linux.bogus vom pune niste date total aiurea.
+
+  ______________________________________________________________________
+  ;
+  ; Zone file for linux.bogus
+  ;
+  ; The full zone file
+  ;
+  $TTL 3D
+  @       IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. (
+                          199802151       ; serial, todays date + todays serial
+                          8H              ; refresh, seconds
+                          2H              ; retry, seconds
+                          4W              ; expire, seconds
+                          1D )            ; minimum, seconds
+  ;
+                  NS      ns              ; Inet Address of name server
+                  MX      10 mail.linux.bogus     ; Primary Mail Exchanger
+                  MX      20 mail.friend.bogus.   ; Secondary Mail Exchanger
+  ;
+  localhost       A       127.0.0.1
+  ns              A       192.168.196.2
+  mail            A       192.168.196.4
+  ______________________________________________________________________
+
+Doua lucruri trebuie observate in legatura cu inregistrarea SOA:
+ns.linux.bogus trebuie sa fie o masina cu inregistrare "A". Nu este in
+regula sa avem o inregistrarea CNAME pentru masina mentionata in
+inregistrarea SOA. Numele ei nu este obligatoriu sa fie "ns", poate
+fi orice nume "legal", acceptabil, de host. Apoi, hostmaster.linux.bogus
+trebuie citit ca hostmaster@linux.bogus. Acesta ar trebui sa fie un mail
+alias sau un mailbox (cutie postala) unde persoanele care intretin DNS-ul
+ar trebui sa citeasca frecvent mailul. Orice mail privind domeniul va fi
+trimis la adresa listata aici. Numele nu e necesar
+sa fie "hostmaster", paote fi adresa dumneavoastra normala
+de e-mail, dar adresa de e-mail "hostmaster" ar trebui sa functioneze
+la fel de bine. 
+
+Exista un tip nou "RR" in acest fisier, RR-ul "MX"-ului sau
+Mail Exchanger-ului. Acesta indica sistemului de e-mail unde
+sa trimita mailul adresat cuiva@linux.bogus, dupa nume
+mail.linux.bogus sau mail.friend.bogus. Numerele din fata fiecarei
+masini este prioritatea RR-ului MailExchangerului. RR-ul
+cu cel mai mic numar (10) este unde mailul ar trebui sa fie trimis daca
+este posibil. Daca acesta rateaza, mailul va fi trimis urmatorului
+cu numar mai mare, un manager de e-mail secundar (mail handler),
+de exemplu mail.friend.bogus, care are prioritatea 20 aici.
+
+Restartati named cu "ndc restart". Examinati rezultatul cu "dig":
+
+
+
+       $ dig any linux.bogus +pfmin
+       ;; res options: init recurs defnam dnsrch
+       ;; got answer:
+       ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 23499
+       ;; QUERY: 1, ANSWER: 4, AUTHORITY: 1, ADDITIONAL: 1
+       ;; QUERY SECTION:
+       ;;      linux.bogus, type = ANY, class = IN
+
+       ;; ANSWER SECTION:
+       linux.bogus.            3D IN MX        10 mail.linux.bogus.linux.bogus.
+       linux.bogus.            3D IN MX        20 mail.friend.bogus.
+       linux.bogus.            3D IN NS        ns.linux.bogus.
+       linux.bogus.            3D IN SOA       ns.linux.bogus.hostmaster.linux
+                                               199802151       ; serial
+                                               8H              ; refresh
+                                               2H              ; retry
+                                               4W              ; expiry
+                                               1D )            ; minimum
+
+
+  Examinand cu atentie rezultatele de mai sus, veti descoperi o hiba. Linia
+
+
+
+       linux.bogus.            3D IN MX		10 mail.linux.bogus.linux.bogus.
+
+este total gresita. Ar trebui sa fie:
+
+
+
+       linux.bogus.            3D IN MX        10 mail.linux.bogus.
+
+Am facut intentionat o greseala, ca sa puteti invata din ea :-). Privind
+in fisierul zona, vom observa aceasta linie;
+
+
+
+
+         MX      10 mail.linux.bogus     ; Primary Mail Exchanger
+
+Lipseste un punct. Sau are prea multe "linux.bogus". Daca un nume de
+masina nu se termina cu punct intr-un fisier zona, originea este adaugata
+la sfarsitul lui, cauzand dublura linux.bogus.linux.bogus. Asa ca ori
+
+
+
+
+  ______________________________________________________________________
+                  MX      10 mail.linux.bogus.    ; Primary Mail Exchanger
+  ______________________________________________________________________
+
+
+
+  ori
+
+
+  ______________________________________________________________________
+                  MX      10 mail                 ; Primary Mail Exchanger
+  ______________________________________________________________________
+
+
+este corect. Prefer ultima forma, e mai putin de scris.
+Sunt anumiti experti in BIND care dezaproba, si altii care aproba aceasta.
+Intr-un fisier zona, domeniul ar trebui sa fie ori scris si terminat
+in "." ori ne inclus deloc, caz in care ramane implicita originea.
+
+Trebuie sa va stresez cu ideea ca in fisierul named.conf nu trebuie sa fie
+semne "." dupa numele de domenii. N-aveti idee de cate ori
+prea multe sau prea putine "." au pus in stare de confuzie utilizatorii.
+
+Deci, ideea mea aici este noul fisier zona , cu cateva informatii in plus:
+
+  ______________________________________________________________________
+  ;
+  ; Zone file for linux.bogus
+  ;
+  ; The full zone file
+  ;
+  $TTL 3D
+  @       IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. (
+                          199802151       ; serial, todays date + todays serial
+                          8H              ; refresh, seconds
+                          2H              ; retry, seconds
+                          4W              ; expire, seconds
+                          1D )            ; minimum, seconds
+  ;
+                  TXT     "Linux.Bogus, your DNS consultants"
+                  NS      ns              ; Inet Address of name server
+                  NS      ns.friend.bogus.
+                  MX      10 mail         ; Primary Mail Exchanger
+                  MX      20 mail.friend.bogus. ; Secondary Mail Exchanger
+
+  localhost       A       127.0.0.1
+
+  gw              A       192.168.196.1
+                  HINFO   "Cisco" "IOS"
+                   TXT     "The router"
+
+  ns              A       192.168.196.2
+                  MX      10 mail
+                  MX      20 mail.friend.bogus.
+                  HINFO   "Pentium" "Linux 2.0"
+  www             CNAME   ns
+
+  donald          A       192.168.196.3
+                  MX      10 mail
+                  MX      20 mail.friend.bogus.
+                  HINFO   "i486"      "Linux 2.0"
+                  TXT     "DEK"
+
+  mail            A       192.168.196.4
+                  MX      10 mail
+                  MX      20 mail.friend.bogus.
+                  HINFO   "386sx" "Linux 1.2"
+
+  ftp             A       192.168.196.5
+                  MX      10 mail
+                  MX      20 mail.friend.bogus.
+                  HINFO   "P6" "Linux 2.1.86"
+  ______________________________________________________________________
+
+Aici sunt cateva noi RR-uri: HINFO (Host INFOrmation) are doua parti; e un
+obicei bun sa le comentati pe fiecare. Prima parte este harware-ul si
+CPU-ul din respectiva masina, iar a doua parte
+este software-ul sau sitemul de operare de pe masina. Masina "ns" este
+un Pentium si ruleaza Linux 2.0. CNAME (Canonical NAME) este o cale de a
+da fiecarei masini mai multe nume. Deci "www" este un alias pentru "ns".
+
+Utilizarea inregistrarii CNAME este controversata. Dar e in OK sa urmati
+regula potrivit careia o inregistrare MX, CNAME sau SOA nu trebuie sa nu
+se refere niciodata la o inregistrare CNAME, trebuie intotdeauna sa se
+refere la o inregistrare "A", deci este inadmisibil sa avem:
+
+
+  ______________________________________________________________________
+  foobar          CNAME   www                     ; NO!
+  ______________________________________________________________________
+
+
+
+  dar corect sa avem
+
+
+  ______________________________________________________________________
+  foobar          CNAME   ns                      ; Yes!
+  ______________________________________________________________________
+
+
+
+Este de asemeni sigur sa presupunem ca un CNAME nu este un nume de
+host corect pentru o adresa de e-mail: webmaster@www.linux.bogus
+este o adresa de e-mail ilegala, incorecta, data de configurarea de mai sus.
+Va puteti chiar astepta la cativa administratori de e-mail de Afara sa
+restrictioneze aceasta regula, daca pentru
+dumneavoasta functioneaza. Calea pentru a evita aceasta este sa folositi
+inregistrari "A" (si poate si altele, cum ar fi reguli MX) in loc:
+
+
+  ______________________________________________________________________
+  www             A       192.168.196.2
+  ______________________________________________________________________
+
+
+Un numar de arch-BIND-wizards recomanda sa nu utilizati de loc
+CNAME. Dar discutia legata aceasta nu face obiectul acestui HOWTO.
+
+Dar cum vedeti, acest HOWTO si multe site-uri nu urmeaza aceasta regula.
+
+Incarcati noua baza de date cu "ndc reload" ceea ce il obliga
+pe named sa-si reciteasca fisierele.
+
+
+  $ dig linux.bogus axfr
+
+  ; <<>> DiG 8.2 <<>> linux.bogus axfr
+  $ORIGIN linux.bogus.
+  @                       3D IN SOA       ns hostmaster (
+                                          199802151       ; serial
+                                          8H              ; refresh
+                                          2H              ; retry
+                                          4W              ; expiry
+                                          1D )            ; minimum
+
+                          3D IN NS        ns
+                          3D IN NS        ns.friend.bogus.
+                          3D IN MX        10 mail
+                          3D IN MX        20 mail.friend.bogus.
+                          3D IN TXT       "Linux.Bogus, your DNS consultants"
+  gw                      3D IN TXT       "The router"
+                          3D IN HINFO     "Cisco" "IOS"
+                          3D IN A         192.168.196.1
+  localhost               3D IN A         127.0.0.1
+  mail                    3D IN HINFO     "386sx" "Linux 1.2"
+                          3D IN MX        10 mail
+                          3D IN MX        20 mail.friend.bogus.
+                          3D IN A         192.168.196.4
+  www                     3D IN CNAME     ns
+  donald                  3D IN TXT       "DEK"
+                          3D IN HINFO     "i486" "Linux 2.0"
+                          3D IN MX        10 mail
+                          3D IN MX        20 mail.friend.bogus.
+                          3D IN A         192.168.196.3
+  ns                      3D IN HINFO     "Pentium" "Linux 2.0"
+                          3D IN MX        10 mail
+                          3D IN MX        20 mail.friend.bogus.
+                          3D IN A         192.168.196.2
+  ftp                     3D IN HINFO     "P6" "Linux 2.1.86"
+                          3D IN MX        10 mail
+                          3D IN MX        20 mail.friend.bogus.
+                          3D IN A         192.168.196.5
+  @                       3D IN SOA       ns hostmaster (
+                                          199802151       ; serial
+                                          8H              ; refresh
+                                          2H              ; retry
+                                          4W              ; expiry
+                                          1D )            ; minimum
+
+  ;; Received 29 answers (29 records).
+  ;; FROM: lookfar to SERVER: 127.0.0.1
+  ;; WHEN: Sat Dec 16 01:35:05 2000
+
+
+Asta e bine. Si observati ca arata chiar ca fisierul zona. Sa verificam ce
+spune doar pentru www:
+
+  $ dig www.linux.bogus +pfmin
+  ;; res options: init recurs defnam dnsrch
+  ;; got answer:
+  ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 27345
+  ;; QUERY: 1, ANSWER: 2, AUTHORITY: 2, ADDITIONAL: 1
+  ;; QUERY SECTION:
+  ;;      www.linux.bogus, type = A, class = IN
+
+  ;; ANSWER SECTION:
+  www.linux.bogus.        3D IN CNAME     ns.linux.bogus.
+  ns.linux.bogus.         3D IN A         192.168.196.2
+
+
+
+Cu alte cuvinte, numele real al lui www.linux.bogus este ns.linux.bogus,
+si va da si cateva informatii despre "ns" de asemeni, suficient pentru a
+va conecta la el daca cere un program.
+
+
+Acum suntem la jumatatea drumului.
+
+
+  5.3. Zona reverse
+
+Acum programele pot converti numele din linux.bogus in adrese la care se
+conecteaza. Dar de asemeni este ceruta o zona reverse, una care sa
+faca DNS-ul capabil sa converteasca adresele in nume. Acest nume
+este folosit de o multime de servere de diverse tipuri (FTP, WWW, IRC si
+altele) pentru a decide daca vor comunica cu dumneavoastra sau nu, si daca
+da, ce prioritate vi se va acorda. Pentru acces deplin la toate serviciile
+Internet , o zona reverse este necesara.
+
+
+Puneti aceasta in named.conf:
+
+  ______________________________________________________________________
+  zone "196.168.192.in-addr.arpa" {
+          notify no;
+          type master;
+          file "pz/192.168.196";
+  };
+  ______________________________________________________________________
+
+
+Este exact acelasi lucru ca si cu 0.0.127.in-addr.arpa si continuturile
+sunt similare:
+
+  ______________________________________________________________________
+  $TTL 3D
+  @       IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. (
+                          199802151 ; Serial, todays date + todays serial
+                          8H      ; Refresh
+                          2H      ; Retry
+                          4W      ; Expire
+                          1D)     ; Minimum TTL
+                  NS      ns.linux.bogus.
+
+  1               PTR     gw.linux.bogus.
+  2               PTR     ns.linux.bogus.
+  3               PTR     donald.linux.bogus.
+  4               PTR     mail.linux.bogus.
+  5               PTR     ftp.linux.bogus.
+  ______________________________________________________________________
+
+Acum restartati named-ul cu "ndc restart" si examinati rezultatele cu "dig":
+
+
+  ______________________________________________________________________
+  $ dig -x 192.168.196.4 +pfmin
+  ;; res options: init recurs defnam dnsrch
+  ;; got answer:
+  ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 8764
+  ;; QUERY: 1, ANSWER: 1, AUTHORITY: 1, ADDITIONAL: 1
+  ;; QUERY SECTION:
+  ;;      4.196.168.192.in-addr.arpa, type = ANY, class = IN
+
+  ;; ANSWER SECTION:
+  4.196.168.192.in-addr.arpa.  3D IN PTR  mail.linux.bogus.
+  ______________________________________________________________________
+
+
+deci arata OK, executati "dig" pentru toata configuratia pentru a o examina:
+
+
+  ______________________________________________________________________
+  dig -x 192.168.196 AXFR
+
+  ; <<>> DiG 8.2 <<>> -x AXFR
+  $ORIGIN 196.168.192.in-addr.arpa.
+  @                       3D IN SOA       ns.linux.bogus. hostmaster.linux.bogus. (
+                                          199802151       ; serial
+                                          8H              ; refresh
+                                          2H              ; retry
+                                          4W              ; expiry
+                                          1D )            ; minimum
+
+                      3D IN NS        ns.linux.bogus.
+  4                   3D IN PTR       mail.linux.bogus.
+  2                   3D IN PTR       ns.linux.bogus.
+  5                   3D IN PTR       ftp.linux.bogus.
+  3                   3D IN PTR       donald.linux.bogus.
+  1                   3D IN PTR       gw.linux.bogus.
+  @                   3D IN SOA       ns.linux.bogus. hostmaster.linux.bogus. (
+                                      199802151       ; serial
+                                      8H              ; refresh
+                                      2H              ; retry
+                                      4W              ; expiry
+                                      1D )            ; minimum
+
+;; Received 8 answers (8 records).
+;; FROM: lookfar to SERVER: 127.0.0.1
+;; WHEN: Sat Dec 16 01:44:03 2000
+____________________________________________________________________
+
+
+Arata bine! Daca output-ul dumneavoastra nu arata la fel, cautati eroarea
+in mesajele din syslog. Am explicat cum sa faceti aceasta in prima
+sectiune la paragraful "Pornirea lui named".
+
+
+  5.4. Cuvinte de atentionare.
+
+Trebuie sa adaug niste lucruri aici. Numerele IP utilizate in exemplele de
+mai sus sunt luate din blocul "retelelor private", ele nu sunt permise a
+se utiliza in Internet, deci sunt potrivite a fi utilizate intr-un exemplu
+ca acest HOWTO. Al doilea lucru este numarul de notificare:linia. Acesta
+ii spune lui named sa nu notifice serverele secundare (slave)
+cand a suferit o actualizare la unul dintre fisierele sale "zone". In BIND 8
+named poate notifica celelalte servere listate in inregistrarile NS in
+fisierul "zone" cand o zona este actualizata. Aceasta situatie
+este avantajoasa in mod normal. Dar pentru experimente private
+cu zone, aceasta optiune ar trebui sa fie dezactivata - nu vrem sa
+poluam Internetul cu experimentele noastre, nu?
+
+Si, bineinteles, acest domeniu este total aiurea si la fel
+sunt toate adresele din el. Pentru un exemplu real vedeti urmatoarea
+sectiune principala.
+
+
+  5.5. De ce nu functioneaza interogarile inverse (reverse lookups).
+
+  Sunt cateva "chestii" care in mod normal sunt evitate la interogarile
+de nume vazute adesea la configurarea zonelor inverse. Inainte
+de a trece mai departe, trebuie ca pe masinile dumneavoastra, interogarile
+inverse sa fie functionale pe propriul nameserver. Daca nu functioneaza,
+reveniti si puneti totul la punct inainte de a continua.
+
+Voi discuta doua situatii de nefunctionare a interogarilor
+inverse, asa cum sunt vazute din afara retelei dumneavoastra.
+
+  5.5.1 Zona inversa nu este investita.
+
+  Cand cereti unui provider o plaja de adrese si un nume de domeniu,
+numele de domeniu este in mod normal investit. Investirea este "eticheta"
+pe care NS (Name Server) o inregistreaza si care va ajuta sa treceti de la
+un nameserver la altul, asa cum am explicat in "teoria seaca" de mai
+sus. Ati citit aceasta, nu-i asa? Daca zona inversa nu functioneaza,
+reveniti si cititi-o. Acum.
+
+Zona inversa trebuie de asemeni investita. Daca aveti clasa 192.168.196 de
+la provider cu domeniul linux.bogus, ei trebuie sa insereze inregistrarile
+NS atat pentru zona directa (forward) cat si pentru cea inversa. Daca
+urmati lantul de la in-addr.arpa in sus pana la reteaua dvs, probabil
+gasiti o ruptura in acest lant, cel mai probabil la providerul dvs. Gasind
+ruptura din lant, contactati providerul si cereti-i sa corecteze eroarea.
+
+
+  5.5.2. Aveti un subnet fara clase.
+
+Acesta este oarecum un subiect avansat, dar subneturile fara clase sunt
+ceva comun in ziua de azi si probabil ca aveti unul daca sunteti intr-o
+firma mica.
+
+Un subnet fara clase este ceea ce tine Internetul in picioare in
+zilele noastre. Cu cativa ani in urma au fost discutii intense cu privire
+la limitarile adreselor IP. Tipii de la IETF (Internet Engineering
+Task Force - ei mentin Internetul in stare de functionare) si-au stors
+creierii si au rezolvat problema. Cu un pret. Pretul este ca veti
+obtine mai putin de un subnet de clasa "C" si unele lucruri s-ar putea
+sa crape. Va rog consultati ASK MR DNS la:
+ <http://www.acmebw.com/askmrdns/00007.htm> pentru o buna explicatie
+cu privire la aceste lucruri, si cum sa va descurcati.
+
+Ati citit-o? Eu nu o voi explica, asa ca, va rog cititi-o!
+
+Prima parte a acestei probleme este ca ISP-ul dvs. trebuie
+sa inteleaga tehnica descrisa de Mr. DNS. Nu toti ISP-stii mici au habar
+de aceasta problema. Daca asa sta treaba, va trebui sa le explicati
+problema si sa si insistati. Asigurati-va ca ati inteles-o dvs. intai. :-)
+
+Ei vor configura atunci o zona inversa foarte draguta pe serverul lor,
+pe care o puteti examina spre corectitudine cu "dig". 
+
+A doua si ultima parte a problemei este ca trebuie sa intelegeti
+tehnica. Daca nu sunteti sigur, reveniti si recititi-o. Atunci puteti sa
+va configurati propria zona inversa fara clase, asa cum este descrisa
+de Mr. DNS.
+
+Mai e o capcana care pandeste aici. Rezolverele vechi nu vor fi capabile
+sa urmeze "fenta" cu CNAME in lantul de rezolvare si vor esua in
+incercarea de a rezolva invers masina dvs. Rezultatul poate fi acela
+ca serverul ii aloca o clasa de acces incorecta,
+interzicerea accesului sau ceva de genul aceasta. Daca va impotmoliti
+intr-un asemena serviciu, singura solutie (despre care am cunostinta) este
+pentru ISP sa insereze inregistrarea dvs. PTR direct in fisierul zonei
+fara clase in loc de inregistrare CNAME.
+
+Alte ISP-uri ofera alte cai de a rezolva aceasta problema, cum ar fi
+formularele bazate pe Web care va permit sa va introduceti maparile inverse.
+
+
+  5.6. Servere slave (sclav)
+
+Odata ce v-ati setat corect zonele pe serverele master, trebuie sa
+configurati macar un server slave ("sclav"). Serverele slave sunt necesare
+pentru a asigura robustetea serviciilor. Daca serverul master a picat,
+oamenii de pe internet vor putea totusi primit date despre doemeniu de
+la serverul slave. Un server slave ar trebui sa fie cat mai indepartat
+de dvs posibil si sa imparta cu serverul master cat mai
+putine din resursele de alimentare cu energie, LAN, ISP, oras, tara.
+Daca toate aceste lucruri sunt diferite de ale serverului master, aveti un
+bun server slave.
+
+Un server slave este pur si simplu un nameserver care copie fisierele zone
+de la master. Il configurati astfel:
+
+  ______________________________________________________________________
+  zone "linux.bogus" {
+          type slave;
+          file "sz/linux.bogus";
+          masters { 192.168.196.2; };
+  };
+  ______________________________________________________________________
+
+
+Un mecanism numit trasfer de zone este folosit pentru a copia datele. 
+Transferul de zone este controlat de inregistrarea SOA: 
+
+
+  ______________________________________________________________________
+  @       IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. (
+                          199802151       ; serial, todays date + todays serial
+                          8H              ; refresh, seconds
+                          2H              ; retry, seconds
+                          4W              ; expire, seconds
+                          1D )            ; minimum, seconds
+  ______________________________________________________________________
+
+
+O zona este transferata doar daca numarul serial al masterului este mai
+mare decat al slave-ului. Dupa fiecare interval de refresh, slave-ul
+va verifica daca masterul a fost actualizat.
+Daca verificarea esueaza (pentru ca masterul nu este disponibil)
+va reincerca verificarea. Daca va continua sa esueze atat timp cat dureaza
+intervalul de expirare, slave-ul va sterge zona din propriul sistem de
+fisiere si nu va mai actiona ca server pentru acea zona.
+
+
+ 6. Optiuni fundamentale de securitate.
+
+de Jamie Norrish 
+
+Seterea optiunilor de configurare pentru a reduce posibilitatea aparitiei 
+problemelor
+
+
+Sunt cativa pasi simpli pe care ii puteti parcurge si care va vor asigura
+un server mai sigur si totodata ii vor reduce incarcarea. Materialul
+prezentat aici nu este mai mult decat un puct de plecare. Daca va preocupa
+securitatea (si ar trebui sa va preocupe), va rog sa consultati si
+alte resurse de pe Internet (vedeti "ultimul capitol").
+
+Urmatoarele directive de configurare apar in named.conf.
+Daca o directiva apare in sectiunea "options" din fisier, se
+aplica tuturor zonelor listate in acel fisier. Daca apare in optiunile
+unei zone, se aplica numai acelei zone. On optiune dintr-o
+zona suprascrie, anuleaza o inregistrare din zona "options".
+
+  6.1. Restrictionarea trasferului pe zone.
+
+Pentru ca serverele slave sa fie capabile sa raspunda interogarilor spre
+domeniul dvs. trebuie sa fie capabile sa transfere informatia zona de la
+serverul primar. In foarte putine cazuri e nevoie de aceasta. De
+aceea, restrictionati transferurile pe zona, folosind optiunea
+"allow-trasfer". Presupunand ca 194.168.1.4 este adresa IP a lui
+ns.friend.bogus, si adaugandu-va in scop de depanare:
+
+
+  ______________________________________________________________________
+  zone "linux.bogus" {
+        allow-transfer { 192.168.1.4; localhost; };
+  };
+  ______________________________________________________________________
+
+Restrictionand transferul pe zone, va asigurati ca singura
+informatie disponibila utilizatorilor este cea pe care acestia o cer
+direct = nimeni nu poate cere, interoga toate detaliile configurarii dvs. 
+
+  6.2. Protectia impotriva spoofing-ului.
+
+In primul rand, dezactivati orice interogari pentru domenii care nu va
+apartin, cu exceptia masinii dvs. interne/locale. Aceasta nu
+doar preintampina utilizarea frauduloasa a serverului dvs. DNS, dar reduce
+si utilizarea ne-necesara a acestuia.
+
+  ______________________________________________________________________
+  options {
+        allow-query { 192.168.196.0/24; localhost; };
+  };
+
+  zone "linux.bogus" {
+        allow-query { any; };
+  };
+
+  zone "196.168.192.in-addr.arpa" {
+        allow-query { any; };
+  };
+  ______________________________________________________________________
+
+
+Mai departe, dezactivati interogarile recursive cu exceptia celor de
+la masinile locale/interne. Aceasta reduce riscul atacurilor
+prin "otravirea" cache-ului, cand date false alimenteaza serverul. 
+
+  ______________________________________________________________________
+  options {
+          allow-recursion { 192.168.196.0/24; localhost; };
+  };
+  ______________________________________________________________________
+
+
+  6.3. Rularea lui named ca non-root.
+
+  Este o idee buna sa rulati named ca utilizator altul decat root, asa incat
+ daca acesta este compromis, privilegiile castigate de catre cracker
+sa fie cat mai limitate. Intai trebuie sa creati un grup si un
+utilizator sub care named sa ruleze, si apoi sa modificati scriptul pe
+care il folositi pentru a porni named. Transferati noul grup si utilizator
+catre named folosind flagurile -d si -u.
+
+De exemplu, in Debian GNU/Linux 2.2 ati putea modifica scriptul /etc/init.d/bind
+pentru a contine urmatoarea linie (unde userul si grupul "named" au fost
+deja create):
+
+
+  ______________________________________________________________________
+  start-stop-daemon --start --quiet --exec /usr/sbin/named -- -u named -g named
+  ______________________________________________________________________
+
+La fel se procedeaza si cu RedHat si cu celelalte distributii. Dave Lugo a
+descris un setup dual chroot 
+<http://www.etherboy.com/dns/chrootdns.html> care s-ar putea
+sa fie interesant de citit.
+
+ 7. Un exemplu real de domeniu.
+
+ Unde vom lista fisiere reale de zona.
+
+Utilizatorii mi-au sugerat sa includ un exemplu real de domeniu, ca si
+unul tutorial, de instructaj.
+
+ Folosesc acest exemplu cu permisiunea lui David Bullock de la LAND-5.
+Aceste fisiere dateaza din 24 septembrie 1996, si au fost editate pentru a
+se conforma restrictiilor BIND 8 si folosesc extensii scrise
+de mine. Deci, ceea ce vedeti aici s-ar putea sa difere de ceea
+ce ati putea afla interogand LAND-5 acum.
+
+  7.1.  /etc/named.conf (sau /var/named/named.conf)
+
+
+Aici gasim zona master pentru cele doua zone inverse necesare: reteaua
+127.0.0  si subreteaua (subnetul) de la LAND-5  206.6.177 ca linie primara
+pentru zona de forward a LAND-5 land-5.com. Observati ca in loc ca toate
+fisierele sa fie adunate nu in directorul "pz" asa cum am facut in acest
+HOWTO, le pune intr-un director numit "zone".
+
+
+  ______________________________________________________________________
+  // Boot file for LAND-5 name server
+
+  options {
+          directory "/var/named";
+  };
+
+  zone "." {
+          type hint;
+          file "root.hints";
+  };
+
+  zone "0.0.127.in-addr.arpa" {
+          type master;
+          file "zone/127.0.0";
+  };
+
+  zone "land-5.com" {
+          type master;
+          file "zone/land-5.com";
+  };
+
+  zone "177.6.206.in-addr.arpa" {
+          type master;
+          file "zone/206.6.177";
+  };
+  ______________________________________________________________________
+
+
+Daca puneti aceasta in fisierul dvs. named.conf spre a va juca, VA ROG
+puneti "notify no: " in sectiunea zone, pentru cele doua zone land-5,
+spre a evita incidentele.
+
+
+  7.2.  /var/named/root.hints
+
+  Tineti minte ca acest fisier este dinamic, iar cel listat aici este
+vechi. Mai bine folositi unul produs cu "dig" asa cum am
+explicat mai devreme:
+
+  ______________________________________________________________________
+  ; <<>> DiG 8.1 <<>> @A.ROOT-SERVERS.NET.
+  ; (1 server found)
+  ;; res options: init recurs defnam dnsrch
+  ;; got answer:
+  ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 10
+  ;; flags: qr aa rd; QUERY: 1, ANSWER: 13, AUTHORITY: 0, ADDITIONAL: 13
+  ;; QUERY SECTION:
+  ;;      ., type = NS, class = IN
+
+  ;; ANSWER SECTION:
+  .                     6D IN NS        G.ROOT-SERVERS.NET.
+  .                     6D IN NS        J.ROOT-SERVERS.NET.
+  .                     6D IN NS        K.ROOT-SERVERS.NET.
+  .                     6D IN NS        L.ROOT-SERVERS.NET.
+  .                     6D IN NS        M.ROOT-SERVERS.NET.
+  .                     6D IN NS        A.ROOT-SERVERS.NET.
+  .                     6D IN NS        H.ROOT-SERVERS.NET.
+  .                     6D IN NS        B.ROOT-SERVERS.NET.
+  .                     6D IN NS        C.ROOT-SERVERS.NET.
+  .                     6D IN NS        D.ROOT-SERVERS.NET.
+  .                     6D IN NS        E.ROOT-SERVERS.NET.
+  .                     6D IN NS        I.ROOT-SERVERS.NET.
+  .                     6D IN NS        F.ROOT-SERVERS.NET.
+
+  ;; ADDITIONAL SECTION:
+  G.ROOT-SERVERS.NET.     5w6d16h IN A    192.112.36.4
+  J.ROOT-SERVERS.NET.     5w6d16h IN A    198.41.0.10
+  K.ROOT-SERVERS.NET.     5w6d16h IN A    193.0.14.129
+  L.ROOT-SERVERS.NET.     5w6d16h IN A    198.32.64.12
+  M.ROOT-SERVERS.NET.     5w6d16h IN A    202.12.27.33
+  A.ROOT-SERVERS.NET.     5w6d16h IN A    198.41.0.4
+  H.ROOT-SERVERS.NET.     5w6d16h IN A    128.63.2.53
+  B.ROOT-SERVERS.NET.     5w6d16h IN A    128.9.0.107
+  C.ROOT-SERVERS.NET.     5w6d16h IN A    192.33.4.12
+  D.ROOT-SERVERS.NET.     5w6d16h IN A    128.8.10.90
+  E.ROOT-SERVERS.NET.     5w6d16h IN A    192.203.230.10
+  I.ROOT-SERVERS.NET.     5w6d16h IN A    192.36.148.17
+  F.ROOT-SERVERS.NET.     5w6d16h IN A    192.5.5.241
+
+  ;; Total query time: 215 msec
+  ;; FROM: roke.uio.no to SERVER: A.ROOT-SERVERS.NET.  198.41.0.4
+  ;; WHEN: Sun Feb 15 01:22:51 1998
+  ;; MSG SIZE  sent: 17  rcvd: 436
+  ______________________________________________________________________
+
+
+  7.3.  /var/named/zone/127.0.0
+
+ Doar bazele, inregistrarea SOA obligatorie, si o inregistrare
+care mapeaza 127.0.0.1 catre localhost. Ambele sunt necesare. Nimic mai
+mult nu ar trebui sa fie in acest fisier. Nu vor
+trebui niciodata updatate, decat daca nameserver-ul sau adresa hostmaster
+a dvs se modifica.
+
+  ______________________________________________________________________
+  @               IN      SOA     land-5.com. root.land-5.com. (
+                                  199609203       ; Serial
+                                  28800   ; Refresh
+                                  7200    ; Retry
+                                  604800  ; Expire
+                                  86400)  ; Minimum TTL
+                          NS      land-5.com.
+
+  1                       PTR     localhost.
+  ______________________________________________________________________
+
+
+Daca veti cauta intr-o instalare BIND aleatorie, veti observa probabil
+ca linia $TTL lipseste. Nu a fost folosita inainte si doar versiunea 8.2 
+BIND avertizeaza asupra lipsei acesteia. Va recomand sa puneti linia $TTL
+in fisierele zona cand observati ca lipseste.
+
+  7.4.  /var/named/zone/land-5.com
+
+
+Aici observam inregistrarea SOA obligatorie, inregistrarea
+NS necesara. Putem vedea ca are un nameserver secundar la ns2.psi.net. Asa
+ar trebui sa fie, intotdeauna sa fie un al doilea nameserver
+in afara retelei, ca backup. Observam ca exista un host master numit
+land-5 care se ocupa de multiplele servicii Internet, si ca acesta
+este inregistrat cu CNAME ( o alternativa este utilizarea inregistrarii A).
+
+Asa cum vedem din inregistrarea SOA, fisierul zona incepe cu land-5.com,
+persoana de contact este root@land-5.com. hostmaster este o alta
+adresa folosita adesea pentru persoana de contact. Numarul serial este
+obisnuitul format yyyymmdd cu numarul serial de astazi adaugat. Aceasta
+este probabil a sasea versiune a fisierului zona, din 20
+septembrie 1996. Tineti minte ca numarul serial trebuie sa creasca
+monoton, aici este un singur digit pentru numarul serial de astazi, dupa 9
+editari va trebui sa astepam pana maine inainte
+de a edita din nou fisierul. Ganditi-ba la posibilitatea de a folosi 2
+digiti.
+
+
+  ______________________________________________________________________
+  @       IN      SOA     land-5.com. root.land-5.com. (
+                          199609206       ; serial, todays date + todays serial
+                          8H              ; refresh, seconds
+                          2H              ; retry, seconds
+                          4W              ; expire, seconds
+                          1D )            ; minimum, seconds
+                  NS      land-5.com.
+                  NS      ns2.psi.net.
+                  MX      10 land-5.com.  ; Primary Mail Exchanger
+                  TXT     "LAND-5 Corporation"
+
+  localhost       A       127.0.0.1
+
+  router          A       206.6.177.1
+
+  land-5.com.     A       206.6.177.2
+  ns              A       206.6.177.3
+  www             A       207.159.141.192
+
+  ftp             CNAME   land-5.com.
+  mail            CNAME   land-5.com.
+  news            CNAME   land-5.com.
+
+  funn            A       206.6.177.2
+
+  ;
+  ;       Workstations
+  ;
+  ws-177200       A       206.6.177.200
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177201       A       206.6.177.201
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177202       A       206.6.177.202
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177203       A       206.6.177.203
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177204       A       206.6.177.204
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177205       A       206.6.177.205
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ; {Many repetitive definitions deleted - SNIP}
+  ws-177250       A       206.6.177.250
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177251       A       206.6.177.251
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177252       A       206.6.177.252
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177253       A       206.6.177.253
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177254       A       206.6.177.254
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ______________________________________________________________________
+
+Daca veti examina nameserverul lui land-5, veti observa ca numele
+hosturilor sunt exprimate in forma ws_number. De la ultimele versiuni de
+BIND4 ,named a inceput sa intareasca restrictiile in legatura
+cu caracterele ce pot fi folosite in numele hosturilor. Asa ca aceasta
+nu functioneaza sub BIND8, asa ca am inlocuit caracterul "-" (liniuta)
+cu caracterul "_" pentru a fi folosit in acest HOWTO.
+
+Un alt lucru de remarcat este ca statiile de lucru nu au nume individuale,
+ci mai curand un prefix urmat de doua din ultimile parti ale
+IP-ului. Folosirea unei astfel de conventii poate simplifica
+intretinerea semnificativ, dar poate fi un pic impersonala si,
+in fapt, o sursa de iritare printre clientii dumneavoastra. 
+
+De asemeni, observam ca funn.land-5.com este un alias
+pentru land-5.com, dar folosind inregistrarea A nu CNAME. Aceasta este o
+buna politica, asa cum am spus si mai devreme. 
+
+    7.5.  /var/named/zone/206.6.177
+
+Voi face comentariile dupa acest fisier:
+
+  ______________________________________________________________________
+  @               IN      SOA     land-5.com. root.land-5.com. (
+                                  199609206       ; Serial
+                                  28800   ; Refresh
+                                  7200    ; Retry
+                                  604800  ; Expire
+                                  86400)  ; Minimum TTL
+                          NS      land-5.com.
+                          NS      ns2.psi.net.
+  ;
+  ;       Servers
+  ;
+  1       PTR     router.land-5.com.
+  2       PTR     land-5.com.
+  2       PTR     funn.land-5.com.
+  ;
+  ;       Workstations
+  ;
+  200     PTR     ws-177200.land-5.com.
+  201     PTR     ws-177201.land-5.com.
+  202     PTR     ws-177202.land-5.com.
+  203     PTR     ws-177203.land-5.com.
+  204     PTR     ws-177204.land-5.com.
+  205     PTR     ws-177205.land-5.com.
+  ; {Many repetitive definitions deleted - SNIP}
+  250     PTR     ws-177250.land-5.com.
+  251     PTR     ws-177251.land-5.com.
+  252     PTR     ws-177252.land-5.com.
+  253     PTR     ws-177253.land-5.com.
+  254     PTR     ws-177254.land-5.com.
+  ______________________________________________________________________
+
+ Zona inversa este partea de configurare care da dureri de cap. Este
+folosita pentru a identifica numele de host daca aveti IP-ul
+unei masini. Exemplu: sunteti un server IRC si acceptati conexiuni de la
+clientii IRC. Oricum, sunteti un server norvegian si acceptati
+doar conexiuni de la clientii din Norvegia si celelalte tari scandinave.
+Cand primiti o conexiune de la un client, biblioteca C e capabila sa
+va spune IP-ul masinii client, pentru ca numarul IP este continut in toate
+pachetele care traverseaza reteaua. Acum puteti invoca o functie
+numita gethostbyaddr care cauta numele unui host avand data adresa IP.
+Gethostbyaddr va interoga un server DNS, care va traversa reteaua
+de servere DNS cautand masina respectiva. Sa presupunem ca conexiunea client
+este de la ws-177200.land-5.com. Numarul IP pe care biblioteca C il
+livreaza catre serverul IRC este 206.6.177.200. Pentru a afla numele
+acelei masini trebuie sa gasim 200.177.6.206.in-addr.arpa. Serverul DNS va
+trebui intai sa gaseasca serverele arpa. , apoi in-addr.arpa. ,
+urmand calea inversa spre 206, apoi 6, in final gasind serverul pentru
+177.6.206.in-addr.arpa la LAND-5. De unde va lua raspunsul final, cum ca
+pentru 200.177.6.206.in-addr.arpa avem o inregistrare "PTR
+  ws-177200.land-5.com" insemnand ca numele care insoteste 206.6.177.200
+este ws-177200.land-5.com.
+
+Inapoi la exemplul cu serverele IRC. Serverul IRC accepta doar conexiuni
+din tari scandinave, de exemplu:  *.no, *.se, *.dk, numele
+ws-177200.land-5.com e clar ca nu indeplineste aceasta conditie si
+serverul ii va respinge conexiunea. Daca nu a fost
+mapare inversa a lui 206.2.177.200 prin zona in-addr.arpa serverul nu va
+fi capabil sa gaseasca numele deloc si nici sa compare 206.2.177.200
+cu *.no, *.se and *.dk, asa ca acestea nu se vor potrivi nicicum. 
+
+Unii va vor spune ca maparea inversa nu este importanta pentru servere sau
+nu este importanta deloc. Nu este asa: multe servere FTP, news, IRC
+si unele servere WWW (web) nu vor accepta conexiuni de la masini ale caror
+nume nu le pot afla. Deci maparea inversa este de fapt obligatorie
+si necesara.
+
+ 
+
+  8. Intretinere.
+
+ Tineti-l in viata.
+
+ Exista o sarcina de intretinere cand aveti de-a face cu named-uri, alta
+decat a le mentine ruland. Aceea de a mentine fisierul
+root.hints actualizat, la zi. Cea mai usoara cale este cu "dig". Prima
+data rulati "dig" fara nici un argument, si veti obtine datele din
+"root.hints" conform propriului nameserver. Apoi interogati unul
+dintre rootservere listate cu "dig @rootserver". Veti observa ca
+rezultatul seamana foarte bine cu un
+fisier "root.hints". Salvati-l intr-un fisier (dig
+  @e.root-servers.net . ns >root.hints.new) si inlocuiti vechiul
+root.hints cu el. 
+
+Nu uitati sa restartati named dupa inlocuirea fisierului cache.
+
+
+Al Longyear mi-a trimis acest script care rulat, poate actualiza automat
+fisierul root.hints. Instalati-l intr-o intrare crontab pentru a
+fi rulat odata pe luna si puteti uita de el. Scriptul presupune ca
+va merge serviciul de mail si ca este definita adresa de hostmaster.
+Puteti sa il modificati pentru a se potrivi configuratiei dvs.
+
+  ______________________________________________________________________
+  #!/bin/sh
+  #
+  # Update the nameserver cache information file once per month.
+  # This is run automatically by a cron entry.
+  #
+  # Original by Al Longyear
+  # Updated for BIND 8 by Nicolai Langfeldt
+  # Miscelanious error-conditions reported by David A. Ranch
+  # Ping test suggested by Martin Foster
+  # named up-test suggested by Erik Bryer.
+  #
+  (
+   echo "To: hostmaster <hostmaster>"
+   echo "From: system <root>"
+
+   # Is named up? Check the status of named.
+   case 'ndc status 2>&1 in
+      *'cannot connect to command channel'*)
+          echo "named is DOWN. root.hints was NOT updated"
+          echo
+          exit 0
+          ;;
+   esac
+   PATH=/sbin:/usr/sbin:/bin:/usr/bin:
+   export PATH
+   # NOTE: /var/named must be writable only by trusted users or this script
+   # will cause root compromise/denial of service opportunities.
+   cd /var/named 2>/dev/null || {
+      echo "Subject: Cannot cd to /var/named, error $?"
+      echo
+      echo "The subject says it all"
+      exit 1
+   }
+
+   # Are we online?  Ping a server at your ISP
+   case 'ping -qnc 1 some.machine.net 2>&1' in
+     *'100% packet loss'*)
+          echo "Subject: root.hints NOT updated.  The network is DOWN."
+          echo
+          echo "The subject says it all"
+          exit 1
+          ;;
+   esac
+
+   dig @e.root-servers.net . ns >root.hints.new 2> errors
+
+   case 'cat root.hints.new' in
+     *NOERROR*)
+          # It worked
+          :;;
+     *)
+          echo "Subject: The root.hints file update has FAILED."
+          echo
+          echo "The root.hints update has failed"
+          echo "This is the dig output reported:"
+          echo
+          cat root.hints.new errors
+          exit 1
+          ;;
+   esac
+
+   echo "Subject: The root.hints file has been updated"
+   echo
+   echo "The root.hints file has been updated to contain the following
+  information:"
+   echo
+   cat root.hints.new
+
+   chown root.root root.hints.new
+   chmod 444 root.hints.new
+   rm -f root.hints.old errors
+   mv root.hints root.hints.old
+   mv root.hints.new root.hints
+   ndc restart
+   echo
+   echo "The nameserver has been restarted to ensure that the update is complete"
+   echo "The previous root.hints file is now called
+  /var/named/root.hints.old."
+  ) 2>&1 | /usr/lib/sendmail -t
+  exit 0
+  ______________________________________________________________________
+
+Unii dintre dvs v-ati prins ca fisierul root.hints este disponibil
+prin ftp din Internic. Va rog nu folositi ftp
+pentru a actualiza root.hints, metoda de mai sus este mult mai prietenoasa
+pentru net si Internic.
+
+  9. Conversia de la versiunea 4 la versiunea 8.
+
+Aceasta a fost la inceput o sectiune despre folosirea lui BIND 8 scrisa de
+David E.  Smith (dave@bureau42.ml.org). Am editat cate ceva pentru a
+se potrivi noului nume al sectiunii.
+
+Nu sunt prea multe de spus. Cu exceptia inlocuirii fisierului named.boot
+cu named.conf, restul este identic. Iar BIND 8 vine cu un script PERL care
+converteste totul de la vechiul la noul format. Exemplu de fisier
+named.boot (vechiul stil) pentru caching nameserver:
+
+
+  ______________________________________________________________________
+  directory /var/named
+  cache   .                                     root.hints
+  primary 0.0.127.IN-ADDR.ARPA                    127.0.0.zone
+  primary localhost                               localhost.zone
+  ______________________________________________________________________
+
+
+In linia de comanda, in directorul bind8/src/bin/named (aceasta presupune
+ca aveti sursele distributiei). Daca aveti pachetul binar, scriptul e prin
+preajma... Dati comanda :
+
+
+  ______________________________________________________________________
+  ./named-bootconf.pl < named.boot > named.conf
+  ______________________________________________________________________
+
+care va crea named.conf:
+
+  ______________________________________________________________________
+  // generated by named-bootconf.pl
+
+  options {
+          directory "/var/named";
+  };
+
+  zone "." {
+          type hint;
+          file "root.hints";
+  };
+
+  zone "0.0.127.IN-ADDR.ARPA" {
+          type master;
+          file "127.0.0.zone";
+  };
+
+  zone "localhost" {
+          type master;
+          file "localhost.zone";
+  };
+  ______________________________________________________________________
+
+Functioneaza pentru orice intra intr-un fisier named.boot, desi nu
+adauga toate imbunatatirile si optiunile de configuratie pe care
+le permite BIND8. Aici este un named.conf care face aceleasi
+lucruri, dar ceva mai eficient:
+
+  ______________________________________________________________________
+  // This is a configuration file for named (from BIND 8.1 or later).
+  // It would normally be installed as /etc/named.conf.
+  // The only change made from the tock' named.conf (aside from this
+  // comment :) is that the directory line was uncommented, since I
+  // already had the zone files in /var/named.
+
+  options {
+          directory "/var/named";
+          datasize 20M;
+  };
+
+  zone "localhost" IN {
+          type master;
+          file "localhost.zone";
+  };
+
+  zone "0.0.127.in-addr.arpa" IN {
+          type master;
+          file "127.0.0.zone";
+  };
+
+  zone "." IN {
+          type hint;
+          file "root.hints";
+  };
+  ______________________________________________________________________
+
+
+In directorul bind8/src/bin/named/test din distributia BIND 8
+gasiti aceasta si copii ale fisierelor zona, pe care multi utilizatori
+le pot instala si folosi ca atare. Formatele pentru fisierele root.hints
+si fisierele zone sunt identice, ca si comenzile  pentru actualizarea lor.
+
+
+10 Intrebari si raspunsuri.
+
+
+Va rog sa cititi aceasta sectiune inainte de a imi trimite e-mail.
+
+  1. named-ul meu "vrea" un fisier named.boot
+
+     Cititi un HOWTO gresit.Vedeti vechea versiune a acestui HOWTO, care
+     studiaza BIND4 la <http://www.math.uio.no/~janl/DNS/>
+
+  2. Cum folosesc DNS-ul  din interiorul unui firewall ?
+
+     Indicatie: forward-only . Sau puteti folosi 
+
+
+     ___________________________________________________________________
+       query-source port 53;
+
+     ___________________________________________________________________
+
+     in sectiunea "options" a lui named.conf.
+
+
+  3. Cum fac DNS-ul sa se "plimbe" prin adresele disponibile, pentru
+     un serviciu, sa zicem www.busy.site, pentru a obtine un efect de
+     egalizare a incarcarii (loadbalancing), sau similar?
+
+     Faceti cateva inregistrari "A" pentru www.busy,site  si folositi BIND
+     4.9.3 sau mai nou. Atunci, BIND va functiona ca perpetuum-mobile in
+     cautare de raspunsuri. Nu va functiona cu versiuni mai vechi de BIND.
+
+  4. Vreau sa configurez un DNS intr-un Intranet (inchis). Cum fac?
+
+     Lasati fisierul root.hints si ocupati-va numai de fisierele zone.
+     Asta inseamna de asemeni ca nu trebuie sa actualizati fiserul .hint 
+     tot timpul
+
+  5. Cum configurez un server secundar (slave) ?
+
+     Daca serverul primar/master are adresa 127.0.0.1, puneti o linie ca
+aceasta in named.conf-ul de la serverul secundar:
+
+
+     ___________________________________________________________________
+       zone "linux.bogus" {
+             type slave;
+             file "sz/linux.bogus";
+             masters { 127.0.0.1; };
+       };
+
+     ___________________________________________________________________
+
+   Puteti lista si alte servere master de unde pot fi copiate zonele, 
+   separate de punct si virgula ";"
+
+  6. Vreau sa rulez BIND cand sunt deconectat de la Internet.
+
+   Sunt patru chestiuni privind aceasta problema:
+
+   - Specific lui BIND 8, Adam L Rice mi-a trimis acest e-mail despre cum
+    sa rulezi DNS fara dureri de cap pe o masina dialup:
+
+    Am descoperit in noile versiuni ca acest fisier [<em/shuffeling files,
+-ed/] nu mai este necesar. Exista o directiva "forward" pe linga
+"forwarderi", directiva care controleaza cum aceastia sunt
+utilizati. Setarea implicita este "forward first", care interogheaza intai
+fiecare dintre "forwarderi", apoi incearca abordarea normala
+daca prima varianta esueaza. Aceasta face ca functia gethostbyname() sa se
+comporte familiar, luand un timp foarte lung cand legatura
+nu functioneaza. Dar daca "forward only" este setat, BIND renunta cand
+nu primeste un raspuns de la forwarderi iar gethostbyname() raspunde
+imediat.
+
+In cazul meu, am adaugat liniile:
+
+
+       forward only;
+       forwarders { 193.133.58.5; };
+
+in sectiunea options { } din fisierul meu named.conf. Functioneaza
+foarte frumos, singurul dezavantaj este ca reduce o incredibil
+de sofisticata masinarie software care este DNS la statutul de cache
+chior. As fi preferat sa pot rula un cache simplu in loc, dar nu exita asa
+ceva care sa inlocuiasca DNS pentru Linux.
+
+   - Am receptionat acest mail de la Ian Clark <ic@deakin.edu.au> unde
+el explica modul in care face aceasta:
+
+  Rulez named pe masina mea "masquerade" (cu mascaradare). Am doua fisiere
+root.hints, unul numita root.hints.real care contine numele reale ale
+root-serverelor si celalalt numit root.hints.fake care contine...
+
+
+
+  ----
+  ; root.hints.fake
+  ; this file contains no information
+  ----
+
+cand inchid conexiunea (dialup), copii root.hints.fake peste root.hints si
+restartez named.
+Cand pornesc conexiunea, copii root.hints.real peste root.hints
+si restartez named. Asta o fac din ip-up si ip-down. Prima data cand fac o
+interogare offline pe un nume de domeniu, named nu are detalii de oferit
+si pune o intrare ca aceasta in mesaje:
+
+
+  Jan 28 20:10:11 hazchem named[10147]: No root nameserver for class IN
+
+care nu ma deranjeaza. 
+
+Deci functioneaza cu siguranta. Pot folosi nameserverul pentru
+masinile locale cand sunt deconectat de la Internet fara intarzieri de
+timeout pentru interogarile domeniilor externe.
+
+  Peter Denison crede ca Ian nu a ajuns prea departe. El scrie:
+
+Cand sunt conectat) alimenteaza toate intrarile din cache (si reteaua locala)
+		    imediat, pentru intrarile reinregistrate in cache,
+		    forward catre nameserver-ul ISP-ului
+
+Cand nu sunt conectat) alimenteaza interogarile retelei locale
+		     imediat, abandoneaza orice alte interogari IMEDIAT
+
+Combinatia dintre schimbarea fisierului root cache si interogarile forward
+nu functioneaza. 
+
+Deci am configurat (cu unele discutii pe Linux User Group-ul local) doua
+		named-uri, dupa cum urmeaza:
+
+
+  named-online:   forwards to ISPs nameserver
+                  master for localnet zone
+                  master for localnet reverse zone (1.168.192.in-addr.arpa)
+                  master for 0.0.127.in-addr.arpa
+                  listens on port 60053
+
+  named-offline:  no forwarding
+                  "fake" root cache file
+                  slave for 3 local zones (master is 127.0.0.1:60053)
+                  listens on port 61053
+
+
+Si combinand aceasta cu port-forwarding-ul, pentru a trimite portul
+53 catre portul 61053 cand suntem off-line si catre portul 60053 cand
+suntem online (folosesc noul pachet netfilter sub 2.3.18, dar si vechiul
+mecanism ipchains functioneaza).
+
+Observati ca aceasta nu va merge chiar "din tzeava" de vreme ce exista
+un mic bug in BIND 8.2 pe care l-am semnalat dezvoltatorilor,
+care impiedica un server slave sa aiba un master pe aceiasi adresa iP
+(chiar si pe un port diferit).
+
+  - Am primit informatii despre cum BIND interactioneaza cu NFS si
+portmapper-ul pe o masina mai mult off-line, de la Karl-Max Wanger :
+
+  Obisnuiesc sa rulez propriul meu named pe toate masinile care se
+conecteaza ocazional la Internet prin modem. Nameserverul singur
+actioneaza ca un cache, nu are nici o arie de autoritate, si
+interogheaza serverele din fisierul root.cache. Ca de obicei in Slackware,
+este pornit inainte de nfsd si mountd.
+
+Cu una dintre masinile mele (un notebook Libretto 30) am avut probleme
+ca adesea nu puteam sa il montez dintr-un sistem conectat la reteaua mea
+LAN. Aceleasi probleme le aveam si din punct de vedere
+al legaturilor PPP sau PLIP.
+
+Dupa ceva timp de cercetari si experimente am constatat ca named s-a
+incurcat in inregistrarea serviciilor initiate de nfsd si mountd precum si
+cu portmapper-ul. Pornind named-ul dupa nfsd si mountd, am scapat complet
+de probleme.
+
+Cum nu sunt dezavantaje de asteptat in urma unei asemenea modificari
+in ordinea de boot, recomand tuturor sa treaca la aceasta,
+pentru a preintampina necazurile.
+
+  - In final, exista ceva informatii despre aceasta la Ask MR. DNS la 
+     <http://www.acmebw.com/askmrdns/#linux-dialup>.  Este despre BIND
+4, asa ca trebuie sa faceti adaptari la BIND 8.
+
+  7. Unde stocheaza caching-nameserver-ul cache-ul si cum pot controla
+dimensiunea acestuia?
+
+   Cache-ul este stocat complet in memorie, nu este scris pe disc in nici
+un moment. De fiecare data cand dati kill lui named, cache-ul este
+pierdut. Cache-ul nu este controlabil nicicum, named il controleaza dupa
+cateva reguli simple, si cam asta e tot. Nu puteti controla cache-ul sau
+dimensiunea acestuia nicicum si pentru nici un motiv. Daca
+doriti neaparat, puteti incerca sa hackuiti  named , dar nu este recomandat.
+
+  8. Named-ul salveaza cache-ul intre restart-uri? Pot sa il fac sa salveze?
+
+  NU, named nu salveaza cache-ul cand dispare. Aceasta inseamna ca
+cache-ul trebuie reconstruit de la zero de fiecare data cand named
+este repornit. Nu exista nici o metoda de a-l face pe named sa salveze
+cache-ul intr-un fisier.
+
+  9. Cum imi procur un domeniu? Vreau sa imi configurez propriul
+domeniu, denumit de exemplu linux-rules.net. Cum pot sa obtin domeniul
+pe care il doresc alocat mie?
+
+   Va rog sa va contactati provider-ul. Ei va vor putea ajuta cu
+aceasta. Aveti in vedere ca in cele mai multe parti ale lumii,
+aceast lucru costa (obtinerea unui nume de domeniu).
+
+  10. Cum securizez serverul meu DNS? Cum configurez un DNS split? (separat)
+
+  Ambele sunt chestiuni avansate si sunt analizate in
+  <http://www.etherboy.com/dns/chrootdns.html>. de aceea nu le voi
+   expune aici.
+
+
+
+
+  11. Cum sa devii un DNS de talie mare.
+
+  Documentatii si utilitare.
+
+  Exista documentatie "reala". Online si tiparita. Citirea acesteia este
+necesara pentru a face pasul de la un administrator DNS de mica anvergura
+la unul de talie mare. Am tiparit Ghidul Concis al DNS si BIND
+(Nicolai Langfeldt) publicata de QUE (ISDN  0-7897-2273-9). Cartea seamana
+cu acest HOWTO. Doar mai multe detalii si mai multe despre toate aspectele.
+Dar cartea standard este "DNS and BIND  by C. Liu and P. Albitz
+from O'Reilly & Associates (ISBN   0-937175-82-X). Este excelenta.
+Faceti rost de editia a 3-a, care acopera BIND 8 ca si BIND 4. Exista de
+asemeni o sectiune DNS si in TCP/IP Network Administration Guide. by Craig
+Hunt from O'Reilly (ISBN 0-937175-82-X).  O alta carte buna si pentru DNS
+si pentru orice este Zen and the Art of Motorcycle Maintenance (Zen si
+arta intretinerii motocicletei :-)  de Robert M. Pirsig :-) ISBN 0688052304\
+si altii. 
+
+Online veti gasi multe chestii la: <http://www.dns.net/dnsrd/> (DNS
+  Resources Directory),  <http://www.isc.org/bind.html>; FAQ si manual
+de referinta  (BOG; BIND Operations Guide) ca si documente si definitii de
+protocol si "hack-uri" DNS (acestea - ma rog, nu toate- ca si RFC-urile
+sunt continute in distributia BIND). N-am citit chiar toate aceastea, 
+dar nici mare administrator DNS nu sunt.  Arnt Gulbrandsen pe de
+alta parte a citit BOG (BIND Operation Guide) si este extaziat de acesta :)
+Newsgrupul   <news:comp.protocols.tcp-ip.domains>  este despre DNS.
+Pe langa asta, exista un numar de RFC-uri despre DNS, cele mai
+importante sunt probabil cele listate aici. Cele care au BCP (Best Current
+Practice) sunt cele mai recomandate. 
+
+
+     RFC 2671
+        P. Vixie, Extension Mechanisms for DNS (EDNS0) August 1999.
+
+
+     RFC 2317
+        , BCP 20, H. Eidnes et. al. Classless IN-ADDR.ARPA delegation,
+        March 1998. This is about CIDR, or classless subnet reverse
+        lookups.
+
+
+     RFC 2308
+        , M. Andrews, Negative Caching of DNS Queries, March 1998.
+        About negative caching and the $TTL zone file directive.
+
+
+     RFC 2219
+        , BCP 17, M. Hamilton and R. Wright, Use of DNS Aliases for
+        Network Services, October 1997.  About CNAME usage.
+
+
+     RFC 2182
+        , BCP 16, R. Elz et. al., Selection and Operation of Secondary
+        DNS Servers, July 1997.
+
+     RFC 2052
+        A. Gulbrandsen, P. Vixie, A DNS RR for specifying the location
+        of services (DNS SRV), October 1996
+
+
+     RFC 1918
+        Y. Rekhter, R. Moskowitz, D. Karrenberg, G. de Groot, E. Lear,
+        Address Allocation for Private Internets, 02/29/1996.
+
+
+     RFC 1912
+        D. Barr, Common DNS Operational and Configuration Errors,
+        02/28/1996.
+
+
+     RFC 1912 Errors
+        B. Barr Errors in RFC 1912, this is available at
+        <http://www.cis.ohio-state.edu/~barr/rfc1912-errors.html>
+
+
+     RFC 1713
+        A. Romao, Tools for DNS debugging, 11/03/1994.
+
+
+     RFC 1712
+        C. Farrell, M. Schulze, S. Pleitner, D. Baldoni, DNS Encoding of
+        Geographical Location, 11/01/1994.
+
+
+     RFC 1183
+        R. Ullmann, P. Mockapetris, L. Mamakos, C. Everhart, New DNS RR
+        Definitions, 10/08/1990.
+
+
+     RFC 1035
+        P. Mockapetris, Domain names - implementation and specification,
+        11/01/1987.
+
+
+     RFC 1034
+        P. Mockapetris, Domain names - concepts and facilities,
+        11/01/1987.
+
+
+     RFC 1033
+        M. Lottor, Domain administrators operations guide, 11/01/1987.
+
+
+     RFC 1032
+        M. Stahl, Domain administrators guide, 11/01/1987.
+
+
+     RFC 974
+        C. Partridge, Mail routing and the domain system, 01/01/1986.
+
+
+

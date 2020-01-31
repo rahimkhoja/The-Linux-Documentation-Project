@@ -1,0 +1,241 @@
+
+                 Mini HOWTO installation du serveur IMAP Cyrus
+
+Kevin Mitchell kevin@iserv.net v0.9
+
+   21.01.98
+     _________________________________________________________________
+
+   _Adaptation française par Gacquer Frédéric gacquer@neuronnexion.fr
+   Jeudi 25 mai 1998 V 1.0. Relecture par Jean Charles Delepine
+   delepine@lan.univ-lyon1.fr_
+     _________________________________________________________________
+
+1. Introduction
+
+   Ce document a pour but d'apporter un peu d'aide pour l'installation du
+   serveur IMAP de Cyrus, sur une machine Linux.
+
+   Je voudrais remercier Bob Anderson boba@iserv.net et Jorge Paramo
+   jorge@iserv.net pour leur aide dans mes aventures avec Linux.
+
+2. Qu'est-ce qu'IMAP et pourquoi devrais-je l'utiliser ?
+
+   IMAP (Internet Message Access Protocol) est une manière d'accéder à
+   son courrier électronique ou ses messages BBS stockés sur le serveur
+   de courrier. IMAP est perçu par beaucoup comme le successeur de POP
+   (Post Office Protocol). IMAP permets aux utilisateurs d'accéder à leur
+   courrier à partir de n'importe quel ordinateur sans avoir à le
+   rapatrier. Cette méthode d'accés au courrier est plus sûre et offre
+   plusieurs avantages pour l'utilisateur final.
+
+   Une explication plus approfondie à :
+   http://www.imap.org/whatisIMAP.html Une comparaison entre IMAP et POP
+   à : http://www.imap.org/imap.vs.pop.brief.html
+
+   Pourquoi utiliser le serveur Cyrus ?
+
+   Cyrus est conçu pour être utilisé sur un serveur où les utilisateurs
+   n'ont pas le droit de se connecter. Cyrus semble aussi être parmi les
+   deux plus populaires serveurs IMAP pour Unix. L'autre est le serveur
+   IMAP de l'Université de Washington.
+   ftp://ftp.cac.washington.edu/imap/imap.tar.Z
+
+3. Les caractéristiques de mon système
+
+   J'ai installé Cyrus avec succés sur des architectures 486DX66 et
+   Pentium, utilisant respectivement le noyau Linux 2.1.79 et 2.0.33.
+   L'installation initiale est basée sur la Slackware 3.4.
+
+4. Installation de Tcl
+
+   Assurez vous que Tcl est installé sur votre machine avant de tenter
+   d'installer Cyrus - sinon vous n'aurez pas la possibilité d'utiliser
+   l'Outil d'Administration Cyrus (cyradm).
+
+   Les derniers sources de Tcl sont disponibles sur
+   ftp://ftp.sunlabs.com/pub/tcl/
+
+   Après l'installation, assurez vous que le fichier libtcl.a se trouve
+   dans le répertoire /usr/local/lib/. Tcl 8.0 génère un fichier
+   libtcl8.0.a sur lequel vous devez créer un lien symbolique en
+   utilisant la commande :
+
+# ln -s libtcl8.0.a libtcl.a
+
+5. Installation de la commande makedepend
+
+   Vérifiez que votre système a la commande makedepend. Si vous ne l'avez
+   pas, ne vous inquiétez pas - il est fourni avec le source de Cyrus.
+   (Je ne l'avais pas avec l'installation Slackware 3.4).
+
+   Pour installer makedepend, extraire la distribution Cyrus, se mettre
+   dans le répertoire makedepend, et taper les commandes suivantes :
+
+        ./configure
+        make
+        cp ./makedepend /usr/local/bin/makedepend
+
+6. Installation de Cyrus
+
+   Suivre prudemment les conseils fournis avec la distribution Cyrus.
+   Vous pouvez en trouver une copie en ligne à :
+   http://andrew2.andrew.cmu.edu/cyrus/imapd/install.html
+
+   Quelques astuces pour quelques-unes des étapes:
+
+   Si vous utilisez la Slackware 3.4 (avec les Shadow Passwords), assurez
+   vous que vous utilisez configure comme suit:
+
+./configure --with-login=unix_pwcheck
+
+   Avec make c'est plus direct:
+
+        make depend
+        make all CFLAGS=-O
+
+     * Etape 1: lorsque vous ajoutez l'utilisateur cyrus, ce dernier est
+       vérouillé pour améliorer la sécurité.
+     * Etape 3: j'édite le fichier /etc/syslog.conf plutôt que de les
+       copier.
+     * Etape 9: Avec Linux, assurez vous de lancer pwcheck de cette
+       manière sinon le serveur ne fonctionnera pas correctement:
+
+        umask 0;/usr/cyrus/bin/pwcheck &
+        umask 022
+
+       Puis ajoutez ces dernières à un script de démarrage comme
+       celui-là:
+
+        if [ -f /usr/cyrus/bin/pwcheck ]; then
+        echo -n "Starting pwcheck for imap"
+        umask 0;/usr/cyrus/bin/pwcheck &
+        umask 022
+        fi
+
+       J'ai mis le mien dans /etc/rc.d/rc.local et cela marche bien.
+     * Etape 12: Lorsque vous éditez /etc/inetd.conf, assurez vous
+       d'include les TCP Wrappers dans la ligne, comme suit:
+
+ imap    stream  tcp     nowait  cyrus   /usr/sbin/tcpd  /usr/cyrus/bin/imapd i
+map
+
+   Et n'oubliez pas de kill -HUP inetd après avoir terminé cet ajout:
+
+        # ps ax | grep inetd
+           61  ?  S    0:00 /usr/sbin/inetd
+        # kill -HUP 61
+
+7. Configuration de sendmail
+
+   Téléchargez le source de sendmail si vous ne l'avez pas déjà. Outre
+   utiliser IMAP, vous pouvez faire des choses amusantes comme configurer
+   l'anti-spam.
+
+   Voici mon fichier mc. Il délivrera le mail à IMAP sauf s'il y a une
+   entrée de l'utilisateur dans le fichier /etc/sendmail.cN. Cela permet
+   aux comptes systèmes comme root de garder leur courrier dans le spool;
+   Cependant, les comptes utilisateurs utilisent IMAP par défaut. Ne pas
+   faire un simple copier/coller de ce code car sendmail n'appréciera pas
+   les espaces utilisés à la place des tabulations:
+
+ divert(-1)
+  #
+  #       (C) Copyright 1995 by Carnegie Mellon University
+  #
+  #                      All Rights Reserved
+  #
+  # Permission to use, copy, modify, and distribute this software and its
+  # documentation for any purpose and without fee is hereby granted,
+  # provided that the above copyright notice appear in all copies and that
+  # both that copyright notice and this permission notice appear in
+  # supporting documentation, and that the name of CMU not be
+  # used in advertising or publicity pertaining to distribution of the
+  # software without specific, written prior permission.
+  #
+  # CMU DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING
+  # ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO EVENT SHALL
+  # CMU BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR
+  # ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+  # WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+  # ARISING OUT OF OR IN CONNECTION WITH THE USE OR P ERFORMANCE OF THIS
+  # SOFTWARE.
+  #
+  #       Contributed to Berkeley by John Gardiner Myers .
+  #
+  #       This sample mc file is for a site that uses the Cyrus IMAP server
+  #       exclusively for local mail.
+  #
+
+  divert(0)dnl
+  VERSIONID(`@(#)cyrusproto.mc    8.3 (Carnegie Mellon) @(#)cyrusproto.mc 8.3')
+  OSTYPE(linux)
+  define(`confBIND_OPTS',`-DNSRCH -DEFNAMES')
+  FEATURE(nouucp)
+  FEATURE(nocanonify)
+  FEATURE(always_add_domain)
+  MAILER(smtp)
+  MAILER(local)
+  MAILER(cyrus)
+
+  define(`confLOCAL_MAILER',`cyrus')
+
+  LOCAL_RULE_0
+  R$=N                 $: $#local $: $1
+  R$=N                 $: $#local $: $1
+  Rbb + $+             $#cyrusbb $: $1
+
+  LOCAL_CONFIG
+  FN /etc/sendmail.cN
+
+  # end of mc file
+
+   Arpès avoir configuré le fichier /etc/sendmail.cf, créer le fichier
+   /etc/sendmail.cN et ajouter les comptes utilisateurs qui ne souhaitent
+   pas utiliser IMAP:
+
+        root
+        majordom
+        stan
+        mothra
+
+   Après avoir installé Sendmail 8.8.8 j'ai aussi installé mail.local
+   comme programme de livraison du courrier local pour ces autres
+   comptes. Il y a une astuce pour configurer mail.local. Aller dans le
+   répertoire de mail.local, dans le source de sendmail et faire:
+
+        cp Makefile Makefile.orig
+        cp Makefile.dist Makefile
+        make
+        cp mail.local /bin/mail.local
+        chmod 4555 /bin/mail.local
+
+   Après cela, redémarrer sendmail.
+
+   Ne pas oublier de terminer les instructions de l'installation de
+   Cyrus.
+
+8. Configurer les boites aux lettres
+
+   Assurez vous de suivre les tests du serveur IMAP. Si tout semble
+   correct, continuez et créez des boites au lettres.
+
+9. Mise en garde
+
+   Aucune garantie, pas de remboursement, utilisation à vos propres
+   risques.
+
+10. Sources
+
+   Les logiciels requis
+
+     * La page d'accueil de Cyrus est
+       http://andrew2.andrew.cmu.edu/cyrus/imapd/
+     * Vous pouvez télécharger la dernière version à:
+       ftp://ftp.andrew.cmu.edu/pub/cyrus-mail/
+     * La page d'accueil de Tcl est : http://sunscript.sun.com/
+     * Vous pouvez télécharger le dernier source Tcl à:
+       ftp://ftp.sunlabs.com/pub/tcl/
+     * La page d'accueil de Sendmail est : http://www.sendmail.org/
+     * Vous pouvez télécharger la dernière version à:
+       ftp://ftp.sendmail.org/ucb/src/sendmail/

@@ -1,0 +1,456 @@
+  Linux Mail-Queue mini-HOWTO
+  Leif Erlingsson, leif@lege.com, Jan P. Tietze,
+  jptietze@mail.hh.provi.de
+  v2.02, 3 Settembre 1997, sendmail 8.8.7
+
+  Queue Remote Mail + Deliver Local Mail. Le necessarie modifiche alla
+  configurazione per far sì che sendmail consegni la posta locale
+  ***subito*** mentre accumula in coda la posta in uscita.  Traduzione a
+  cura di Lorenzo Pulici lorenzo.pulici@usa.net.
+  ______________________________________________________________________
+
+  Indice Generale
+
+
+  1. Introduzione
+  2. La soluzione NON dial-on-demand
+     2.1 Avviare sendmail
+     2.2 Configurare sendmail
+        2.2.1 Configurare sendmail.cf direttamente, per configurazioni semplici.
+        2.2.2 Configurare sendmail.cf usando il sorgente m4
+     2.3 Suggerimenti per il supporto al menu
+
+  3. La soluzione dial-on-demand
+     3.1 Configurare sendmail.cf
+        3.1.1 Configurare direttamente sendmail.cf, per configurazioni semplici
+        3.1.2 Configurare sendmail.cf con il sorgente m4.
+     3.2 Aggiungere il ritardo di chiamata
+        3.2.1 Configurare sendmail.cf direttamente
+        3.2.2 Configurare sendmail.cf col sorgente m4
+
+  4. Inviare la posta
+     4.1 Come inviare e-mail ad un determinato orario
+
+
+  ______________________________________________________________________
+
+  11..  IInnttrroodduuzziioonnee
+
+  Questo documento è stato scritto da due autori. La parte più vecchia,
+  relativa alla posta NON dial-on-demand, è di Leif Erlingsson
+  <leif@lege.com>, quella relativa alla soluzione dial-on-demand (più
+  recente) è a cura di Jan P. Tietze <jptietze@mail.hh.provi.de>.
+
+
+
+  22..  LLaa ssoolluuzziioonnee NNOONN ddiiaall--oonn--ddeemmaanndd
+
+  Scritta da Leif Erlingsson <leif@lege.com>.
+
+  La versione originale di questa parte conteneva parecchia roba non
+  necessaria. Questo è ciò che serve veramente...
+
+
+
+  22..11..  AAvvvviiaarree sseennddmmaaiill
+
+  Slackware e simili:     /etc/rc.d/rc.M:
+
+
+
+       echo "Starting sendmail daemon (/usr/sbin/sendmail -bd -os) [modalità di solo accodamento]..."
+       /usr/sbin/sendmail -bd -os      # NON è il flag standard "-bd -q 15m"!
+
+
+
+  RedHat e simili:                /etc/rc.d/init.d/sendmail.init:
+
+
+
+       echo -n "Starting sendmail: [modalità di solo accodamento]"
+       daemon sendmail -bd -os         # NON è il demone sendmail -bd -q1h
+
+
+
+  L'opzione -os non è necessaria, tutto quello che fa è:
+
+
+
+       SuperSafe [s] Esegue in modalità super-safe, vale a dire che
+                     crea sempre il file di accodamento, anche nel caso
+                     vogliate effettuare la consegna immediata.
+                     Sendmail crea sempre in ogni circostanza il file di
+                     accodamento prima di restituire il controllo al client.
+                     Deve essere sempre selezionato.
+
+
+
+  Ciò dovrebbe comunque già essere configurato nel sendmail.cf di
+  default.
+
+
+  22..22..  CCoonnffiigguurraarree sseennddmmaaiill
+
+  Gli utenti seri di sendmail usufruiscono del sorgente m4.  Raccomando
+  questa soluzione se pensate di aggiornare sendmail o anche di
+  effettuare banali modifiche al sendmail.cf
+
+  Se non intendete mai configurare sendmail in modo che i return header
+  dell'envelope e simili funzionino anche con una connessione dinamica
+  IP o qualcosa del genere, potreste non aver bisogno del sorgente m4.
+
+
+  22..22..11..  CCoonnffiigguurraarree sseennddmmaaiill..ccff ddiirreettttaammeennttee,, ppeerr ccoonnffiigguurraazziioonnii sseemm­­
+  pplliiccii..
+
+  Questa è una soluzione strettamente dipendente dalla vostra versione
+  in funzione della versione di sendmail.cf. Il seguente esempio è
+  valido *soltanto* per sendmail-8.8.x.
+
+  Editate /etc/sendmail.cf:
+
+
+
+       # avoid connecting to "expensive" mailers on initial submission?
+       O HoldExpensive=True
+
+
+
+  ... più avanti ...
+
+
+
+  #####  @(#)smtp.m4      8.33 (Berkeley) 7/9/96  #####
+
+  Msmtp,          P=[IPC], F=mDFMuXe, S=11/31, R=21, E=\r\n, L=990,
+                  T=DNS/RFC822/SMTP,
+                  A=IPC $h
+  Mesmtp,         P=[IPC], F=mDFMuXae, S=11/31, R=21, E=\r\n, L=990,
+                  T=DNS/RFC822/SMTP,
+                  A=IPC $h
+  Msmtp8,         P=[IPC], F=mDFMuX8e, S=11/31, R=21, E=\r\n, L=990,
+                  T=DNS/RFC822/SMTP,
+                  A=IPC $h
+  Mrelay,         P=[IPC], F=mDFMuXa8e, S=11/31, R=61, E=\r\n, L=2040,
+                  T=DNS/RFC822/SMTP,
+                  A=IPC $h
+
+
+
+  Il flag importante qui sopra è ``e''.  Non importa affatto se gli
+  altri flag sono diversi nel vostro file.  Teneteli così come sono,
+  aggiungete soltanto ``e'' come dall'esempio di sopra, a meno che ci
+  sia già.  ``e'' contrassegna il mailer come ``expensive''.
+
+
+  22..22..22..  CCoonnffiigguurraarree sseennddmmaaiill..ccff uussaannddoo iill ssoorrggeennttee mm44
+
+  Qui di seguito, per semplicità considero che la versione di sendmail
+  sia la 8.8.7. Se avete una versione differente, sostituite a 8.8.7 il
+  numero della vostra versione! Inoltre queste istruzioni non
+  funzioneranno per vecchie versioni di sendmail. Prendete l'ultima
+  versione di sendmail!
+
+
+  Scaricate il sorgente di sendmail.  Provate
+  ``http://WWW.Sendmail.ORG'' o possibilmente ``ftp.sendmail.org''.
+
+
+  Raccomando inoltre di ottenere la mia patch per permettere il reverse
+  aliasing dell'envelope del mittente e altre belle cose che vi
+  permetteranno di prendere il controllo del vostro ambiente della
+  posta.
+
+
+  Scrivete a ``Sendmail Patch <sendmail@lege.com>'', Soggetto:
+  ``sendmail-8.8.7'', se 8.8.7 è la vostra versione di sendmail.
+
+  È inoltre disponibile presso ``http://www.lege.com'', così come il
+  sorgente sgml di questo mini-HOWTO!
+
+  Non è necessario applicare tutte le mie patch per avere un sistema di
+  accodamento della posta remota e di consegna della posta locale che
+  funzioni. Le mie patch risolvono altri problemi. Ma pensavo che questo
+  fosse un buon posto per menzionarle, dato che molti utenti Linux le
+  troveranno estremamente utili. Vi permetteranno inoltre di avere
+  domini virtuali perfettamente funzionanti, se lo desiderate.  I domini
+  virtuali non devono essere ``locali''. Vi permetteranno di usare gli
+  ``xaliases'', o in altre parole il ``reverse aliasing''.
+
+  Decomprimete i sorgenti di sendmail. Otterrete qualcosa di simile a
+  /usr/src/sendmail-8.8.7/.
+
+  cd /usr/src/sendmail-8.8.7/cf
+
+  Ora, se volete applicate la mia patch, altrimenti saltate questo
+  passo.  Se non volete usare procmail come Local Delivery Agent salvate
+  in un posto sicuro il vostro
+  /usr/src/sendmail-8.8.7/cf/ostype/linux.m4 prima di cominciare...
+
+  Salvate la mia patch in ``/tmp/sendmail-8.8.7-cf-cpio-idcmu.gz'',
+  indi...
+
+
+       cd /usr/src/sendmail-8.8.7/cf
+       gzip -dc < /tmp/sendmail-8.8.7-cf-cpio-idcmu.gz | cpio -idcmu
+
+
+
+  Se non volete usare procmail, ricopiate al suo posto la copia salvata
+  di /usr/src/sendmail-8.8.7/cf/ostype/linux.m4.
+
+  Applicata o meno la mia patch, assicuratevi che queste righe o altre
+  molto simili siano aggiunte a
+  /usr/src/sendmail-8.8.7/cf/cf/yourhostname.smtp.mc (ma se avete
+  applicato la patch potreste voler cercare i nomi dei file contenenti
+  la parola ``elijah'', in /usr/src/sendmail-8.8.7/cf):
+
+
+
+       dnl # Defer Delivery to "expensive" mailers until next time the
+       dnl # queue is processed using "O HoldExpensive=True" and make
+       dnl # sure smtp mailers are "expensive".
+       dnl # (See original "sendmail" book Chapter 30: Options,
+       dnl # "Oc - Don't connect to expensive mailers", or
+       dnl # 2nd Edition "sendmail" book Chapter 34.8.29,
+       dnl # "HoldExpensive (c), Queue for expensive mailers".)
+       dnl #                           / Leif Erlingsson <leif@lege.com>
+       define(`confCON_EXPENSIVE', `True')
+       define(SMTP_MAILER_FLAGS, e)
+       MAILER(local)dnl
+       MAILER(smtp)dnl
+
+
+
+  22..33..  SSuuggggeerriimmeennttii ppeerr iill ssuuppppoorrttoo aall mmeennuu
+
+  La versione 1.x di questo documento conteneva dei suggerimenti per il
+  supporto al menu per /var/X11R6/lib/fvwm/system.fvwmrc.  Li ho
+  eliminati nella versione corrente, ma sono disponibili su richiesta:
+
+
+  Scrivete a: ``Menu support suggestions <fvwmrc@lege.com>'', Soggetto:
+  ``Menu support suggestions''
+
+
+
+  33..  LLaa ssoolluuzziioonnee ddiiaall--oonn--ddeemmaanndd
+
+  Scritta da Jan P. Tietze <jptietze@mail.hh.provi.de>.
+
+  Molti utenti Linux accedono a Internet tramite una linea telefonica, e
+  molti hanno deciso di implementare sul loro sistema le caratteristiche
+  dial-on-demand.  Ciò significa che non appena un pacchetto IP è pronto
+  per lasciare la rete o l'host locali, viene automaticamente stabilito
+  il collegamento ad un fornitore di servizi Internet (ISP).  Il
+  collegamento cadrà dopo un certo periodo durante il quale nessun
+  pacchetto sarà transitato.
+
+  Nonostante ciò sia molto comodo ed economico, vi è un caso particolare
+  nel quale non è né comodo (dato che il tempo necessario per iniziare
+  un collegamento via modem è notevole) né economico, e questo è il caso
+  dell'invio di e-mail.  L'e-mail viene normalmente spedita tramite
+  SMTP, consegnata direttamente dal vostro sistema oppure tramite un
+  host SMTP in Internet solitamente residente nella rete del vostro ISP.
+
+  Con le linee telefoniche, è necessario stabilire un collegamento ogni
+  qualvolta si voglia inviare un messaggio. La cosa può andare se dovete
+  spedire un solo messaggio, ma se dovesse capitarvi di inviare messaggi
+  multipli, rendendo così necessari ripetuti collegamenti, la cosa può
+  rivelarsi tediosa e monetariamente dispendiosa. Inoltre se il vostro
+  ISP impone limiti di orario per il vostro accesso, ciò vi costringerà
+  a posporre i vostri messaggi in determinate ore del giorno, ed
+  inviarli manualmente.
+
+  La sezione 1 di questo documento vi risolverà la situazione nella
+  quale una ricerca esterna di DNS provocherà l'inizio del collegamento,
+  anche se la vostra e-mail verrà solo accodata. La ragione è dovuta al
+  fatto che sendmail vuole "canonificare" i nomi degli host.
+
+  La soluzione di questo problema consta di due passi: prima di tutto
+  dobbiamo modificare moderatamente sendmail.cf. Dopodiché dovremo
+  definire il processo dell'attuale consegna della posta. Personalmente
+  preferisco che sia cron ad occuparsi di questo lavoro e descriverò qui
+  sotto i passaggi da fare.
+
+
+
+  33..11..  CCoonnffiigguurraarree sseennddmmaaiill..ccff
+
+  Per le ragioni indicate al punto [1.2], raccomando la modifica del
+  sorgente m4 invece di operare direttamente su sendmail.cf.  Vi salverà
+  da molti problemi e farà sì che il cambio della configurazione sia più
+  comprensibile.
+
+  Prima di tutto operiamo le modifiche indicate nella prima parte di
+  questo documento. In seguito andremo nello specifico della
+  configurazione dial-on-demand.
+
+
+  33..11..11..  CCoonnffiigguurraarree ddiirreettttaammeennttee sseennddmmaaiill..ccff,, ppeerr ccoonnffiigguurraazziioonnii sseemm­­
+  pplliiccii
+
+  La configurazione diretta è parecchio poco pratica e tutto tranne che
+  descrittiva, ma ovviamente è una vostra scelta.
+
+  Vicino alla parte finale del vostro sendmail.cf dovrebbe esserci una
+  riga come questa:
+
+
+
+       R$* < @ $* $~P > $*             $: $1 < @ $[ $2 $3 $] > $4
+
+
+
+  Fate precedere questa riga da "#" in modo che divenga:
+
+
+
+       #R$* < @ $* $~P > $*            $: $1 < @ $[ $2 $3 $] > $4
+
+
+
+  33..11..22..  CCoonnffiigguurraarree sseennddmmaaiill..ccff ccoonn iill ssoorrggeennttee mm44..
+
+  Aggiungete la seguente riga al vostro
+  /usr/src/sendmail-8.8.7/cf/cf/vostronomehost.smtp.mc:
+
+
+
+       FEATURE(nocanonify)dnl
+
+
+
+  Il vostro sendmail.cf finale può essere compilato dando i seguenti
+  comandi. Ricordatevi sempre di fare una copia di riserva del vostro
+  attuale /etc/sendmail.cf prima di installarne uno nuovo:
+
+
+
+       cp /etc/sendmail.cf /etc/sendmail.cf.bak
+       cd /usr/src/sendmail-8.8.7/cf/cf
+       m4 vostronomehost.smtp.mc > /etc/sendmail.cf
+
+
+
+  33..22..  AAggggiiuunnggeerree iill rriittaarrddoo ddii cchhiiaammaattaa
+
+  È spesso utile, specialmente su linee con modem, inserire un ritardo
+  di chiamata. Ciò significa che se sendmail inizia una connessione nel
+  tentativo di inviare una e-mail (prendendo la linea telefonica) ma il
+  collegamento richiede più tempo per essere stabilito rispetto a ciò
+  che sendmail ritiene necessario, sendmail aspetterà semplicemente
+  alcuni secondi e ritenterà.
+
+
+  33..22..11..  CCoonnffiigguurraarree sseennddmmaaiill..ccff ddiirreettttaammeennttee
+
+  Da qualche parte nel vostro sendmail.cf dovrebbe esserci una riga come
+  questa:
+
+
+
+       #O DialDelay=10s
+
+
+
+  (o molto simile). cancellate il ``#''. Se non c'è alcun ``#''
+  all'inizio della riga, allora dovete considerare che tutto è a posto
+  (vuol dire che è già stato abilitato precedentemente).
+
+  Se non trovate questa riga nel vostro sendmail.cf, inseritela pure (la
+  cosa migliore è quella di porla nella parte "options" del file):
+
+
+
+       O DialDelay=10s
+
+
+
+  Modificate il valore ``10s'' in quello che ritenete fare al caso
+  vostro.
+
+
+  33..22..22..  CCoonnffiigguurraarree sseennddmmaaiill..ccff ccooll ssoorrggeennttee mm44
+
+  Aggiungete la linea seguente al file
+  /usr/src/sendmail-8.8.7/cf/cf/vostronomehost.smtp.mc:
+
+
+
+       define(`confDIAL_DELAY',`10s')
+
+
+
+  Modificate il valore ``10s'' in quello che ritenete fare al caso
+  vostro.
+
+  Il vostro sendmail.cf finale può essere compilato dando i seguenti
+  comandi. Ricordatevi sempre di fare una copia di riserva del vostro
+  attuale /etc/sendmail.cf prima di installarne uno nuovo:
+
+
+
+       cp /etc/sendmail.cf /etc/sendmail.cf.bak
+       cd /usr/src/sendmail-8.8.7/cf/cf
+       m4 yourhostname.smtp.mc > /etc/sendmail.cf
+
+
+
+  44..  IInnvviiaarree llaa ppoossttaa
+
+  L'invio della posta può essere effettuato invocando il comando
+  "sendmail -q".  Per quelli interessati a sapere ciò che sendmail sta
+  facendo, "sendmail -q -v" vi darà una descrizione più dettagliata del
+  processo di invio.
+
+  È molto conveniente automatizzare il processo di invio dell'e-mail.
+  Molto comunemente viene usato cron per questo processo.
+
+
+  44..11..  CCoommee iinnvviiaarree ee--mmaaiill aadd uunn ddeetteerrmmiinnaattoo oorraarriioo
+
+  Editate il vostro crontab:
+
+
+
+       crontab -e
+
+
+
+  Aggiungete delle righe in questa forma:
+
+
+
+       05 18-23,0-7    * * Mon,Tue,Wed,Thu,Fri /usr/sbin/sendmail -q
+       05 *            * * Sat,Sun             /usr/sbin/sendmail -q
+
+
+
+  Riferitevi alle pagine man di cron (disponibili con "man 5 crontab")
+  per informazioni ulteriori.  Il formato mi sembra piuttosto ovvio.
+  L'inserimento d'esempio di crontab mostra che la posta (soltanto e
+  solamente se inserita in coda) verrà inviata dopo 5 minuti di ogni ora
+  nei giorni feriali, iniziando alle 18:05 e fermandosi alle 7:05 del
+  mattino dopo. Nei fine settimana la posta verrà spedita 5 minuto dopo
+  l'ora, cominciando alle 0:05 di sabato e finendo alle 23:05 di
+  domenica.
+
+  Usando un sistema dial-on-demand, è talvolta desiderabile ricevere la
+  vostra e-mail attraverso il protocollo POP3 a determinati orari del
+  giorno.  Per questo compito è possibile inserire una riga simile a
+  questa nel vostro crontab:
+
+
+
+       0 21            * * * popclient -3 -u <nomeutentePOP3> -p <password> -o /var/spool/mail/<nomeutentelocale>
+       <mailhost.somedomain.com>
+
+
+
+  Naturalmente va tutto su una riga sola.
+
+  salvate il file e uscite dall'editor. Il crontab è ora installato.
+
+
+

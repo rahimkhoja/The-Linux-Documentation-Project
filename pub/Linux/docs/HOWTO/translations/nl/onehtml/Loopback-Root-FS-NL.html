@@ -1,0 +1,651 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+<HEAD>
+ <META NAME="GENERATOR" CONTENT="SGML-Tools 1.0.9">
+ <TITLE>De Loopback Root FileSystem HOWTO</TITLE>
+
+
+</HEAD>
+<BODY>
+<H1>De Loopback Root FileSystem HOWTO</H1>
+
+<H2>door Andrew M. Bishop, <CODE>
+<A HREF="mailto:amb@gedanken.demon.co.uk">amb@gedanken.demon.co.uk</A></CODE>, <BR>
+Vertaald door: Ellen Bokhorst, 
+<A HREF="mailto:bokkie@nl.linux.org">bokkie@nl.linux.org</A></H2>v1.1, 24 september 1999
+<P><HR>
+<EM>In deze HOWTO wordt uitgelegd hoe het Linux loopback device kan worden
+gebruikt voor een installatie in het Linux native bestandssysteemformaat
+dat zonder opnieuw te partitioneren vanaf een DOS-partitie kan worden gedraaid.
+Tevens worden andere gebruiken met dezelfde techniek besproken.</EM>
+<HR>
+<H2><A NAME="s1">1. Introductie</A></H2>
+
+<H2>1.1 Copyright</H2>
+
+<P>De Loopback Root Filesystem HOWTO
+Copyright (C) 1998,99  Andrew M. Bishop (amb@gedanken.demon.co.uk).
+<P>Deze documentatie is vrije documentatie; je kunt het herdistribueren en/of
+wijzigen onder de voorwaarden van de GNU General Public Licentie zoals
+gepubliceerd door de Free Software Foundation; &oacute;f versie 2 &oacute;f
+(naar keuze) een eventuele latere versie.
+<P>Dit programma is gedistribueerd in de hoop dat het van nut zal zijn, maar
+ZONDER GARANTIE; zonder zelfs de impliciete garantie van
+VERKOOPBAARHEID of GESCHIKTHEID VOOR EEN BEPAALD DOEL. Zie de
+GNU General Public Licentie voor meer details.
+<P>De GNU General Public Licentie is verkrijgbaar vanaf 
+<A HREF="http://www.fsf.org/">http://www.fsf.org/</A>
+of, schrijf naar de Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111 USA
+<H2>1.2 Revisie Historie</H2>
+
+<P>
+<DL>
+<DT><B>Versie 1.0.0</B><DD><P>Initi&euml;le Versie (juni 1998)
+</DL>
+<P>
+<DL>
+<DT><B>Versie 1.0.1-1.0.3</B><DD><P>Kleine wijzigingen, wijzigingen met betrekking
+tot het wijzigen van de kernelversie, typfoutjes enz. (1998 - juli 1999)
+</DL>
+
+<DL>
+<DT><B>Versie 1.1</B><DD><P>Copyrightinformatie toegevoegd en opnieuw aangeleverd 
+(september 1999)
+</DL>
+<H2><A NAME="s2">2. Grondbeginselen van Loopback Devices en Ramdisks</A></H2>
+
+<P>Als eerste zal ik een aantal van de algemene grondbeginselen beschrijven
+die worden gebruikt bij het instellen van een loopback filesystem als
+het root-device.
+<H2>2.1 Loopback Devices</H2>
+
+<P>Een <B>loopback device</B> onder Linux is een virtueel device dat net als
+ieder ander media-device kan worden gebruikt.
+<P>Voorbeelden van gewone media-devices zijn harddisk-partities zoals
+<CODE>/dev/hda1</CODE>, <CODE>/dev/hda2</CODE>, <CODE>/dev/sda1</CODE>, of gehele
+disks zoals het diskettestation
+<CODE>/dev/fd0</CODE> enz. Het zijn allen devices die kunnen worden gebruikt om
+bestanden en directory-structuren te bevatten. Ze kunnen met het benodigde
+bestandssysteem (ext2fs, msdos, ntfs enz.) worden geformatteerd en 
+vervolgens worden gemount.
+<P>Het loopback filesystem associeert een bestand op een ander bestandssysteem
+als een compleet device. Dit kan dan net als enig ander device worden
+geformatteerd en gemount. Om dit te kunnen doen wordt het device genaamd
+<CODE>/dev/loop0</CODE>, <CODE>/dev/loop1</CODE>, enz. geassocieerd met het bestand
+en vervolgens wordt dit nieuwe virtuele device gemount.
+<H2>2.2 Ramdisk Devices</H2>
+
+<P>Onder Linux is ook een ander type virtueel device gemount als bestandssysteem
+mogelijk, dit is het <B>ramdisk device</B>.
+<P>In dit geval refereert het device niet naar fysieke hardware, maar naar
+een deel van het geheugen dat voor dit doel is gereserveerd.
+Het in beslag genomen geheugen wordt nooit naar disk geswapt, maar
+blijft in de diskcache.
+<P>Een ramdisk kan ten alle tijden worden aangemaakt door naar het ramdisk-device
+<CODE>/dev/ram0</CODE> of <CODE>/dev/ram1</CODE> enz. te schrijven. Dit kan vervolgens
+op dezelfde manier worden geformatteerd en gemount als het loopback-device.
+<P>Wanneer een ramdisk wordt gebruikt om vanaf te booten (zoals vaak op 
+Linux-installatiedisks of rescue-disks wordt gedaan), dan kan het disk-image
+(de gehele inhoud van de disk als een enkel bestand) op de bootdisk in
+gecomprimeerde vorm worden opgeslagen.
+Dit wordt automatisch door de kernel herkend wanneer het boot en het
+wordt voordat het wordt gemount naar ramdisk gedecomprimeerd.
+<H2>2.3 Het Initi&euml;le Ramdisk Device</H2>
+
+<P>Het <B>initi&euml;le ramdisk</B> device is onder Linux een ander belangrijk
+mechanisme dat we nodig hebben om een loopback-device als een
+root-bestandssysteem te kunnen gebruiken.
+<P>Wanneer de initi&euml;le ramdisk wordt gebruikt, wordt het bestandssysteem
+image naar het geheugen kopieerd en gemount zodat de bestanden erop kunnen
+worden benaderd. Een programma op deze ramdisk (genaamd
+<CODE>/linuxrc</CODE>) wordt uitgevoerd en wanneer het daarmee klaar is, wordt een
+ander device als het root-bestandssysteem gemount.
+De oude ramdisk is echter nog steeds aanwezig en is gemount op de directory
+<CODE>/initrd</CODE> als dat er is of beschikbaar via het device
+<CODE>/dev/initrd</CODE>.
+<P>Dit is ongebruikelijk gedrag aangezien de normale bootreeks vanaf de
+toegewezen root-partitie boot en het blijft draaien.
+Met de initi&euml;le ramdisk-optie is het mogelijk dat de root-partitie
+kan wijzigen voordat de hoofd-bootreeks is gestart.
+<H2>2.4 Het Root Bestandssysteem</H2>
+
+<P>Het root-bestandssysteem is het device dat als eerste wordt gemount zodat
+het na het booten verschijnt als de directory genaamd <CODE>/</CODE>.
+<P>Er zijn een aantal complicaties met het root-bestandssysteem die te wijten
+zijn aan het feit dat het alle bestanden bevat. 
+Bij het booten worden de <CODE>rc</CODE> scripts uitgevoerd, dit zijn &oacute;f
+de bestanden in <CODE>/etc/rc.d</CODE> of <CODE>/etc/rc?.d</CODE> afhankelijk van
+de versie van het programma <CODE>/etc/init</CODE>.
+<P>Wanneer het systeem is geboot, is het niet mogelijk de root-partitie te
+unmounten of wijzigen, aangezien alle programma's het in zekere mate zullen
+gebruiken. Daarom is de initi&euml;le ramdisk zo nuttig, omdat het zo kan
+worden gebruikt dat de uiteindelijke root-partitie niet dezelfde is als
+die tijdens het booten wordt geladen.
+<H2>2.5 De Linux Boot Reeks</H2>
+
+<P>Om te laten zien hoe de initi&euml;le ramdisk in de bootreeks opereert,
+is de volgorde van gebeurtenissen hieronder weergegeven.
+<P>
+<OL>
+<LI>De kernel wordt in het geheugen geladen, dit wordt bewerkstelligd door
+<CODE>LILO</CODE> of <CODE>LOADLIN</CODE>. Je ziet de melding 
+<CODE>Loading...</CODE> als dit gebeurt.</LI>
+<LI>De ramdisk-image wordt in het geheugen geladen, weer wordt dit door
+<CODE>LILO</CODE> of <CODE>LOADLIN</CODE> uitgevoerd. 
+Je ziet de melding <CODE>Loading...</CODE> als dit gebeurt.</LI>
+<LI>De kernel wordt genitialiseerd, inclusief de ontleding van de
+commandoregel-opties en het instellen van de ramdisk als het root-device.</LI>
+<LI>Het programma <CODE>/linuxrc</CODE> wordt op de initi&euml;le ramdisk 
+uitgevoerd.</LI>
+<LI>Het root-device wordt gewijzigd zoals gespecificeerd in de
+kernelparameter.</LI>
+<LI>Het init-programma <CODE>/etc/init</CODE> wordt uitgevoerd wat de 
+gebruikersconfigurabele bootreeks uit zal voeren.</LI>
+</OL>
+<P>Dit is slechts een vereenvoudigde versie van wat er plaatsvindt, maar het
+is voldoende om uit te leggen hoe de kernel opstart en waar de initi&euml;le
+ramdisk wordt gebruikt.
+<H2><A NAME="s3">3. Hoe een Loopback Root Device aan te maken</A></H2>
+
+<P>Nu dat de algemene grondbeginselen zijn uitgelegd, kan de te gebruiken
+methode voor het aanmaken van het loopback-device worden uiteengezet.
+<H2>3.1 Benodigdheden</H2>
+
+<P>Om het loopback rootdevice aan te maken zijn een aantal dingen benodigd.
+<P>
+<UL>
+<LI>Een werkend Linux-systeem.</LI>
+<LI>Een manier om grote bestanden naar de DOS-doelpartitie te kopi&euml;ren.</LI>
+</UL>
+<P>Het belangrijkste is de toegang tot een ge&iuml;nstalleerd Linux-systeem.
+Dit omdat het loop-device alleen onder Linux kan worden aangemaakt.
+Dit betekent dat het niet mogelijk is een werkend systeem vanuit het niets
+te booten. De benodigdheden van het Linux-systeem waar je gebruik van maakt
+is dat je er een kernel op kunt compileren.
+<P>Als het loopback-device &eacute;&eacute;nmaal is aangemaakt, zal het
+een groot bestand zijn. Ik heb bestanden van 80 MB gebruikt, maar ook al
+was dit voldoende voor een X-terminal, mogelijk dat het niet genoeg is
+als je het voor veel meer wilt gebruiken. Dit bestand moet naar de 
+DOS-partitie worden gekopieerd, dus er moet &oacute;f van
+een netwerk, &oacute;f van een heleboel diskettes gebruik worden gemaakt.
+<P>De benodigde software bestaat uit:
+<P>
+<UL>
+<LI><CODE>LOADLIN</CODE> versie 1.6 of hoger</LI>
+<LI>Een versie van <CODE>mount</CODE> welke loopback-devices ondersteunt</LI>
+<LI>Een kernelversie welke de benodigde opties ondersteunt.</LI>
+</UL>
+<P>Dit zou voor recente Linux-installaties standaard aanwezig moeten zijn.
+<H2>3.2 Aanmaken van de Linux Kernel</H2>
+
+<P>Ik maakte het loopback-device met Linux-kernel versie 2.0.31, ook andere
+versies zouden moeten werken, maar op z'n minst moeten de volgende opties
+opgenomen zijn.
+<P>De kernel-opties die je zal moeten activeren zijn:
+<UL>
+<LI>RAM disk support (<CODE>CONFIG_BLK_DEV_RAM</CODE>).</LI>
+<LI>Initial RAM disk (initrd) support (<CODE>CONFIG_BLK_DEV_INITRD</CODE>).</LI>
+<LI>Loop device support (<CODE>CONFIG_BLK_DEV_LOOP</CODE>).</LI>
+<LI>fat fs support (<CODE>CONFIG_FAT_FS</CODE>).</LI>
+<LI>msdos fs support (<CODE>CONFIG_MSDOS_FS</CODE>).</LI>
+</UL>
+<P>De eerste twee zijn voor het RAM-diskdevice zelf en voor het initi&euml;le
+ramdisk-device.
+De volgende is de optie voor het loopback bestandssysteem. De laatste twee
+bestaan uit de ondersteuning voor het msdos bestandssysteem welke nodig is
+voor het mounten van de DOS-partitie.
+<P>Een kernel compileren zonder modules is de eenvoudigste optie, alhoewel
+het mogelijk zou moeten zijn als je modules wilt, ik heb het echter niet
+geprobeerd. Als er modules worden gebruikt, dan zou je ervoor moeten zorgen
+dat je de bovenstaande opties hebt meegecompileerd en niet als modules.
+<P>Mogelijk moet je afhankelijk van de door jouw gebruikte kernel een kernelpatch
+toepassen. Het is een zeer eenvoudige patch die het je mogelijk maakt het
+loopback-device als root-bestandssysteem te gebruiken.
+<UL>
+<LI>Kernelversies voor 2.0.0; hierover heb ik geen informatie.</LI>
+<LI>Kernelversie 2.0.0 tot 2.0.34; je moet een kernelpatch toepassen voor
+2.0.x kernels zoals hieronder wordt getoond.</LI>
+<LI>Kernelversie 2.0.35 tot 2.0.x; een kernelpatch is niet nodig.</LI>
+<LI>Kernelversie 2.1.x; je moet een kernelpatch toepassen voor 2.0.x of
+2.2.x kernels zoals hieronder wordt getoond, afhankelijk van de exacte 2.1.x
+versie.</LI>
+<LI>Kernelversie 2.2.0 tot 2.2.10; je moet de kernelpatch toepassen voor
+2.2.x kernels zoals hieronder getoond.</LI>
+<LI>Kernelversie 2.3.x; je moet de kernelpatch toepassen voor 2.2.x kernels
+zoals hieronder getoond.</LI>
+</UL>
+<P>Bij 2.0.x kernels moet er in het bestand <CODE>/init/main.c</CODE> een enkele
+regel worden toegevoegd zoals is weergegeven in de hieronder gewijzigde versie.
+De regel met <CODE>"loop", 0x0700</CODE> is de regel die werd toegevoegd.
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+static void parse_root_dev(char * line)
+{
+        int base = 0;
+        static struct dev_name_struct {
+                const char *name;
+                const int num;
+        } devices[] = {
+                { "nfs",     0x00ff },
+                { "loop",    0x0700 },
+                { "hda",     0x0300 },
+
+...
+
+                { "sonycd",  0x1800 },
+                { NULL, 0 }
+        };
+
+...
+
+}
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Bij 2.2.x kernels moeten aan het bestand <CODE>/init/main.c</CODE> drie regels
+worden toegevoegd zoals door de gewijzigde versie hieronder wordt getoond.
+De regel waarin staat <CODE>"loop",
+0x0700</CODE> en de regel ervoor en erna zijn degenen die moeten worden 
+toegevoegd.
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+static struct dev_name_struct {
+        const char *name;
+        const int num;
+} root_dev_names[] __initdata = {
+#ifdef CONFIG_ROOT_NFS
+        { "nfs",     0x00ff },
+#endif
+#ifdef CONFIG_BLK_DEV_LOOP
+        { "loop",    0x0700 },
+#endif
+#ifdef CONFIG_BLK_DEV_IDE
+        { "hda",     0x0300 },
+
+...
+
+        { "ddv", DDV_MAJOR &lt;&lt; 8},
+#endif
+        { NULL, 0 }
+};
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Zodra de kernel is geconfigureerd, kan het worden gecompileerd waarmee
+een bestand <CODE>zImage</CODE> wordt geproduceerd
+(<CODE>make zImage</CODE>). Dit bestand zal na de compilatie te vinden zijn in
+<CODE>arch/i386/boot/zImage</CODE>.
+<H2>3.3 Aanmaken van de Initi&euml;le Ramdisk Device</H2>
+
+<P>De initi&euml;le ramdisk wordt het eenvoudigst van het begin aangemaakt als een
+loopback-device.
+Je zal dit als root moeten doen. De commando's die je hiervoor uit zal moeten
+voeren, staan hieronder. Er wordt vanuit gegaan dat ze vanuit de home-directory
+van root (<CODE>/root</CODE>) worden opgestart.
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+mkdir /root/initrd
+dd if=/dev/zero of=initrd.img bs=1k count=1024
+mke2fs -i 1024 -b 1024 -m 5 -F -v initrd.img
+mount initrd.img /root/initrd -t ext2 -o loop
+cd initrd
+[maak de bestanden aan]
+cd ..
+umount /root/initrd
+gzip -c -9 initrd.img &gt; initrdgz.img
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Hier zijn een aantal stappen voor, en die kunnen als volgt worden
+beschreven.
+<OL>
+<LI>Maak een mountpoint voor de initi&euml;le ramdisk (een lege directory).</LI>
+<LI>Maak een leeg bestand van de benodigde grootte aan. Hier heb ik
+1024kB gebruikt, mogelijk heb je afhankelijk van de inhoud meer of minder
+nodig (de grootte is de laatste parameter).</LI>
+<LI>Maak in het lege bestand een ext2 bestandssysteem aan.</LI>
+<LI>Mount het bestand op het mountpoint, dit gebruikt het loopback-device.</LI>
+<LI>Ga naar het gemounte loopback-device.</LI>
+<LI>Maak de benodigde bestanden aan (zie hieronder voor details).</LI>
+<LI>Ga uit het gemounte loopback-device.</LI>
+<LI>Unmount het device.</LI>
+<LI>Maak een comprimeerde versie voor later gebruik.</LI>
+</OL>
+<P><B>Inhoud Van De Initi&euml;le Ramdisk</B>
+<P>De bestanden die je op de ramdisk nodig zult hebben, zijn de minimum
+vereisten om commando's uit te kunnen voeren.
+<P>
+<UL>
+<LI><CODE>/linuxrc</CODE> Het script dat wordt uitgevoerd om het msdos
+bestandssysteem uit te voeren (zie hieronder).</LI>
+<LI><CODE>/lib/*</CODE> De dynamische linker en library's voor de
+programma's.</LI>
+<LI><CODE>/etc/*</CODE> De cache die door de dynamische linker wordt
+gebruikt (niet echt nodig, maar maakt dat het stopt foutmeldingen te
+produceren).</LI>
+<LI><CODE>/bin/*</CODE> Een shell-interpreter (<CODE>ash</CODE> omdat het kleiner
+is dan <CODE>bash</CODE>. De <CODE>mount</CODE> en <CODE>losetup</CODE> programma's voor
+het afhandelen van de DOS-disk en het instellen van de loopback-devices.</LI>
+<LI><CODE>/dev/*</CODE> De devices die zullen worden gebruikt. Je hebt
+<CODE>/dev/zero</CODE> voor <CODE>ld-linux.so</CODE> nodig, <CODE>/dev/hda*</CODE>
+om de msdos-disk te mounten en <CODE>/dev/loop*</CODE> voor het loopback device.</LI>
+<LI><CODE>/mnt</CODE>Een lege directory om de msdos-disk op te mounten.</LI>
+</UL>
+<P>De initi&euml;le ramdisk die ik gebruikte, vind je hieronder. De inhoud
+kwam uit op 800kB waarbij de overhead van het bestandssysteem is inbegrepen.
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+total 18
+drwxr-xr-x   2 root     root         1024 Jun  2 13:57 bin
+drwxr-xr-x   2 root     root         1024 Jun  2 13:47 dev
+drwxr-xr-x   2 root     root         1024 May 20 07:43 etc
+drwxr-xr-x   2 root     root         1024 May 27 07:57 lib
+-rwxr-xr-x   1 root     root          964 Jun  3 08:47 linuxrc
+drwxr-xr-x   2 root     root        12288 May 27 08:08 lost+found
+drwxr-xr-x   2 root     root         1024 Jun  2 14:16 mnt
+
+./bin:
+total 168
+-rwxr-xr-x   1 root     root        60880 May 27 07:56 ash
+-rwxr-xr-x   1 root     root         5484 May 27 07:56 losetup
+-rwsr-xr-x   1 root     root        28216 May 27 07:56 mount
+lrwxrwxrwx   1 root     root            3 May 27 08:08 sh -&gt; ash
+
+./dev:
+total 0
+brw-r--r--   1 root     root       3,   0 May 20 07:43 hda
+brw-r--r--   1 root     root       3,   1 May 20 07:43 hda1
+brw-r--r--   1 root     root       3,   2 Jun  2 13:46 hda2
+brw-r--r--   1 root     root       3,   3 Jun  2 13:46 hda3
+brw-r--r--   1 root     root       7,   0 May 20 07:43 loop0
+brw-r--r--   1 root     root       7,   1 Jun  2 13:47 loop1
+crw-r--r--   1 root     root       1,   3 May 20 07:42 null
+crw-r--r--   1 root     root       5,   0 May 20 07:43 tty
+crw-r--r--   1 root     root       4,   1 May 20 07:43 tty1
+crw-r--r--   1 root     root       1,   5 May 20 07:42 zero
+
+./etc:
+total 3
+-rw-r--r--   1 root     root         2539 May 20 07:43 ld.so.cache
+
+./lib:
+total 649
+lrwxrwxrwx   1 root     root           18 May 27 08:08 ld-linux.so.1 -&gt; ld-linux.so.1.7.14
+-rwxr-xr-x   1 root     root        21367 May 20 07:44 ld-linux.so.1.7.14
+lrwxrwxrwx   1 root     root           14 May 27 08:08 libc.so.5 -&gt; libc.so.5.3.12
+-rwxr-xr-x   1 root     root       583795 May 20 07:44 libc.so.5.3.12
+
+./lost+found:
+total 0
+
+./mnt:
+total 0
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>De enige complexe stappen hierbij zijn de devices in <CODE>dev</CODE>. Gebruik
+het programma
+<CODE>mknod</CODE> om ze aan te maken, gebruik de bestaande devices in <CODE>/dev</CODE>
+als een template voor het verkrijgen van de benodigde parameters.
+<P><B>Het bestand /linuxrc</B>
+<P>Het bestand <CODE>/linuxrc</CODE> op de initi&euml;le ramdisk is nodig voor
+alle voorbereidingen zodat het loopback-device voor de root-partitie
+kan worden gebruikt als 't be&euml;indigt.
+<P>Het voorbeeld hieronder probeert <CODE>/dev/hda1</CODE> als een msdos-partitie
+te mounten en als het daarin slaagt stelt het de bestanden <CODE>/linux/linuxdsk.img</CODE> als <CODE>/dev/loop0</CODE> en <CODE>/linux/linuxswp.img</CODE> als
+<CODE>/dev/loop1</CODE> in.
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+#!/bin/sh
+
+echo INITRD: Probeer /dev/hda1 als msdos te mounten
+
+if /bin/mount -n -t msdos /dev/hda1 /mnt; then
+
+   echo INITRD: Mount OK
+   /bin/losetup /dev/loop0 /mnt/linux/linuxdsk.img
+   /bin/losetup /dev/loop1 /mnt/linux/linuxswp.img
+   exit 0
+
+else
+
+   echo INITRD: Mount mislukt
+   exit 1
+
+fi
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Het eerste device <CODE>/dev/loop0</CODE> zal het root-device worden en het
+tweede <CODE>/dev/loop1</CODE> device de swap-space.
+<P>Als je waneer je klaar bent als niet-root gebruiker naar de DOS-partitie
+wilt kunnen schrijven, dan kun je in plaats daarvan gebruik maken van
+<CODE>mount -n -t msdos /dev/hda1 /mnt -o uid=0,gid=0,umask=000,quiet</CODE>. 
+Hiermee zal alle toegang tot de DOS-partitie naar root worden ingedeeld
+en zullen de permissies dienovereenkomstig worden ingesteld.
+<H2>3.4 Aanmaken van het Root Device</H2>
+
+<P>Het te gebruiken root-device is het bestand <CODE>linuxdsk.img</CODE>. Je zal
+dit op dezelfde wijze, maar dan groter, aan moeten maken zoals de
+initi&euml;le ramdisk werd aangemaakt. Je kunt iedere gewenste
+Linux-installatie op deze disk installeren.
+<P>De eenvoudigste manier zou kunnen zijn om er een bestaande Linux-installatie
+naar te kopi&euml;ren. Een alternatief is er een nieuwe Linux-installatie
+op te kopi&euml;ren.
+<P>Ervan uitgaande dat je dit hebt gedaan, zijn er nog een paar kleine
+wijzigingen nodig.
+<P>Het bestand <CODE>/etc/fstab</CODE> moet naar de root-partitie en de swap
+verwijzen door gebruik te maken van de twee loopback-devices die op de
+initi&euml;le ramdisk zijn ingesteld.
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+/dev/loop0     /      ext2   defaults 1 1
+/dev/loop1     swap   swap   defaults 1 1
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Dit zal ervoor zorgen dat de kernel niet in de war zal raken waar
+het root-device is als het echte root-device zal worden gebruikt.
+Bovendien maakt het 't mogelijk de swap-space op dezelfde manier
+toe te voegen zoals het gewoonlijk wordt gedaan.
+Je zou iedere andere verwijzing naar een rootdisk-device of swap-partitie
+moeten verwijderen.
+<P>Als je nadat Linux is opgestart de DOS-partitie wilt kunnen lezen, dan zal
+je nog een aantal extra wijzigingen moeten maken.
+<P>Maak een directory genaamd <CODE>/initrd</CODE> aan, hier zal de initi&euml;le
+ramdisk worden gemount zodra het loopback root-bestandssysteem is gemount.
+<P>Maak een symbolische link genaamd <CODE>/DOS</CODE> aan dat verwijst naar
+<CODE>/initrd/mnt</CODE> waar de echte DOS-partitie zal worden gemount.
+<P>Voeg een regel toe aan het rc bestand waarmee de disks worden gemount.
+Hier zal het commando
+<CODE>mount -f -t msdos /dev/hda1 /initrd/mnt</CODE> worden uitgevoerd, waarmee
+een 'nep' mount van de DOS-partitie zal worden aangemaakt, waardoor alle
+programma's (zoals <CODE>df</CODE>) zal weten dat de DOS-partitie is gemount en
+waar het te vinden is. Als je andere opties gebruikte in het bestand
+<CODE>/linuxrc</CODE> dan zou je die ook hier moeten gebruiken.
+<P>Een Linux-kernel op dit root-device is niet nodig, aangezien dat reeds eerder
+is geladen. Als je echter gebruik maakt van modules, dan zou je ze net als
+anders op dit device in moeten voegen.
+<H2>3.5 Aanmaken van het Swap Device</H2>
+
+<P>Het root-device dat je zal gaan gebruiken, is het bestand
+<CODE>linuxswap.img</CODE>. Het swap-device is zeer eenvoudig aan te maken.
+Maak een leeg bestand aan zoals dit werd gedaan voor de initi&euml;le
+ramdisk en start dan <CODE>mkswap linuxswap.img</CODE> op om het te
+initialiseren.
+<P>De grootte van de swap-space is afhankelijk van wat je van plan bent met
+het ge&iuml;nstalleerde systeem, maar ik raad je een hoeveelheid RAM aan
+tussen 8 MB en de hoeveelheid RAM dat je hebt.
+<H2>3.6 Aanmaken van de MSDOS-Directory</H2>
+
+<P>De bestanden die gebruikt gaan worden, moeten naar de DOS-partitie worden
+verplaatst.
+<P>Dit zijn de bestanden die nodig zijn in de DOS-directory genaamd
+<CODE>C:\LINUX</CODE>:
+<P>
+<UL>
+<LI><CODE>LINUXDSK.IMG</CODE>De disk-image dat het root-device wordt.</LI>
+<LI><CODE>LINUXSWP.IMG</CODE> De swap space.</LI>
+</UL>
+<H2>3.7 Aanmaken van de opstartdiskette</H2>
+
+<P>De opstartdiskette die wordt gebruikt is slechts een gewone DOS geformatteerde
+opstartdiskette.
+<P>Deze wordt vanuit DOS met behulp van <CODE>format a: /s</CODE> aangemaakt.
+<P>Op deze disk zal je een <CODE>AUTOEXEC.BAT</CODE> aan moeten maken (als hieronder)
+en de kernel, gecomprimeerde initi&euml;le ramdisk en het uitvoerbare bestand
+<CODE>LOADLIN</CODE> naar moeten kopi&euml;ren.
+<P>
+<UL>
+<LI><CODE>AUTOEXEC.BAT</CODE> Het door DOS automatisch uitgevoerde batchbestand.</LI>
+<LI><CODE>LOADLIN.EXE</CODE> Het uitvoerbare programma <CODE>LOADLIN</CODE>.</LI>
+<LI><CODE>ZIMAGE</CODE> De Linux-kernel.</LI>
+<LI><CODE>INITRDGZ.IMG</CODE> De gecomprimeerde initi&euml;le ramdisk-image.</LI>
+</UL>
+<P>In het bestand <CODE>AUTOEXEC.BAT</CODE> hoort slechts de volgende regel voor te 
+komen.
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+\loadlin \zImage initrd=\initrdgz.img root=/dev/loop0 ro
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Hiermee wordt het te gebruiken kernel-image gespecificeerd, de initi&euml;le
+ramdisk-image, het root-device nadat de initi&euml;le ramdisk klaar is en
+dat de root-partitie read-only zal worden gemount.
+<H2><A NAME="s4">4. Het booten van het Systeem</A></H2>
+
+<P>Alles wat je nodig hebt om vanaf dit nieuwe root-device te booten, is dat
+de diskette geprepareerd zoals hiervoor is beschreven in het diskettestation
+is gedaan om vanaf te booten.
+<P>Je zal de volgende reeks gebeurtenisssen te zien krijgen.
+<OL>
+<LI>DOS boot</LI>
+<LI>AUTOEXEC.BAT start</LI>
+<LI>LOADLIN wordt uitgevoerd</LI>
+<LI>De Linux-kernel wordt naar het geheugen gekopieerd</LI>
+<LI>De initi&euml;le ramdisk wordt naar het geheugen gekopieerd</LI>
+<LI>De Linux-kernel is begonnen aan de uitvoering</LI>
+<LI>Het bestand <CODE>/linuxrc</CODE> op de initi&euml;le ramdisk wordt uitgevoerd</LI>
+<LI>De DOS-partitie is gemount en de root en swap-devices ingesteld</LI>
+<LI>De bootreeks continueert vanaf het loopback-device</LI>
+</OL>
+<P>Wanneer het systeem hiermee klaar is, kun je de opstartdiskette verwijderen
+en het Linux-systeem gebruiken.
+<H2>4.1 Mogelijke Problemen Met Oplossingen</H2>
+
+<P>Er zijn een aantal fasen waarin dit proces zou kunnen mislukken, ik zal
+proberen uit te leggen wat dat zijn en wat te controleren.
+<P>Wanneer DOS boot is eenvoudig te herkennen door de melding <CODE>MS-DOS
+Starting ...</CODE> op het scherm. Als deze melding niet verschijnt, dan is
+de diskette &oacute;f niet opstartbaar of het systeem kan niet worden
+opgestart vanaf het diskettestation.
+<P>Wanneer de commando's in het <CODE>AUTOEXEC.BAT</CODE> bestand worden
+uitgevoerd, zouden deze standaard naar het scherm moeten worden ge&euml;choot.
+In dit geval gaat het slechts om een enkele regel waarmee
+<CODE>LOADLIN</CODE> wordt opgestart.
+<P>Wanneer <CODE>LOADLIN</CODE> wordt uitgevoerd, zal het twee zeer zichtbare
+dingen doen, als eerste zal het de kernel in het geheugen laden, ten tweede
+zal het de ramdisk naar het geheugen kopi&euml;ren.
+Beiden zijn te herkennen aan een <CODE>Loading...</CODE> melding.
+<P>De kernel begint zichzelf te comprimeren, hierdoor kunnen <B>crs</B>
+fouten ontstaan als de kernel-image beschadigd is.
+Vervolgens zal het de initilisatiereeks starten, welke zeer woordenrijk
+met diagnostische meldingen is. Tijdens deze fase is
+het laden van het initi&euml;le ramdisk-device ook zichtbaar.
+<P>Tijdens de uitvoering van het bestand <CODE>/linuxrc</CODE> zijn er geen
+diagnostische meldingen, maar die kun je zelf als hulp bij het debuggen
+toevoegen. Als het in dit stadium niet lukt het loopback-device als het
+root-device in te stellen, dan zie je wellicht een melding dat er
+geen root-device is en breekt de kernel af.
+<P>De normale bootreeks van het nieuwe root-device zal nu verdergaan en
+hierbij worden heel wat meldingen weergegeven.
+Er kunnen problemen optreden met het read-write mounten van het root-device,
+maar de commandoregel-optie '<CODE>ro</CODE>' van LOADLIN kan dit verhelpen.
+Andere problemen die op kunnen treden bestaan daaruit dat de bootreeks
+van slag is over waar het root-device is, dit is waarschijnlijk te wijten
+aan een probleem met <CODE>/etc/fstab</CODE>.
+<P>Wanneer de bootreeks is voltooid, blijft er nog een probleem over dat
+programma's van slag zijn of de DOS-partitie wel of niet is gemount.
+Daarom is het een goed idee het eerder beschreven nep mount commando
+te gebruiken. Dit maakt 't leven er een stuk eenvoudiger op als je de
+bestanden op het DOS-device wilt benaderen.
+<H2>4.2 Refererende Documenten</H2>
+
+<P>De documenten die ik gebruikte om mijn eerste loopback root-bestandssysteem
+aan te maken, waren:
+<P>
+<P>
+<UL>
+<LI>De Linux kernelsource, in het bijzonder <CODE>init/main.c</CODE></LI>
+<LI>De Linux kerneldocumentatie, in het bijzonder
+<CODE>Documentatie/initrd.txt</CODE> en <CODE>Documentation/ramdisk.txt</CODE>.</LI>
+<LI>De <CODE>LILO</CODE> documentatie.</LI>
+<LI>De <CODE>LOADLIN</CODE> documentatie</LI>
+</UL>
+<H2><A NAME="s5">5. Andere Mogelijkheden met het Loopback Root Device</A></H2>
+
+<P>Nu het principe van het booten van een bestandssysteem in een bestand
+op een DOS-partitie is bewezen, zijn er veel andere dingen die je nu kunt doen.
+<H2>5.1 DOS Harddisk Installatie</H2>
+
+<P>Als het mogelijk is Linux vanaf een bestand op een DOS-harddisk te booten door
+gebruik te maken van een opstartdiskette, dan is het uiteraard ook mogelijk
+dit te doen door de harddisk zelf te gebruiken.
+<P>Een configuratie bootmenu kan worden gebruikt met de optie om
+<CODE>LOADLIN</CODE> vanuit <CODE>AUTOEXEC.BAT</CODE> uit te voeren.
+Hierdoor zal de bootreeks sneller zijn, maar verder is het identiek.
+<H2>5.2 LILO Boot Installatie</H2>
+
+<P>Het gebruik van <CODE>LOADLIN</CODE> is slechts &eacute;&eacute;n optie voor 
+het booten van een Linux-kernel. Er is ook <CODE>LILO</CODE> dat vrijwel
+hetzelfde doet maar zonder dat het DOS nodig heeft.
+<P>In dit geval kan de voor DOS geformatteerde diskette worden vervangen door
+&eacute;&eacute;n die met ext2fs is geformatteerd.
+De details zijn anders zeer vergelijkbaar, met de kernel en de initi&euml;le
+ramdisk bestanden op die disk.
+<P>De reden dat ik koos voor de <CODE>LOADLIN</CODE> methode is dat de argumenten
+die aan <CODE>LILO</CODE> moeten worden meegegeven wat complex zijn.
+Ook is het vanzelfsprekender voor een terloopse waarnemer waar de
+diskette voor is, aangezien het onder DOS kan worden ingelezen.
+<H2>5.3 VFAT / NTFS Installatie</H2>
+
+<P>Ik heb de NTFS-methode geprobeerd en had er geen problemen mee.
+De driver voor het NTFS bestandssysteem is in versie 2.0.x geen standaard
+kerneloptie, maar het is als een patch beschikbaar vanaf
+<A HREF="http://www.informatik.hu-berlin.de/~loewis/ntfs/">http://www.informatik.hu-berlin.de/~loewis/ntfs/</A>. Onder versie 2.2.x
+is de NTFS driver standaard in de kernel opgenomen.
+<P>De enige wijzigingen voor het VFAT- of NTFS-opties bestaan uit de initi&euml;le
+ramdisk, het bestand <CODE>/linuxrc</CODE> moet in plaats van msdos een 
+bestandssysteem van het type vfat of ntfs mounten.
+<P>Ik zou niet weten waarom dit niet tevens op een VFAT-partitie zou werken.
+<H2>5.4 Linux zonder herpartitioneren installeren</H2>
+
+<P>Voor het proces waarbij Linux vanaf een standaarddistributie op een PC wordt
+ge&iuml;nstalleerd, is een diskette nodig en het herpartitioneren van
+de disk. Deze fase zou in plaats daarvan kunnen worden bewerkstelligd door
+een bootdiskette, waarmee een leeg loopback-device en een swapbestand worden
+aangemaakt. Hiermee zou het mogelijk worden de installatie als normaal
+voort te zetten, maar zou in het loopbackdevice installeren in plaats van op
+een partitie.
+<P>Dit zou als alternatief voor een <CODE>UMSDOS</CODE> installatie kunnen worden
+gebruikt, het zou effici&euml;nter in diskgebruik zijn, aangezien de
+minimum inbeslaggenomen eenheid in het ext2 bestandssysteem 1kB is in plaats
+van de tot aan 32kB op DOS-partities.
+Het kan ook op VFAT en als NTFS geformatteerde disks worden gebruikt
+welke anders een probleem zou zijn.
+<H2>5.5 Booten van een Niet-opstartbaar device</H2>
+
+<P>Deze methode kan ook worden gebruikt om een Linux systeem vanaf een device
+te booten dat normaal gesproken niet opstartbaar is.
+<P>
+<UL>
+<LI>CD-Rom</LI>
+<LI>Zip Disks</LI>
+<LI>Parallelle poort diskdrives</LI>
+</UL>
+<P>Uiteraard zijn er nog vele andere devices die zouden kunnen worden gebruikt, 
+NFS root filesystems zijn reeds in de kernel als een optie opgenomen, maar
+in plaats daarvan zou ook de hier beschreven methode kunnen worden gebruikt.
+</BODY>
+</HTML>
