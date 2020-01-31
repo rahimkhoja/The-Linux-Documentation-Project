@@ -1,0 +1,1309 @@
+traducere ver. 0.6 de catre Riddl
+
+Multumiri tuturor celor care m-au ajutat. Lui Gushterul in special. 
+Deasemenea multumiri si lui Little Dragon.
+Observatie f importanta: probabil ca exista unele greseli in acest document.
+Am tradus si eu cum m-am priceput mai bine, daca descoperiti greseli de 
+traducere si pentru observatii pertinente mail me (Riddl) at 
+"discutzii at gmx dot net". Nu uitati sa precizati numele documentului.
+Multumesc anticipat.
+Aceasta versiune este putin modificata fata de original, deorece unii termeni
+sunau foarte aiurea in ro.
+Pentru ultima versiune a acestui document verifica
+<http://www.securityorg.net/docs/>.
+
+Lecturare placuta!
+
+______________________________________________________________________
+
+
+Linux 2.4 Packet Filtering HOWTO
+Rusty Russel, lista de discutii netfilter@lists.samba.org
+$Revision: 1.2 $ $Date: 2002/02/19 11:33:43 $
+
+Acest document descrie folosirea lui iptables pentru filtrarea pachetelor in
+kernelurile versiunea 2.4.
+  ______________________________________________________________________
+
+Cuprins
+
+1. Introducere
+2. Care este site-ul oficial? Exista vreo lista de discutii?
+3. Deci, ce inseamna filtru de pachete?
+	3.1 De ce as vrea sa filtrez pachetele?
+	3.2 Cum filtrez pachetele sub linux?
+		3.2.1 iptables
+		3.2.2 Crearea regulilor permanente
+4. Cine dracu esti tu, si de ce te joci cu kernelul meu?
+5. Ghidul intr-adevar rapid al lui Rusty pentru filtrarea de pachete
+6. Cum traverseaza pachetele filtrele?
+7. Folosirea iptables
+	7.1 Ce vei vedea cand porneste calculatorul
+	7.2 Operatii pentru o singura regula
+	7.3 Optiuni de filtrare
+		7.3.1 Specificarea IP-ului sursa si destinatie
+		7.3.2 Specificarea inversa
+		7.3.3 Specificarea protocolului
+		7.3.4 Specificarea unei interfete
+		7.3.5 Specificarea fragmentelor
+		7.3.6 Optiuni extinse la iptables: Noi potriviri
+			7.3.6.1 Optiuni extinse TCP
+				7.3.6.1.1 O explicatie pentru flag-urile TCP
+			7.3.6.2 Optiuni extinse UDP
+			7.3.6.3 Optiuni extinse ICMP
+			7.3.6.4 Alte optiuni extinse pentru potrivire
+			7.3.6.5 Potrivirea dupa stare
+	7.4 Argumente asupra tintei
+		7.4.1 Chain-uri definite de utilizator
+		7.4.2 Optiuni extinse la iptables: Noi tinte
+		7.4.3 Tinte speciale construite default
+	7.5 Operatii asupra unui intreg chain
+		7.5.1 Creearea unui nou chain
+		7.5.2 Stergerea unui chain
+		7.5.3 Stergerea tuturor regulilor unui chain
+		7.5.4 Listarea unui chain
+		7.5.5 Resetarea counter-elor
+		7.5.6 Setarea policy-ului
+
+8. Folosirea ipchains si ipfwadm
+9. Folosirea impreuna a NAT-ului si a filtrarii de pachete
+10. Diferente intre iptables si ipchains
+11. Sfaturi asupra designului filtrului de pachete
+
+
+ ______________________________________________________________________
+
+
+1. Introducere
+
+Bine ai venit, cititorule. (:))
+
+Se presupune ca stii ce este aceea o adresa IP, adresa de retea, netmask,
+routare si DNS. Daca nu, se recomanda sa citesti Network Concepts Howto.
+Acest HOWTO loveste intre o introducere draguta (care te poate lasa
+increzator pentru moment, dar neprotejat in lumea reala) si o dezvaluire
+total neprelucrata (care ii vor lasa pe toti, mai putin caracterele tari,
+in confuzie, paranoici si in cautarea de arme grele).
+
+Reteaua ta nu este sigura. Problema permiterii comunicarii rapide si
+comode, in acelasi timp cu restrictia acesteia numai pentru bine si nu in
+mod malefic, este asemanatoare cu alte probleme opuse  cum ar fi permiterea
+vorbirii libere in acelasi timp cu refuzarea unui strigat de "FOC!!" intr-un
+teatru aglomerat. Nu va fi rezolvata aceasta problema in spatiul acestui
+HOWTO.
+
+Asa ca doar tu poti sa decizi unde va fi compromisul. Voi incerca sa te
+instruiesc in folosirea unor comenzi disponibile si a unor vulnerabilitati
+de care sa fii constient, in speranta ca vei folosi aceasta in mod pozitiv
+si nu in scopuri malefice. Aceasta este o alta problema asemanatoare.
+
+  (C) 2000 Paul "Rusty" Russell.  Cu licenta sub  GNU GPL.
+ 
+ 
+2. Care este site-ul oficial? Exista vreo lista de discutii?
+
+Sunt trei site-uri oficiale:
+
+o 	Multumiri lui Filewatcher <http://netfilter.filewatcher.org/>.
+o 	Multumiri Echipei Samba si SGI <http://netfilter.samba.org/>.
+o 	Multumiri lui Harald Welte <http://netfilter.gnumonks.org/>.
+
+Le poti accesa pe toate folosind round-robin DNS la:
+<http://www.netfilter.org/> si  <http://www.iptables.org/>
+
+Pentru lista de discutii oficiala de la netfilter, vezi:
+  <http://www.netfilter.org/contact.html#list>.
+
+
+3. Deci, ce inseamna filtru de pachete?
+
+Un filtru de pachete este o bucatica de software care se uita la header-ul
+pachetelor pe masura ce ele intra, si decid soarta intregului pachet. Acest
+filtru poate decide sa ignore pachetul (DROP) (respinge pachetul ca si cum
+nu l-ar fi primit niciodata), accepta (ACCEPT) pachetul (lasa pachetul sa
+intre), sau alte decizii mai complicate.
+
+Sub linux, filtrarea de pachete este construita in kernel (ca modul sau
+construita in el), si sunt cateva lucruri complicate pe care le putem face cu
+pachetele, dar principiul general de examinare al header-ului pachetului si
+decidere asupra sortii pachetului este inca acolo.
+
+
+3.1 De ce as vrea sa filtrez pachetele?
+
+Control. Securitate. Vigilenta.
+
+Control:
+	cand folosesti un sistem Linux pentru a-ti conecta reteaua interna
+	la o alta retea (sa spunem, Internet) ai posibilitatea de a permite
+	un anumit tip de trafic, si sa refuzi pe altele. De exemplu,
+	header-ul contine adresa destinatie a unui pachet, asa ca poti
+	preveni pachetele sa se duca spre o anumita parte a retelei
+	exterioare. Ca un alt exemplu, folosesc Netscape pentru accesarea
+	arhivelor Dilbert. Sunt reclame pe pagina de la doubleclick.net, si
+	Netscape imi pierde timpul incarcandu-le. Spunand filtrului de pachete
+	sa nu permita pachete de la sau spre nici una din adresele detinute
+	de catre doubleclick.net, rezolva aceasta problema (cu toate acestea
+	sunt modalitati mai bune pentru aceasta: vezi Junkbuster).
+
+Securitate:
+	cand sistemul tau Linux este singurul intre haosul Internetului
+	si reteaua ta ordonata si delicata, este placut sa stii ca poti
+	sa restrictionezi ceea ce vine tropaind la usa. De exemplu, poti sa
+	permiti la tot sa iasa din retea, dar ai putea fi ingrijorat de
+	binecunoscutul "Ping al Mortii" venind de la persoanele din afara rau
+	intentionate. Ca un alt exemplu, s-ar putea sa nu doresti ca
+	persoanele din afara sa se telnet-uiasca pe sistemul tau Linux, chiar
+	daca toate conturile tale au parole. Poate doresti (ca multi oameni)
+	sa fii un observator  al Internet-ului, si nu server (de voie, sau in
+	alt mod). Pur si simplu nu lasa pe nimeni sa se conecteze, punand
+	fitrul de pachete sa respinga pachetele folosite la initierea de
+	conexiuni.
+
+Vigilenta:
+	uneori o masina prost configurata in reteaua locala va decide sa
+	arunce pachete spre lumea din afara. Este dragut sa-i spui filtrului de
+	pachete sa te anunte daca se intampla ceva anormal; poate poti face
+	ceva cu privire la acel lucru, sau poate esti doar curios.
+
+
+3.2 Cum filtrez pachetele sub linux?
+
+Kernelurile Linux au avut filtrare de pachete inca de la versiunile 1.1.
+Prima generatie, bazata pe ipfw de la BSD, a fost portata de catre Alan Cox
+spre sfarsitului anului 1994. Aceasta a fost dezvoltata de catre Jos Vos si
+altii pentru Linux 2.0; comanda pentru utilizatori "ipfwadm" controla
+regulile de filtrare ale kernelului. La mijlocului anului 1998, pentru Linux
+2.2, am rescris puternic kernelul cu ajutorul lui Michael Neuling, si am
+introdus comanda pentru utilizatori "ipchains". In sfarsit, a patra generatie
+de comenzi, "iptables", si o noua rescriere a kernelului s-a intamplat la 
+mijlocul anului 1999 pentru Linux 2.4. Acest HOWTO este centrat pe iptables. 
+
+Ai nevoie de un kernel care are infrastructura netfilter in el: netfilter este
+un cadru in interiorul kernelului Linux in care alte lucruri (cum ar fi
+modulul de iptables) se pot introduce. Asta inseamna ca ai nevoie de kernel
+versiune 2.3.15 sau peste, si sa raspunzi "Y" la CONFIG_NETFILTER in
+configurarea kernelului.
+
+Comanda iptables comunica kernelului si ii spune ce pachete sa filtreze.
+
+
+3.2.1 iptables
+
+Comanda iptables insereaza si sterge reguli din tabela de filtrare a
+pachetelor din kernel. Asta inseamna ca orice vei seta, va fi pierdut dupa
+rebootare; vezi "Crearea regulilor permanente" pentru cum sa fii sigur ca vor
+fi restaurate data urmatoare cand va boota Linuxul.
+
+iptables este un inlocuitor pentru ipfwadm si ipchains: vezi "Folosirea
+ipchains si ipfwadm" pentru a afla cum poti evita fara probleme folosirea  
+iptables daca folosesti una din aceste comenzi.
+
+
+3.2.2 Crearea regulilor permanente
+
+Setarile firewall-ului tau curent sunt pastrate in kernel, si de aceea vor fi
+pierdute la rebootare. Poti folosi scripturile iptables-save si
+iptables-restore sa le salvezi, sau restaurezi dintr-un fisier.
+
+O alte cale este sa pui comenzile cerute sa iti setezi regulile intr-un
+script de initializare. Ai grija sa faci ceva inteligent in caz ca una din
+comenzi nu ar reusi (de obicei "exec /sbin/sulogin").
+
+
+4. Cine dracu esti tu, si de ce te joci cu kernelul meu?
+
+Sunt Rusty Russel; cel ce mentine Linux IP Firewall si doar un alt
+programator care s-a intamplat sa fie in locul potrivit la momentul potrivit.
+Am scris ipchains (vezi mai sus "Cum filtrez pachetele sub linux?" pentru a da
+credit celor care au facut de fapt munca), si am invatat suficient sa fac
+cum trebuie de data asta filtrarea de pachete. Sper.
+
+WatchGuard <http://www.watchguard.com>, o compania excelenta de firewall-uri
+care vinde chiar simpaticul plug-in Firebox, s-a oferit sa ma plateasca sa nu
+fac nimic, pentru a-mi petrece tot timpul meu sa scriu asta, si sa imi
+mentin munca anterioara. Am preconizat 6 luni, si mi-au luat 12, dar la
+sfarsit am simtit ca l-am facut cum trebuie. Multe rescrieri, o cedare a
+unui hardisk, un laptop furat, doua sisteme de fisiere corupte si un
+monitor spart mai tarziu, asta este.
+
+Cat sunt aici, vreau sa indrept niste idei gresite ale unor oameni: nu sunt
+un guru al kernelului. Stiu asta, pentru ca munca mea pe partea din kernel
+m-a adus in contact cu unii din acestia: David S. Miller, Alexey Kuznetsov,
+Andi Kleen, Alan Cox. Oricum, sunt cu totii ocupati sa faca magia din
+interior,  lasandu-ma sa avansez cu greu prin superficialitate unde este
+sigur.
+
+
+5. Ghidul intr-adevar rapid al lui Rusty pentru filtrarea de pachete
+
+Cei mai multi oameni au o singura conexiune PPP spre Internet, si nu vor ca
+cineva sa intre inapoi in reteaua lor, iata firewall-ul:
+	
+	## Se insereaza modulele pentru connection-tracking (nu este necesar
+	## daca sunt compilate in kernel)
+	# insmod ip_conntrack
+	# insmod ip_conntrack_ftp
+
+	## Se creeaza chain-ul care blocheaza conexiunile noi, cu exceptia celor
+	## venite din interior.
+
+	# iptables -N block
+	# iptables -A block -m state --state ESTABLISHED,RELATED -j ACCEPT
+	# iptables -A block -m state --state NEW -i ! ppp0 -j ACCEPT
+	# iptables -A block -j DROP
+
+	## Se sare la acest chain din chain-urile INPUT si FORWARD
+	# iptables -A INPUT -j block
+	# iptables -A FORWARD -j block
+
+	
+6. Cum traverseaza pachetele filtrele?
+
+Kernelul porneste cu trei liste de reguli in tabela de "filtrare"; aceste
+liste sunt numite chain-uri ale firewall-ului sau pur si simplu chain-uri
+(lanturi). Cele trei chain-uri se numesc INPUT, OUTPUT si FORWARD.
+
+Pentru fanii ASCII, chain-urile sunt aranjate cam in felul urmator: (Nota:
+acesta este un aranjament foarte diferit fata de cel din kernelurile ver.
+2.0 si 2.2 !)
+
+                            _____
+  Incoming                 /     \         Outgoing
+         -->[Routing ]--->|FORWARD|------->
+            [Decision]     \_____/        ^
+                 |                        |
+                 v                       ____
+                ___                     /    \
+	       /   \                   |OUTPUT|
+              |INPUT|                   \____/
+               \___/                       ^
+                 |                        |
+                  ----> Local Process ----
+
+Cele trei cercuri reprezinta cele trei chain-uri despre care am vorbit
+anterior. Cand un pachet ajunge la un cerc din diagrama, acel chain este
+examinat pentru a decide soarta pachetului. In cazul in care chain-ul spune sa 
+ignore pachetul (DROP), este taiat acolo, daca insa chain-ul spune sa accepte
+pachetul (ACCEPT), atunci pachetul continua sa parcurga diagrama.
+
+Un chain este o lista de verificare cu reguli. Fiecare regula spune "daca
+headerul pachetului arata asa, atunci iata ce sa faci cu pachetul". Daca
+regula nu se potriveste cu pachetul, atunci urmatoarea regula din chain
+(lant) este examinata. In final, daca nu mai exista reguli de examinat,
+kernelul se uita la politica acelui chain-ului pentru a decide soarta pachetului.
+Intr-un sistem sigur, politica in chain-uri este de obicei sa taie pachetul
+(DROP).
+
+	1. Cand un pachet vine (sa zicem, prin placa de retea) kernelul se 
+	uita intai la destinatia pachetului: aceasta se numeste "routing" 
+	(rutare).
+
+	2. Daca pachetul este destinat pentru aceasta masina, pachetul trece pe
+	diagrama in chain-ul INPUT. Daca trece de acest chain, orice proces care
+	asteapta acel pachet il va primi.
+
+	3. In caz contrar, daca kernelul nu are forwarding-ul pus, sau nu stie
+	cum sa forward-eze pachetul, acesta este ignorat. Daca este pus 
+	forwarding-ul, si pachetul are ca destinatie o alta interfata de 
+	retea (daca mai ai inca una), atunci pachetul se duce in diagrama
+	noastra direct catre chain-ul FORWARD. Daca este acceptat pachetul va
+	fi transmis.
+
+	4. In final, un program ce ruleaza pe sistem poate trimite pachete. 
+	Aceste pachete trec direct in chain-ul OUTPUT: daca este acceptat 
+	pachetul isi continua drumul fara sa conteze interfata spre care este 
+	destinat.
+
+
+7. Folosirea iptables
+
+iptables are o pagina de manual destul de detaliata (man iptables), si daca
+ai nevoie de detalii mai in amanunt. Aceia dintre voi familiarizati cu
+ipchains vor dori poate sa se uite la "Diferente intre iptables si
+ipchains"; sunt comenzi foarte similare.
+
+Sunt mai multe lucruri pe care le poti face cu iptables. Pornesti la drum cu
+trei chainu-ri default care nu pot fi sterse INPUT, OUTPUT si FORWARD. Sa
+privim operatiile care se pot aplica pentru un intreg chain:
+
+	1. Creearea unui chain nou (-N).
+	2. Stergerea unui chain gol (care nu contine reguli) (-X).
+	3. Schimbarea politicii pentru un chain default (-P).
+	4. Listarea regulilor dintr-un chain (-L).
+	5. Stergerea tuturor regulilor dintr-un chain (-F).
+	6. Resetarea counter-elor de pachete si bytes pentru toate regulile
+	dintr-un chain (-Z).
+
+	Sunt mai multe moduri in care se pot manipula regulile intr-un chain:
+
+	1. Adaugarea in coada chain-ului a unei noi reguli (-A).
+	2. Insereaza o regula noua la o anumita pozitie in chain (-I). Daca
+	nu este precizata pozitia printr-un numar atunci regula este adaugata
+	la inceputul chain-ului.
+	3. Inlocuieste o regula la o anumita pozitie in chain (-R).
+	4. Sterge o regula la o anumita pozitie in chain, sau prima care se
+	potriveste (-D).
+
+
+7.1 Ce vei vedea cand porneste calculatorul
+
+Iptables poate fi un modul, numit ("iptable_filter.o"), care ar trebui sa fie
+incarcat in mod automat cand rulezi prima oara iptables. Poate fi deasemenea
+compilat in kernel in mod permament.
+
+Inainte de rularea oricarei comenzi iptables (ai grija: unele distributii vor
+rula iptables in scripturile lor de initializare), nu vor fi reguli in nici
+una din chain-urile default ("INPUT", "OUTPUT" si "FORWARD"), toate
+chain-urile vor avea politica de acceptare a pachetelor (ACCEPT). Poti schimba
+politica default al chain-ului FORWARD prin stipularea optiunii "forward=0"
+modulului iptable_filter. (n.t. sau "echo 0 > /proc/sys/net/ipv4/ip_forward",
+depinde insa si de distributie, pe redhat default inseamna ca forward-ul
+este 0)
+
+
+7.2 Operatii pentru o singura regula
+
+Aceasta este paine-si-untul, sarea si piperul, si ce mai vreti voi, a filtrarii
+de pachete; manipularea regulilor. Cel mai obisnuit, vei folosi probabil 
+comenzile de adaugare (-A) si stergere (-D). Celelalte (-I pentru inserare
+si -R pentru inlocuire) sunt doar extensii ale acestor concepte.
+
+Fiecare regula specifica o multime de conditii pe care un pachet trebuie sa le
+indeplineasca si ce sa faca daca acestea sunt indeplinite (o "tinta"
+(target)). De exemplu, s-ar putea sa doresti sa ignori toate pachetele de
+tip ICMP care vin de la adresa 127.0.0.1. Deci, in acest caz conditiile
+noastre sunt ca protocolul sa fie ICMP si ca adresa sursa sa fie 127.0.0.1.
+"tinta" noastra este DROP. 127.0.0.1 este interfata "loopback", pe care o ai
+chiar daca nu ai conexiune reala de retea. Poti folosi programul "ping"
+pentru a genera acest tip de pachete (pur si simplu trimite pachete ICMP de
+tip 8 (echo request) la care toate host-urile ar trebui sa raspunda cu
+pachete ICMP de tip 0 (echo replay)). Aceast program este foarte folositor 
+pentru teste.
+
+       	# ping -c 1 127.0.0.1
+        PING 127.0.0.1 (127.0.0.1): 56 data bytes
+	64 bytes from 127.0.0.1: icmp_seq=0 ttl=64 time=0.2 ms
+
+	--- 127.0.0.1 ping statistics ---
+	1 packets transmitted, 1 packets received, 0% packet loss
+	round-trip min/avg/max = 0.2/0.2/0.2 ms
+	# iptables -A INPUT -s 127.0.0.1 -p icmp -j DROP
+	# ping -c 1 127.0.0.1
+	PING 127.0.0.1 (127.0.0.1): 56 data bytes
+
+	--- 127.0.0.1 ping statistics ---
+	1 packets transmitted, 0 packets received, 100% packet loss
+	#
+
+Poti vedea aici ca primul ping reuseste ("-c 1" spune sa sa trimita doar un
+singur pachet).
+
+Apoi adaugam in coada (-A) chain-ului "INPUT", o regula ce spune ca 
+pentru pachetele de la 127.0.0.1 ("-s 127.0.0.1") de tip ICMP ("-p icmp")
+trebuie sa sarim la "DROP" ("-j DROP").
+
+Apoi testam regula noastra, folosind al doilea ping. Va fi o pauza pana cand
+programul se da batut sa astepte un raspuns care nu va veni niciodata. (:)),
+cat de DRAMATIC)
+
+Am putea sa stergem regula in  doua moduri. Intai, deoarece stim ca este 
+singura regula din chain-ul INPUT, putem folosi o stergere numarata, ca
+in:
+
+	# iptables -D INPUT 1
+	#
+	
+Pentru a sterge regula cu numarul 1 in chain-ul de INPUT.
+
+Al doilea mod este sa scriem comanda prin care am introdus regula -A, dar sa
+inlocuim -A cu -D. Aceasta este folositor cand ai un chain complex de reguli
+si nu doresti sa le numeri ca sa iti dai seama ca este a 37-a regula de
+care vrei sa scapi. In aces caz, vom folosi:
+
+	# iptables -D INPUT -s 127.0.0.1 -p icmp -j DROP
+	#
+
+Sintaxa comenzii -D trebuie sa aiba exact aceleasi optiuni cum are comanda -A
+(sau -I, sau -R). Daca sunt reguli identice in acelasi chain, numai prima
+regula va fi stearsa.
+
+
+7.3 Optiuni de filtrare
+
+Am vazut folosirea optiunii "-p" pentru a specifica protocolul, si optiunii 
+"-s" pentru a specifica adresa sursa, dar sunt alte optiuni pe care le putem 
+folosi pentru a preciza caracteristici ale pachetului. Ceea ce urmeaza este
+un compedium complet.
+
+
+7.3.1 Specificarea IP-ului sursa si destinatie
+
+Adresele IP ale sursei ("-s", "--source" sau "--src") si destinatiei ("-d",
+"--destination" sau "--dst") pot fi specificate in patru moduri. Cea mai
+obisnuita forma este sa folosesti numele complet, cum ar fi "localhost" sau
+"www.securityorg.net". Cea de-a doua cale este sa specifici adresa IP cum ar fi
+"127.0.0.1".
+
+Cea de a treia si a patra cale permite specificarea unui grup de adrese IP,
+cum ar fi "199.95.207.0/24" sau "199.95.207.0/255.255.255.0". Amandoua
+specifica orice adresa IP de la 199.95.207.0 pana la 199.95.207.255 inclusiv;
+cifrele dupa "/" spun care parti din adresa IP sunt semnificative. "/32" sau
+"/255.255.255.255" este default (se potriveste cu toata adresa IP). Pentru a
+specifica oricare adresa IP "/0" poate fi folosit, astfel:
+
+	[ NOTA: "-s 0/0" este redundant aici. ]
+	# iptables -A INPUT -s 0/0 -j DROP
+	#
+	
+Aceasta este folosit in mod rar, deoarece efectul de mai sus este asemanator
+cu nespecificare deloc a optiunii "-s".
+
+
+7.3.2 Specificarea inversa
+
+Multe optiuni, inclusiv optiunile "-s" (sau "--source") si "-d"
+("--destination") pot avea argumentele precedate de "!" (pronuntat "nu")
+pentru a corespunde adreselor care NU sunt egale cu adresele date. De exemplu,
+"-s ! localhost" corespunde oricarui pachet care nu vine de la localhost.
+
+
+7.3.3 Specificarea protocolului
+
+Protocolul poate fi specificat prin optiunea "-p" (sau "--protocol").
+Protocolul poate fi un numar ( daca stii valorile numerice de protocol pentru
+IP) sau un nume pentru cazurile speciale de "TCP", "UDP" sau "ICMP". Nu
+conteaza daca se foloseste sau nu CAPS, asa ca "tcp" merge la fel ca si
+"TCP".
+
+Numele protocolului poate fi precedat de "!", pentru a inversa, ca si "-p !
+tcp" pentru a specifica pachetele care nu sunt TCP.
+
+
+7.3.4 Specificarea unei interfete
+
+Optiunea "-i" (sau "--in-interface") si "-o" (sau "--out-interface")
+specifica numele interfatei cu care sa corespunda. O interfata este 
+dispozitivul fizic prin care intra pachetul ("-i") sau prin care iese
+pachetul ("-o"). Poti folosi comanda ifconfig pentru a lista interfetele
+care sunt "sus" (i.e., in stare de functionare in acel moment).
+
+Pachetele care traverseaza chain-ul "INPUT" nu au o interfata de iesire, asa
+ca orice regula care foloseste "-o" in acest chain nu se va potrivi
+niciodata. In mod similar pachetele care travereseaza chain-ul OUTPUT nu au o
+interfata de intrare, asa ca orice regula care foloseste "-i" in acest
+chain nu se va potrivi niciodata.
+
+Doar pachetele care travereseaza chain-ul FORWARD au o interata de intrare si
+de iesire. Este perfect valabil sa specifici o interfata care nu exista;
+regula nu se va potrivi cu nici un pachet pana cand interfata nu este sus.
+Aceasta este extrem de folositor pentru legaturi PPP de dial-up (de obicei
+interfete ppp0) si asemanatoare.
+
+Ca un caz special, un nume de interfata terminandu-se cu "+" se va potrivi cu
+toate interfetele (fie ca exista sau nu) care incep cu acel sir de caractere.
+De exemplu pentru a specifica o regula care sa se potriveasca tuturor
+interfetelor PPP, optiunea -i ppp+ ar fi folosita.
+
+Numele interfetei poate fi precedata de "!" cu spatii in jur, pentru a
+corespunde cu pachetul care nu se potriveste cu intefata specificata, de 
+exemplu: -i ! ppp+.
+
+
+7.3.5 Specificarea fragmentelor
+
+Uneori un pachet este prea mare pentru a incape cu totul pe conexiune. Cand
+aceasta se intampla, pachetul este divizat in fragmente, si trimis ca pachete
+multiple. Celalalt capat reansambleaza aceste fragmente pentru a construi
+intregul pachet.
+
+Problema cu fragmentele este ca primul fragment are campurile complete in
+header (IP + TCP, UDP si ICMP) pentru a le examina, dar cele care urmeaza au
+doar o submultime a header-elor (IP fara campurile protocolului aditional).
+De aceea privirea in header-e dupa protocol in pachetelor care urmeaza (cum se
+face in cazul  TCP, UDP si ICMP)  nu este posibila.
+
+Daca faci connection tracking sau NAT, atunci toate fragmentele vor fi reunite
+inainte de a ajunge la codul filtrului de pachete, asa ca nu trebuie sa te
+ingrijorezi vreodata pentru fragmente.
+
+Te rog sa retii de asemenea: chain-ul INPUT al tabelei de filtrare (sau a
+oricarei alte tabele care depinde de NF_IP_LOCAL_IN) este traversat dupa
+defragmentarea stivei principale IP.
+
+In caz contrar, este important sa stii cum sunt tratate fragmentele de catre
+regulile de filtrare. Orice regula de filtrare care cere informatii pe care
+nu le avem nu se va potrivi. Aceasta inseamna ca primul fragment este tratat
+ca orice alt pachet. Al doilea si urmatoarele nu vor mai fi. De aceea o
+regula  -p tcp --sport www (specificand un port sursa "www") nu se vor potrivi
+cu un fragment (altul decat primul). Nici regula opusa nu va face acest lucru
+-p tcp --sport ! www. 
+
+Oricum, poti sa specifici o regula special pentru fragmentul al doilea si
+urmatoarele, folosind optiunea "-f" (sau "--fragment"). Este de asemenea
+legal sa specifici ca o regula nu se aplica la al doilea si urmatoarele
+fragmente, prin precedarea lui "-f" cu "!".
+
+De obicei este considerat sigur sa lasi sa treaca al doilea si urmatoarele
+fragmente, deoarece filtrarea va afecta primul fragment, si de aceea previne
+reansamblarea pe calculatorul destinatie; cu toate acestea, sunt cunoscute
+bug-uri care permit caderea sistemului doar prin simpla trasnmitere de
+fragmente. Este decizia ta.
+
+Nota pentru network-heads: pachetele cu malformatii (pachete TCP, UDP si
+ICMP prea scurte codului de firewall ca sa citeasca tipul portului sau codul
+ICMP si tipul) sunt ignorate cand asemenea examinarii sunt incercate.
+Astfel sunt si fragmentele TCP care pornesc de la pozitia 8.
+
+Ca un exemplu, urmatoarea regula va ignora fragmentele care se duc spre
+192.168.1.1:
+
+	# iptables -A OUTPUT -f -d 192.168.1.1 -j DROP
+	#
+
+
+7.3.6 Optiuni extinse la iptables: Noi potriviri
+
+iptables este extensibil, asta inseamna ca amandoua, iptables si kernelul pot
+fi extinse pentru a suporta noi optiuni.
+
+Unele dintre aceste optiuni sunt standard, altele sunt mai exotice. Aceste
+optiuni pot fi facute de catre alti oameni si distribuite.
+
+Extensiile kernelului sunt gasite deobicei in subdirectorul de module ale
+kernelului cum ar fi /lib/modules/2.4.0-test10/kernel/net/ipv4/netfilter. Ele
+se incarca automat daca kernelul tau a fost compilat cu optiunea CONFIG_KMOD,
+asa ca nu o sa fie necesar sa le incarci manual.
+
+Extensiile la programul iptables sunt librarii shared care de obicei se gasesc 
+in /usr/local/lib/iptables/, deseamenea o distributie poate sa le puna in
+directorul /lib/iptables sau /usr/lib/iptables.
+
+Optiuniile vin in doua feluri: noi tinte si noi potriviri (vom vorbi despre
+tinte ceva mai tarziu). Unele protocoale automat ofera noi teste pentru
+pachete: in mod curent acestea sunt TCP, UDP si ICMP, cum sunt aratate mai jos.
+
+Pentru acestea vei putea sa specifici noile teste in linia de comanda dupa
+optiunea "-p", care va pune la dispozitie automat optiunile extinse. Pentru 
+a preciza teste noi, foloseste optiunea "-m" pentru a incarca extensia, dupa 
+care optiunile extinse vor putea fi folosite.
+
+Pentru a vedea help-ul pentru  optiunile extinse foloseste optiunea de
+incarcare ("-p", "-j" sau "-m") urmat de "-h" sau "--help", de exemplu:
+
+ # iptables -p tcp --help
+ #
+
+
+7.3.6.1 Optiuni extinse TCP
+
+Optiunile extinse TCP sunt disponibile in mod automat daca se specifica
+optiunea "-p tcp". Aceste optiuni sunt urmatoarele (nici una dintre ele nu
+se vor potrivi cu fragmente):
+
+	--tcp-flags
+	poate fi urmat de semnul optional "!", apoi de doua siruri de
+	flag-uri, care permite filtrarea dupa anumite flag-uri. Primul sir de
+	flag reprezinta mask-ul, flag-urile pe care doresti a le examina. Al
+	doilea sir reprezinta care dintre acestea ar trebui sa fie prezente.
+	De exemplu:
+	
+	# iptables -A INPUT --protocol tcp --tcp-flags ALL SYN,ACK -j DROP
+
+	Aceasta comanda spune ca toate flag-urile trebuiesc examinate ("ALL"
+	este sinonim cu "SYN,ACK,FIN,RST,URG,PSH"), dar doar SYN si ACK
+	trebuie sa fie setate. Exista de asemnea un argumente "NONE" similar
+	pentru nici unul dintre acestea.
+
+	--syn 
+	In mod optional precedata de semnul "!", este o prescurtare pentru
+	"--tcp-flags  SYN,RST,ACK SYN"
+
+	--source-port 
+	poate fi urmat de un optional "!", si fie de un singur port, fie
+	de o sir de porturi. Porturile pot fi specificate fie folosind numere
+	fie folosind nume, asa cum sunt specificate in /etc/services.
+	sirurile se specifica prin doua porturi despartite de ":", sau
+	(pentru a specifica o sir de porturi mai mare sau egal cu un port
+	dat) un port urmat de ":", sau (pentru a specifica o lista de porturi
+	mai mica sau egala decat un port dat) un port precedat de ":".
+	
+	--sport este sinonim cu --source-port
+
+	--destination-port
+	si 
+	--dport
+	sunt similare cu modul in care se specifica portul sursa numai ca in
+	loc de portul sursa se face potrivirea dupa portul destinatie.
+
+	--tcp-option
+	urmat de un optional "!" si un numar, se potriveste pentru un
+	pachet cu optiunea TCP egala cu acel numar. Un pachet care nu are un
+	header complet TCP este ignorat automat daca este facuta incercarea
+	de a se examina headerele TCP.
+
+
+7.3.6.1.1 O explicatie pentru flag-urile TCP
+
+Uneori este folositor sa permiti conexiunile TCP intr-o singura directie, nu
+si in cealalta. De exemplu, ai putea sa permiti conexiuni catre un server
+extern WWW, dar nici o conexiune de la acel server.
+
+Naiv ar fi sa blochezi pachetele TCP dinspre server. Din pacate, conexiunile 
+TCP cer pachetele sa circule in ambele directii.
+
+Solutia ar fi sa blochezi numai pachetele folosite pentru a initia
+conexiuni. Aceste pachete sunt numite pachete SYN (ok, tehnic sunt pachete cu
+flag SYN pus si cu flagurile RST si ACK nepuse, dar le numim pe scurt
+pachete SYN). Prin ignorarea acestor pachete, putem sa oprim aceste
+conexiuni.
+
+Optiunea "--syn" este folosita pentru aceasta; este valida numai pentru
+regulile in care specificam tcp ca protocol. De exemplu, pentru a specifica
+incercarile de conexiune de la 192.168.1.1:
+
+	-p TCP -s 192.168.1.1 --syn
+
+Aceasta optiune poate fi inversat prin precedarea "--syn" cu semnul "!".
+
+
+7.3.6.2 Optiuni extinse UDP
+
+Aceste optiuni sunt automat disponibile cand se specifica "-p udp". Acestea
+sunt: "--source-port", "--sport","--destination-port" si "--dport" care au
+fost detaliate mai sus.
+
+
+7.3.6.3 Optiuni extinse ICMP
+
+Aceste optiuni sunt automat disponibile cand se specifica "-p icmp". Este
+doar o singura optiune noua:
+
+	--icmp-type
+	urmat de un semnul optional "!", apoi de numele tipului icmp (ex.
+	"host-unreachable"), sau tipul numeric (ex. "3"), sau tipul numeric
+	si codul separate de "/" (ex. "3/3"). O lista a numelor de tipuri de
+	pachete icmp este data folosind "-p icmp --help".
+
+
+7.3.6.4 Alte optiuni extinse pentru potrivire
+
+Alte optiuni extinse in pachtetul de filtrare sunt optiuni demonstrative,
+care (daca sunt instalate) pot fi invocate cu optiunea "-m".
+
+	mac
+	
+	Acest modul trebuie in mod explicit specificat prin optiunea "-m mac" 
+	sau "--match mac". Este folosit pentru a se potrivi cu pachetele ce au o
+	anumita adresa ethernet MAC, si de aceea este folositoare numai
+	pentru pachetele care traverseaza chain-urile PREROUTING si INPUT.
+	Este disponibila o singura optiune noua:
+
+	--mac-source 
+	urmat de semnul optional "!", apoi de o adresa ethernet in notatie
+	hexa separata prin ":", ex. "--mac-source 00:60:08:91:CC:B7".
+
+
+	
+	limit
+	
+	Acest modul trebuie in mod explicit specificat prin optiunea "-m limit"
+	sau cu "--match limit". Este folosit pentru a restrange rata de 
+	potriviri, ca de exemplu pentru reprimarea mesajelor in log-uri
+	(log-urile sunt fisierele in care sistemul scrie anumite date
+	considerate importante, in ideea de a putea fi accesate mai tarziu). Se 
+	vor potrivi numai un numar dat de pachete pe secunda (default 3
+	potriviri pe ora, la un numar maxim de 5 potriviri). Sunt disponibile 
+	doua optiuni:
+		
+	--limit
+	urmat de un numar; specifica numarul maxim de potriviri permise pe
+	secunda. Numarul poate fi specificat pe unitati de timp explicite,
+	folosind "/second", "/minute", "/hour" or "/day", sau parti din ele
+	(ex. "5/second" este la fel cu "5/s").
+
+	--limit-burst
+	urmat de un numar, indica numarul maxim de potriviri dupa care limita
+	de mai sus intra in actiune.
+	
+
+	Aceasta potrvire poate adesea fi folosita cu tinta LOG pentru a face
+	logare limitata dupa o rata. Pentru a intelege cum functioneaza sa ne
+	uitam la urmatoarea regula care logheaza cu parametri de limita default:
+
+		# iptables -A FORWARD -m limit -j LOG
+
+	Prima data cand se ajunge la aceasta regula, pachetul va fi scris in
+	log-uri, de fapt, deorece numarul limita este 5, primele 5 pachete vor 
+	ajunge in log-uri. Dupa aceasta vor trece 20 de minute pana cand alt 
+	pachet sa ajunga in log-uri datorita acestei reguli, fara sa conteze
+	numarul de pachete care ajung la regula. Dupa 20 de minute 
+	limit-burst-ul,	numarul de pachete care vor putea fi primite va fi unu, 
+	dupa inca 20 de minute va mai creste cu o unitate, daca nici un pachet 
+	nu s-a potrivit cu regula. Deasemenea, la fiecare 20 de minute	care 
+	trec fara ca pachete sa se potriveasca  regulii, numarul limita va 
+	creste cu o unitate; daca nici un pachet nu se potriveste cu regula dupa 	100 de minute, numarul limita va fi din nou atins, inapoi de unde am 
+	plecat.
+	
+	Nota: nu poti crea o regula cu un timp de reincarcare mai mare de 59
+	de ore, asa ca daca pui o limita de 1/zi, atunci numarul maxim de
+	potriviri (burst-rate) trebuie sa fie mai mic decat 3.
+	
+	Poti de asemenea sa folosesti acest modul pentru a te feri de
+	diferitele atacuri denial of service (DoS) cu o rata mai mare pentru a
+	creste sensibilitatea.
+
+	Protectie pentru syn-flood:
+	
+		# iptables -A FORWARD -p tcp --syn -m limit 1/s -j ACCEPT
+	
+	Pentru scannere de porturi clandestine:
+
+		# iptables -A FORWARD -p tcp --tcp-flags SYN,ACK,FIN,RST RST
+	 -m limit --limit 1/s -j ACCEPT
+
+	Pingul mortii:
+
+		# iptables -A FORWARD -p icmp --icmp-type echo-request -m
+	-m limit --limit 1/s -j ACCEPT
+
+	Acest modul se comporta ca o "usa histeresis", ca in graficul urmator:
+
+                 rata (pachete/s)
+                       ^        .---.
+                       |       / DoS \
+                       |      /       \
+         Limita   DoS -|.....:.........\.......................
+           = (limit *  |    /:          \
+          limit-burst) |   / :           \         .-.
+                       |  /  :            \       /   \
+                       | /   :             \     /     \
+          End of DoS  -|/....:..............:.../.......\..../.
+           = limit     |     :              :"-"         "--"
+          -------------+-----+--------------+------------------> time (s)
+         LOGIC =>  Potrivire | Nepotrivire  |  Potrivire
+	 
+	Sa consideram ca avem o potrivire de un pachet pe secunda cu o
+	limita maxima de 5 pachete, dar pachetele vin cu o rata de patru pe
+	secunda timp de 3 secunde, apoi incep din nou sa vina peste 3 secunde.
+
+
+                  <--Flood 1-->           <---Flood 2--->
+
+          Pachete^                   Line  __--      YNNN
+          total  |               Rate  __--      YNNN
+                 |            mum  __--      YNNN
+              10 |        Maxi __--         Y
+                 |         __--            Y
+                 |     __--               Y
+                 | __--    YNNN
+                 |-    YNNN
+               5 |    Y
+                 |   Y         Legenda:  Y -> se potriveste cu regula
+                 |  Y          	  	 N -> nu se potriveste cu regula
+                 | Y
+                 |Y
+               0 +---------------------------------------------> timpul in
+	       								secunde
+                  0   1   2   3   4   5   6   7   8   9  10  11  12
+
+	Se poate vedea ca primele 5 pachete sunt permise sa depaseasca limita
+	de un pachet pe secunda, apoi limit intervine. Daca este o  pauza de o
+	secunda inca un pachet in plus va fi permis sa treaca. Intodeauna
+	insa, nu se va permite depasirea de un pachet/secunda dupa ca
+	numarul limita (burst-limit) este atins.
+
+
+
+	owner
+
+	acest modul incearca sa se potriveasca trasaturilor diferite ale
+	creatorului pachetului, pentru pachetele generate local. Este valid
+	numai in chain-ul OUTPUT, si chiar si atunci unele pachete (cum ar
+	fi raspunsurile de tip ICMP) pot sa nu aiba creator, si de aceea sa
+	nu se potriveasca.
+
+	--uid-owner userid
+	se potriveste daca pachetul a fost creat de catre un proces cu
+	acelasi id de user.
+
+	--gid-owner groupid
+	se potriveste daca pachetul a fost creat de catre un proces cu
+	acelasi id de group.
+
+	--pid-owner processid
+	se potriveste daca pachetul a fost creat de catre un proces cu
+	acelasi id de proces.
+
+        --sid-owner sessionid
+	se potriveste daca pachetul a fost creat de catre un proces in grupul
+	de sesiune dat.
+
+	
+	unclean
+	
+	Acest modul experimental trebuie sa fie in mod explicit specificat cu
+	optiunea "-m unclean" sau "--match unclean". Realizeaza niste teste
+	variate de sanatate asupra pachetelor. Acest modul nu a fost testat,
+	si nu ar trebui sa fie folosit ca o unealta in securitate (probabil
+	ca inrautateste lucrurile din cauza ca el insusi s-ar putea sa aiba
+	buguri). Nu este disponibila nici o optiune.
+
+
+7.3.6.5 Potrivirea dupa stare
+
+Cele mai folositoare optiuni este furnizata de modulul "state", care
+interpreteaza analizele detectorului de conexiuni ale modulului
+"ip_conntrack". Aceasta este foarte recomandata.
+
+Specificarea modulului "-m state" permite folosirea unei optiuni
+aditionale de stare  "--state". Aceste stari sunt:
+
+NEW
+un pachet care creeaza o noua conexiune.
+
+ESTABLISHED
+un pachet care apartine unei conexiuni deja stabilite (un pachet
+replica (replay), sau un pachet care pleaca al unei conexiuni care a primit
+replayuri).
+
+RELATED
+Un pachet care este inrudit, dar care nu este parte a unei conexiuni existente,
+cum ar fi o eroare ICMP, sau (cu modulul FTP introdus), un pachet care
+stabileste o conexiune FTP.
+
+INVALID	
+Un pachet care nu a putut fi identificat pentru niste motive: aceasta include
+ramanerea fara memorie sau erori ICMP care nu apartin nici unei conexiuni
+cunoscute. In mod normal aceste pachete ar trebui ignorate.
+
+Un exemplu pentru aceasta puternica optiune de potrivire ar fi:
+
+# iptables -A FORWARD -i ppp0 -m state ! NEW -j DROP
+
+
+7.4 Argumente asupra tintei
+
+Acum stim ce examinare poate fi facuta asupra unui pachet, avem nevoie de o 
+cale pentru a preciza ce sa facem cu pachetele care se potrivesc  testelor
+noastre. Aceasta este numita tinta unei reguli.
+
+Exista doua foarte simple tinte incluse: DROP si ACCEPT. Ne-am intalnit deja
+cu aceastea. Daca o regula se potriveste cu un pachet si tinta regulii este
+una din aceste doua, nici una din regulile urmatoare nu  sunt consultate,
+soarta pachetului a fost decisa.
+
+Mai sunt doua tipuri de tinte pe langa acestea incluse: tinte extinse si
+chain-urile definite de catre utilizator.
+
+
+7.4.1 Chain-uri definite de utilizator
+
+O caracteristica puternica pe care iptables o mosteneste de la ipchains este
+posibilitatea utilizatorului de a crea chain-uri noi, pe langa cele incluse
+default (INPUT, OUTPUT si FORWARD). Prin conventie, chain-urile definite de
+catre utilizator se scriu cu litera mica pentru a le deosebi (vom descrie
+mai jos cum sa cream acest tip de chain-uri in "7.5 Operatii asupra unui
+intreg chain").
+
+Cand un pachet se potriveste cu o regula a carei tinta este un chain definit
+de catre utilizator, pachetul incepe sa traverseze chain-ul definit de catre
+utilizator. Daca acel chain-ul nu decide soarta pachetul de indata ce
+pachetul ajunge la sfarsitul chain-ului respectiv, pachetul continua
+traversarea  chain-ului initial.
+
+Este timpul pentru niste arta ASCII. Considera doua chain-uri aiurea: INPUT
+(chain-ul inclus default) si test (un chain definit de utilizator).
+
+                "INPUT"                         "test"
+               ----------------------------    ----------------------------
+               | Rule1: -p ICMP -j DROP   |    | Rule1: -s 192.168.1.1    |
+               |--------------------------|    |--------------------------|
+               | Rule2: -p TCP -j test    |    | Rule2: -d 192.168.1.1    |
+               |--------------------------|    ----------------------------
+               | Rule3: -p UDP -j DROP    |
+               ----------------------------
+
+Considera un pachet TCP venind de la 192.168.1.1 si ducandu-se catre 1.2.3.4.
+Acesta intra in chain-ul INPUT. Rule1 nu se potriveste cu el, Rule2 se
+potriveste asa ca urmatoarea regula care este examinata este prima din
+chain-ul test. Rule1 se potriveste dar nu este specificata nici o tinta,
+asa ca urmatoarea regula este examinata. Rule2 nu se potriveste asa ca am
+ajuns la sfarsitul chain-ului. Astfel ne reintoarcem in chain-ul INPUT, unde
+am examinat Rule2, asa ca examinam Rule3 care nici aceasta nu se potriveste.
+
+Deci calea urmata de catre pachet este:
+
+                                       v    __________________________
+                "INPUT"                |   /    "test"                v
+               ------------------------|--/    -----------------------|----
+               | Rule1                 | /|    | Rule1                |   |
+               |-----------------------|/-|    |----------------------|---|
+               | Rule2                 /  |    | Rule2                |   |
+               |--------------------------|    -----------------------v----
+	       | Rule3 	               /--+___________________________/
+	       ------------------------|---
+                                       v
+				       
+Chain-urile definite de catre utilizator pot sari la alte chain-uri definite
+de catre utilizator (dar nu crea trasee in cerc, pachetele tale vor fi
+ignorate daca intra in bucla).
+
+
+7.4.2 Optiuni extinse la iptables: Noi tinte
+
+Celalat tip de optiune extinsa este o tinta. O tinta extinsa este formata
+dintr-un modul de kernel si o extensie optionala la iptables pentru a pune
+la dispozitie noi optiuni in linia de comanda. Sunt mai multe optiuni
+extinse in distributia default a netfilter-ului:
+
+	LOG
+	
+	Acest modul permite log-area de catre kernel a pachetelor care se
+	potrivesc. Acest modul pune la dispozitie urmatoarele optiuni
+	aditionale:
+
+	--log-level
+	urmat de un numar al nivelului sau de un nume. Numele corecte sunt
+	(nu conteaza daca sunt scrise cu litera mare sau nu) "debug", "info",
+	"notice", "warning", "err", "crit" and "emerg", corespunzand numerelor
+	de la 7 la 0. Citeste man-ul de la syslog.conf pentru o explicatie
+	privind aceste niveluri de logare. Nivelul default este "warning".
+
+	--log-prefix
+	urmat de un sir de caractere pana la 29 de caractere, acest mesaj
+	este pus in fata mesajului care este logat, pentru a-i permite
+	identificarea unica.
+
+	Acest modul este bun dupa o limita de potrivire, pentru a nu-ti
+	flooda fisierele de log.
+	
+	REJECT
+
+	Acest modul are acelasi efect cu "DROP", cu exceptia faptului ca
+	celui ce trimite pachetele ii este trimis mesaj de eroare ICMP "port
+	unreachable". Bagati la cap ca mesajul de eroare ICMP nu este trimis
+	daca (citeste RFC 1122):
+		- pachetul de il filtrezi a fost de la inceput o eroare ICMP
+		  sau alt tip de pachet ICMP necunoscut.
+		- pachetul ce este filtrat nu este un fragment de inceput.
+		- am trimis recent prea multe mesaje de eroare ICMP catre acea
+		  destinatie ( cat /proc/sys/net/ipv4/icmp_ratelimit).
+	REJECT pune de asemenea la dispozitie o noua optiune
+	"--reject-with" care modifica pachetul folosit la replay: man
+	iptables.
+
+
+7.4.3 Tinte speciale construite default
+
+Sunt doua tinte speciale contruite default: RETURN si QUEUE.
+
+RETURN are acelasi efect cu trecerea direct la sfarsitul chain-ului: pentru
+o regula in chain-ul inclus default politica acelui chain-ului este executata.
+Pentru o regula intr-un chain definit de catre utilizator, traversarea continua in
+chain-ul anterior, exact dupa regula care a determinat trecerea la acest
+chain.
+
+QUEUE este o tinta speciala, care pune in rand pachetul pentru procesare de
+catre programe utilizator. Pentru ca aceasta sa fie folositor doua urmatoare
+componente sunt cerute:
+
+- un "gestionar al cozii", care se ocupa de mecanismele propriu-zise de
+  trecere a pachetelor intre kernel si modul utilizator; si
+
+- un program in mod utilizator pentru a primi, posibil a manipula, si a
+  da verdicte in ceea ce priveste pachetele.
+
+Gestionarul standard al cozii pentru iptables IPv4 este modulul ip_queue, care
+este distribuit cu kernelul si considerat experimental.
+
+Ceea ce urmeaza este un scurt exemplu despre cum sa folosesti iptables pentru
+a pune in coada pachetele pentru procesare in mod utilizator:
+
+	# modprobe iptable_filter
+	# modprobe ip_queue
+	# iptables -A OUTPUT -p icmp -j QUEUE
+
+Cu aceasta regula, pachetele ICMP  generate local (care sunt create
+, sa zicem, cu ping) sunt pasate modulului ip_queue, care apoi incearca sa
+livreze pachetele unei aplicatii in mod utilizator. Daca nici o
+aplicatie nu asteapta acele pachete, acestea sunt ignorate.
+
+Pentru a scrie o aplicatie in mod utilizator, poti folosi libipq API. Acesta
+este distribuit impreuna cu iptables. Cod exemplu poate fi gasit in programele
+de testare (redirect.c) in CVS.
+
+Starea lui ip_queue poate fi verificata prin:
+
+	/proc/net/ip_queue
+
+Marimea maxima a unei cozi (i.e. numarul de pachete livrata modului utilizator
+fara primirea inapoi a unei comfirmari) poate fi controlat prin:
+
+	/proc/sys/net/ipv4/ip_queue_maxlen
+
+Marimea default pentru marimea maxima a cozii este 1024. Odata ce aceasta
+limita este atinsa, noile pachete vor fi ignorate pana cand marimea cozii
+scade sub nivelul limita. Protocoale bine gandite ca TCP interpreteaza
+pachetele ignorate ca aglomerare, si din fericire va inceta livrarea de
+pachete cand coada este plina. Cu toate acestea, va lua ceva experimente
+pentru a determina valoare ideala pentru marimea cozii pentru o situatie data
+daca valoarea default este prea mica.
+
+
+7.5 Operatii asupra unui intreg chain
+
+O foarte folositoare caracteristica a iptables-ului este posibilitatea de a
+grupa mai multe reguli intr-un chain. Poti numi chain-urile cum doresti, dar
+recomand folosirea literelor mici pentru a evita confuzia cu chain-urile
+incluse default si tinte. Numele de chain-uri pot fi pana la 31 de litere in
+lungime.
+
+
+7.5.1 Creearea unui nou chain
+
+Sa cream un nou chain. Pentru ca sunt un tip cu atata imaginatie o sa o
+numesc test. Pentru aceasta folosim optiunea "-N" sau "--new-chain":
+
+	# iptables -N test
+	#
+
+Este atat de simplu. Acum poti introduce reguli in el cum am aratat mai sus.
+
+
+7.5.2 Stergerea unui chain
+
+Si sergerea unui chain este deasemenea simpla, prin folosirea optiunilor "-X"
+sau "--delete-chain". De ce "-X"? Pai toate literele bune au fost luate.
+
+	# iptables -X test
+	#
+
+Sunt cateva restricitii la stergerea de chain-uri: acestea trebuie sa fie
+goale (vezi "Stergerea tuturor regulilor unui chain" dedesubt) si nu trebuie 
+sa fie tinta nici unei reguli. Nu poti sterge nici unul dintre chain-rile 
+incluse default.
+
+Daca nu specific numele chain-ului, atunci toate chain-urile definite de catre
+utilizator vor fi sterse daca este posibil.
+
+
+7.5.3 Stergerea tuturor regulilor unui chain
+
+Exista un mod simplu de de sterge toate regulile dintr-un chain, folosind
+optiunile "-F" (sau "--flush").
+
+	# iptables -F FORWARD
+	#
+
+Daca nu este specificat chain-ul atunci toate chain-urile vor fi sterse de
+reguli.
+
+
+7.5.4 Listarea unui chain
+
+Poti lista toate regulile dintr-un chain prin folosirea optiunii "-L" (sau
+"--list").
+
+"refcnt-ul"(reference count) listat pentru fiecare chain definit de catre
+utilizator  este numarul de reguli care au ca tinta acest chain. Acesta
+trebuie sa fie zero (si chain-ul sa fie gol) inainte ca acest chain sa poata
+fi sters.
+
+Daca numele chain-ului este omis, toate chain-urile sunt listate, chiar si
+cele care sunt goale.
+
+Exista trei optiuni care pot fi adaugate la "-L". Optiunea "-n" (numeric)
+este foarte folositoare deoarece previne iptables in a incerca sa rezolve
+IP-urile in nume, care (daca folosesti DNS ca majoritatea oamenilor) va cauza
+mari intarzieri daca DNS-ul tau nu este setat corect, sau ai filtrat cererile
+catre DNS. Determina deasemenea ca porturile TCP si UDP sa fie afisate ca
+numere in loc de nume.
+
+Optiunea "-v" arata toate detaliile regulilor, cum ar fi counter-ele pentru de
+pachete si bytes, comparatiile TOS, interfata. Altfel aceste detalii sunt
+omise.
+
+Observa faptul urmator: counter-ele pentru pachete si bytes sunt afisate 
+folosind sufixele "K", "M" sau "G" pentru 1000, 1,000,000 si respectiv 
+1,000,000,000. Folosirea lui optiunii "-x" (expandare a numerelor) afiseaza
+numerele in formatul maxim, fara sa conteze cat sunt de mari.
+
+
+7.5.5 Resetarea counter-elor
+
+Este folositoare posibilitatea de a putea sa resetezi counter-ele. Aceasta
+poate fi facuta cu optiune "-Z" (sau "--zero").
+
+Considera urmatoarele:
+
+	# iptables -L FORWARD
+	# iptables -Z FORWARD
+	#
+
+In exemplul de mai sus, unele pachete au putut sa vina intre cele doua
+comenzi. Pentru acest motiv, poti folosi cele doua optiuni "-L" si "-Z"
+impreuna, pentru a reseta counter-ele in timp ce le afisezi.
+
+
+7.5.6 Setarea policy-ului
+
+Am explicat ce se intampla cand un pachet ajunge la capatul unui chain inclus
+default si am discutat mai devreme cum parcurge un pachet chain-urile. In
+acest caz, policy-ul chain-ului determina soarta pachetului. Doar chain-urile
+incluse default (INPUT, OUTPUT si FORWARD) au policy-uri, deoarece daca un
+pachet ajunge la capatul unui chain definit de catre utilizator, traversarea
+continua in chain-ul anterior.
+
+Politica poate fi fie ACCEPT, fie DROP, de exemplu:
+
+	# iptables -P FORWARD drop
+	#
+
+
+8. Folosirea ipchains si ipfwadm
+
+Sunt module in distributia netfilter pe nume ipchains.o si ipfwadm.o.
+Insereaza unul dintre acestea in kernelul tau ( Observatie: aceste module
+sunt incompatibile cu ip_tables.o). Apoi poti folosi ipchains sau ipfwadm  ca
+in vremurile de alta data.
+
+Aceasta va fi suportata pentru inca un timp. Cred ca o formula rezonabila
+este 2 * [nota inlocuirii - prima versiune stabila], dupa data cand o versiune
+stabila a inlocuirii este disponibila.
+Asta inseamna ca suportul va fi probabil abandonat in Linux 2.6 sau 2.8.
+
+
+9. Folosirea impreuna a NAT-ului si a filtrarii de pachete
+
+Este normal sa vrei sa faci NAT (vezi NAT HOWTO) si filtrare de pachete.
+Veste buna este ca se pot folosi impreuna extrem de bine.
+
+Faci filtrarea de pachete ingorand total orice NAT ai deja. Sursa si
+destinatia vazute de catre filtrul de pachete vor fi sursele si destinatiile
+reale. De exemplu daca faci DNAT pentru a trimite orice conexiune pentru
+1.2.3.4 portul 80 spre 10.1.1.1 portul 8080, filtrul de pachete va vedea
+pachetele ducandu-se catre 10.1.1.1 portul 8080 (adresa reala), nu 1.2.3.4
+port 80. In mod similar poti ignora masquerading: pachetele vor parea ca vin
+de la adresa lor IP interna reala (sa zicem 10.1.1.1), si replay-urile vor
+parea ca se duc inapoi acolo.
+
+Poti folosi optiunea extinsa de potrivire "match" fara sa pui filtrul de
+pachete sa faca munca in plus, deoarece NAT cere detectarea de conexiuni
+oricum. Pentru a dezvolta exemplul simplu de masquerading din NAT HOWTO pentru
+a nu permite noi conexiuni pe interfata ppp0, vei face urmatoarele:
+
+# masquerading pentru ppp0
+iptables -t nat -A POSTROUTING -o ppp0 -j MASQUERADE
+
+# refuzarea de pachete NOI sau INVALIDE forwardate sau care vin prin ppp0
+iptables -A INPUT -i ppp0 -m state --state NEW,INVALID -j DROP
+iptables -A FORWARD -i ppp0 -m state --state NEW,INVALID -j DROP
+
+# se da drumu la IP forwarding
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+
+10. Diferente intre iptables si ipchains
+
+o In primul rand, numele chain-urilor predefinite si-au schimbat scrierea din
+litere mici in litere mari, deoarece chain-urile INPUT si OUTPUT primesc acum
+doar pachete cu destinatie locala si pachete generate local. Ele obisnuiau
+sa vada toate pachetele care intrau si respectiv care ieseau.
+
+o Optiunea "-i" acum inseamna interfata de intrare si are sens numai in
+chain-urile INPUT si FORWARD. Regulile in chain-urile OUTPUT si FORWARD care
+foloseau inainte "-i" vor trebuie sa fie schimbate cu "-o".
+
+o Porturile TCP si UDP trebuie sa fie precizate folosind optiunile
+--source-port  sau --sport (sau --destination-port/--dport), si trebuie
+puse dupa optiunile "-p tcp" sau "-p udp", deorece acestea incarca optiunile
+disponibile extensiilor TCP si respectiv UDP.
+
+o Argumentul TCP -y a devenit acum --syn si trebuie pus dupa "-p tcp".
+
+o In cele din urma tinta DENY a deveni DROP.
+
+o Resetarea counter-elor pentru un singur chain in timp concomitent cu
+listarea acestuia este acum posibila.
+
+o Resetara counter-elor pentru chain-urile predefinite resetezeaza desemenea
+counter-ele policy-ului chain-urilor respective.
+
+o Listarea counter-elor iti arata counter-ele instant.
+
+o REJECT si LOG sunt acum tinte extinse, insemnand ca sunt module de kernel
+separate.
+
+o Numele pentru chain-uri pot fi pana la 31 de caractere in lungime.
+
+o MASQ este acum MASQUERADE si foloseste o sintaza diferita. REDIRECT, desi
+si-a pastrat vechiul nume, a suferit deasemenea o schimbare de sintaxa.
+Citeste NAT-HOWTO pentru mai multe informatii despre cum sa le configurezi.
+
+o Optiunea "-o" nu mai este folosita pentru a conduce pachetele in mod
+utilizator (vezi -i de mai sus). Pachetele sunt trimise acum in mod utilizator
+folosind tinta QUEUE.
+
+o Probabil o gramada de alte lucruri pe care le-am uitat.
+
+
+11. Sfaturi asupra designului filtrului de pachete
+
+In domeniul securitatii cel mai bun lucru este sa blochezi totul, apoi sa
+deschizi gauri acolo unde este necesar. Aceasta este deobicei spus "ceea ce nu
+este in mod explicit permis este interzis". Recomand aceasta  daca securitatea
+este grija ta cea mai mare.
+
+Nu rula nici un serviciu de care nu ai nevoie, chiar daca ai blocat accesul la
+el.
+
+Recomand securitatea in adancime: combina tcp-wrappers (pentru conexiuni catre
+insusi filtrul de pachete), proxy-uri (pentru conexiuni ce trec peste filtrul
+de pachete), verificarea routei si filtrare de pachete. Verificarea routei
+este cand un pachet care vine de la o interfata de la care nu poate veni este
+ignorate: de exemplu, daca reteaua ta interna are adresele 10.1.1.0/24, si
+un pachet care are ca sursa o adresa apartinand acelei clase vine pe
+interfata externa, acesta va fi ignorat. Aceasta verificare a routei poate
+fi activate pentru o interfata (ppp0) astfel:
+
+	# echo 1 > /proc/sys/net/ipv4/conf/ppp0/rp_filter
+	#
+
+Sau pentru toate interfetele existente si viitoare astfel:
+	
+	# for f in /proc/sys/net/ipv4/conf/*/rp_filter; do
+	#     echo 1 > $f
+	# done
+	#
+
+Debian realizeaza acest lucru "by default" cand este posibil. Daca ai routare
+asimetrica  (te astepti sa primesti pachete din directii ciudate), vei
+dori sa dezactivezi aceasta filtrare pe interfetele respective.
+
+Logarea pachetelor este folositoare cand configurezi un firewall si ceva nu
+merge, insa pe un sistem in productie, intodeauna foloseste aceasta in
+combinatie cu limitare, pentru a preveni floodarea fisierelor cu log-uri.
+
+Recomand pentru sistemele sigure depistarea conexiunilor (connection
+tracking): determina o incarcare a sistemului, deoarece toate conexiunile sunt
+depistate, dar este foarte folositoare pentru a controla accesul la retelele
+tale. S-ar putea sa trebuiasca sa incarci modulul "ip_conntrack.o" daca
+kernelul tau nu incarca in mod automat modulele si nu este compilat in
+kernel. Daca vrei sa depistezi cu precizie protocoale complexe, va trebui sa
+incarci modulul necesar pentru aceasta (ex. "ip_conntrack_ftp.o").
+
+	# iptables -N no-conns-from-ppp0
+	# iptables -A no-conns-from-ppp0 -m state --state ESTABLISHED,RELATED -j ACCEPT  
+	# iptables -A no-conns-from-ppp0 -m state --state NEW -i ! ppp0 -j ACCEPT
+	# iptables -A no-conns-from-ppp0 -i ppp0 -m limit -j LOG --log-prefix "Bad packet from ppp0:"
+	# iptables -A no-conns-from-ppp0 -i ! ppp0 -m limit -j LOG --log-prefix "Bad packet not from ppp0:"
+	# iptables -A no-conns-from-ppp0 -j DROP
+	# iptables -A INPUT -j no-conns-from-ppp0
+	# iptables -A FORWARD -j no-conns-from-ppp0
+
+Construirea unui bun firewall este peste scopul acestui HOWTO, dar sfatul meu
+este ca "intodeauna sa fii minimalist". Citeste Security HOWTO pentru mai multe
+informatii privind testarea si examinarea sistemului.
+
+

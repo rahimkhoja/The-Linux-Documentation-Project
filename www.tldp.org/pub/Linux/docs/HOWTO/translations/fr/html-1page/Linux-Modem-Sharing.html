@@ -1,0 +1,212 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+<HEAD>
+ <META NAME="GENERATOR" CONTENT="LinuxDoc-Tools 0.9.21">
+ <TITLE>Linux-Modem-Sharing mini-HOWTO</TITLE>
+</HEAD>
+<BODY>
+<H1>Linux-Modem-Sharing mini-HOWTO</H1>
+
+<H2>
+<A HREF="mailto:baiti@toplink.net">Friedemann Baitinger</A>,
+     traduit par 
+<A HREF="mailto:arnaud@carrosse.frmug.org">Arnaud Gomes-do-Vale</A></H2>Version 1.01, 2 novembre 1997
+<HR>
+<EM>Ce mini-HOWTO d&eacute;crit la configuration d'un syst&egrave;me Linux
+dans le but de partager un modem avec d'autres syst&egrave;mes
+&agrave; travers un r&eacute;seau TCP/IP.</EM>
+<HR>
+<H2><A NAME="s1">1. Introduction</A></H2>
+
+<P>Ce mini-HOWTO d&eacute;crit la configuration d'un syst&egrave;me Linux
+dans le but de partager un modem avec d'autres syst&egrave;mes
+&agrave; travers un r&eacute;seau TCP/IP.</P>
+
+<H2><A NAME="s2">2. Configuration du serveur</A></H2>
+
+<P>Je suppose que le serveur est une machine sous Linux avec
+<UL>
+<LI>soit un modem rattach&eacute; &agrave; un
+p&eacute;riph&eacute;rique <CODE>/dev/ttyS<EM>x</EM></CODE>&nbsp;;</LI>
+<LI>soit un modem virtuel &eacute;mul&eacute; par <CODE>isdn4linux</CODE> 
+sur un port <CODE>/dev/ttyI<EM>x</EM></CODE>.</LI>
+</UL>
+</P>
+<P>La configuration la plus simple &agrave; laquelle je peux penser
+utilise un script perl de cinq lignes comme &quot;d&eacute;mon
+modem&quot;&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+$ cat /usr/sbin/modemd
+
+#!/usr/bin/perl
+select((select(STDOUT), $| = 1)[$[]);
+select((select(STDIN), $| = 1)[$[]);
+exec 'cu -s 115200 -l /dev/ttyS1';
+die '$0: Cant exec cu: $!\n';
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P>Ce d&eacute;mon est lanc&eacute; par le processus <CODE>inetd</CODE> si un
+client se connecte sur le port appropri&eacute;, comme d&eacute;crit
+ci-dessous. Le <CODE>modemd</CODE> se contente de connecter le socket avec
+l'entr&eacute;e standard STDIN et la sortie standard STDOUT de la
+commande <CODE>cu</CODE> et laisse <CODE>cu</CODE> piloter le v&eacute;ritable
+modem. Si <CODE>cu</CODE> n'est pas install&eacute; sur votre syst&egrave;me,
+installez le paquetage UUCP, dont il fait habituellement partie.</P>
+<P><CODE>inetd</CODE> doit &ecirc;tre averti de l'existence du d&eacute;mon
+modem. Pour cela, il faut mettre &agrave; jour son fichier de
+configuration, en g&eacute;n&eacute;ral <CODE>/etc/inetd.conf</CODE>, comme
+ceci&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+#
+# modem daemon
+#
+modem stream tcp nowait root /usr/sbin/tcpd /usr/sbin/modemd /dev/ttyS1
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P>Pour que cela fonctionne, il faut aussi ajouter une entr&eacute;e au
+fichier <CODE>/etc/services</CODE>&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+modem           2006/tcp        modemd
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P>Cette entr&eacute;e associe un nom symbolique &agrave; un port
+explicite, 2006 dans cet exemple. Le num&eacute;ro du port peut
+&ecirc;tre n'importe quoi, du moment qu'il n'est pas
+d&eacute;j&agrave; assign&eacute; &agrave; un service
+existant. Apr&egrave;s avoir proc&eacute;d&eacute; &agrave; ces
+changements, il faut envoyer un signal &agrave; <CODE>inetd</CODE> pour lui
+faire relire son fichier de configuration&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+$ ps |grep inetd
+194  ?  S     0:00 /usr/sbin/inetd
+
+kill -HUP 194
+</PRE>
+</CODE></BLOCKQUOTE>
+   </P>
+<P>Maintenant, le serveur est pr&ecirc;t &agrave; accepter les
+requ&ecirc;tes des clients. Vous pouvez v&eacute;rifier son bon
+fonctionnement&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+$ telnet localhost modem
+
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P>Vous &ecirc;tes maintenant connect&eacute; au modem. Vous pouvez lui
+passer des commandes AT pour v&eacute;rifier la configuration&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+atz
+atz
+OK
+
+ati1
+ati1
+Linux ISDN
+OK
+
+^]
+telnet>quit
+$
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P>A la place du script perl, vous pouvez utiliser le programme
+<CODE>mserver</CODE>, disponible sur 
+<A HREF="ftp://ftp.innet.be/pub/staff/carl/">ftp://ftp.innet.be/pub/staff/carl/</A>. S'il ne s'y trouve plus,
+vous pouvez utiliser archie ou tout autre moteur de recherche pour
+trouver l'archive <CODE>mserver</CODE>. Jusqu'&agrave; pr&eacute;sent, je n'ai
+pas eu l'occasion de l'installer ni de l'utiliser.</P>
+
+<H2><A NAME="s3">3. Configuration du client</A></H2>
+
+<P>A l'heure actuelle, seule la configuration d'un client Windows est
+d&eacute;crite ici. Sur le PC client, vous aurez besoin d'un
+redirecteur de port COM vers TCP/IP. Le meilleur que j'ai
+trouv&eacute; est DialOut/IP de Tactical Software, pour Windows 3.1 et
+Windows 95. La version 3.1 peut &ecirc;tre utilis&eacute;e sous
+Windows NT avec des applications 16 bits&nbsp;; une version 32 bits pour
+Windows NT doit sortir &agrave; la fin de l'&eacute;t&eacute;
+1997. NdT&nbsp;: Actuellement, Windows 98 et NT4 sont &eacute;galement
+support&eacute;s.</P>
+<P>DialOut/IP pr&eacute;sente le modem partag&eacute; comme un nouveau
+port COM sur la machine Windows. Ce port COM virtuel peut &ecirc;tre
+utilis&eacute; par les programmes Windows comme si le modem
+partag&eacute; &eacute;tait connect&eacute; directement. La plupart
+des applications clientes (y compris l'acc&egrave;s r&eacute;seau
+&agrave; distance de Windows 95) l'acceptent et fonctionnent comme
+s'il s'agissait d'un v&eacute;ritable port s&eacute;rie, &agrave;
+l'exception des applications de fax et de tout ce qui doit
+acc&eacute;der directement &agrave; l'UART. DialOut/IP peut &ecirc;tre
+configur&eacute; pour utiliser le protocole TELNET, mais cette
+fonction ne s'applique qu'&agrave; certains racks de modems et pas
+&agrave; la configuration de Linux d&eacute;crite ici. Notez que
+malgr&eacute; son nom, DialOut/IP peut aussi &ecirc;tre utilis&eacute;
+par les applications qui attendent des appels entrants.</P>
+<P>Sur 
+<A HREF="http://www.tactical-sw.com">http://www.tactical-sw.com</A>, vous trouverez une page
+o&ugrave; vous pouvez t&eacute;l&eacute;charger une version
+d'&eacute;valuation totalement fonctionnelle utilisable pendant une
+&agrave; deux semaines. L'installation et la configuration sont
+assur&eacute;es par un programme <EM>ad hoc</EM>, et les d&eacute;tails de
+l'installation sont couverts par le fichier <CODE>README.TXT</CODE>. Quand
+vous lancez DialOut/IP, vous entrez l'adresse IP et le num&eacute;ro
+du port du modem partag&eacute;.</P>
+<P>DialOut/IP est un produit commercial dont la licence s'applique par
+modem, c'est &agrave; dire que le prix d&eacute;pend du nombre de
+modems que vous partagez. La licence dit que vous pouvez installer le
+logiciel sur un nombre quelconque de PC qui utilisent les modems
+partag&eacute;s.</P>
+
+<H2><A NAME="s4">4. Consid&eacute;rations sur la s&eacute;curit&eacute;</A></H2>
+
+
+<P>Si vous n'avez qu'un seul modem pour toutes les machines de votre
+r&eacute;seau local, vous n'avez probablement aucune inqui&eacute;tude
+&agrave; avoir quant &agrave; la s&eacute;curit&eacute;. Par contre, si
+une ou plusieurs machines de votre r&eacute;seau sont
+connect&eacute;es &agrave; internet par d'autres moyens que votre
+serveur de modem, vous devez vous pencher sur la
+s&eacute;curit&eacute;, ou n'importe qui pourra taper <CODE>telnet
+votre_machine modem</CODE> et lancer des appels longue distance ou
+internationaux &agrave; volont&eacute;.</P>
+<P>Je vous sugg&egrave;re d'installer et de configurer les TCP-wrappers
+pour prot&eacute;ger le serveur de modem contre les acc&egrave;s non
+autoris&eacute;s.</P>
+
+<H2><A NAME="s5">5. Exemples</A></H2>
+
+
+<P>J'utilise la configuration d&eacute;crite dans les sections
+pr&eacute;c&eacute;dentes avec Quicken sur mon ThinkPad sous Windows
+95 pour contacter ma banque &agrave; domicile avec le modem de ma
+machine Linux. Le &quot;modem&quot; n'en est en fait m&ecirc;me pas
+un, c'est une &eacute;mulation qui utilise une carte ISDN-So. Quicken
+voit simplement un port s&eacute;rie, il ne sait pas que le
+p&eacute;riph&eacute;rique reli&eacute; au port s&eacute;rie est en
+fait &agrave; l'autre bout du r&eacute;seau local ethernet, ni qu'il
+ne s'agit pas d'un modem analogique standard mais d'un adaptateur ISDN
+qui se trouve comprendre les commandes AT.</P>
+
+<H2><A NAME="s6">6. Historique de ce document</A></H2>
+
+<P>V1.01, 02/11/97 Conversion du source au format HTML. Ajout de
+r&eacute;f&eacute;rences sur les endroits o&ugrave; se procurer
+<CODE>cu</CODE> et <CODE>mserver</CODE>. Ajout du param&egrave;tre <CODE>-s</CODE>
+&agrave; l'exemple d'utilisation de <CODE>cu</CODE>.</P>
+<P>V1.00, 12/06/97 Premi&egrave;re version.</P>
+
+</BODY>
+</HTML>

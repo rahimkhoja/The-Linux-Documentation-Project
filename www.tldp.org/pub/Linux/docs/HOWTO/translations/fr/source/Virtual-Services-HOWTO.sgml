@@ -1,0 +1,2083 @@
+<!doctype linuxdoc system>
+
+<article>
+
+<!-- Title information -->
+
+<title>Virtual Services Howto
+<author>Brian Ackerman, <tt/brian@nycrc.net/ &nl;
+Adaptation française Julien Garnault <tt/judge@club-internet.fr/
+<date>v2.1, 15 Aout 1998
+<abstract>
+Ce document a été écrit pour répondre au nombre grandissant de questions sur la manière de rendre un service virtuel.
+</abstract>
+
+<!-- Table of contents -->
+<toc>
+
+<!-- Beginning -->
+<sect> Introduction
+
+<sect1> Pré-requis
+<p>
+Créer une machine pour des services virtuels n'est pas du tout difficile. Cependant, des connaissances basiques ne sont pas suffisantes. De plus, ce document n'est pas destiné à vous expliquer comment configurer une machine sous Linux.
+
+<p>
+Afin que vous puissiez comprendre ce HOWTO, nous supposerons que les documents suivants vous sont tout à fait familiers&nbsp;:
+
+<itemize>
+<item> Compiler un noyau Linux et ajouter le support de l'IP aliasing
+<htmlurl url="http://www.freenix.org/unix/linux/HOWTO/mini/IP-Alias.html" name="IP alias mini-HOWTO"> 
+<item> Installer et configurer des périphériques réseau
+<htmlurl url="http://www.freenix.org/unix/linux/HOWTO/NET-3-HOWTO.html" name="NET-3 HOWTO">
+<item> Installer inetd
+<htmlurl url="http://www.freenix.org/unix/linux/HOWTO/NET-3-HOWTO.html" name="NET-3 HOWTO">
+<item> Compiler et installer divers paquetages de logiciels en réseau comme
+<htmlurl url="http://www.sendmail.org" name="Le site de Sendmail"> 
+<htmlurl url="http://www.apache.org" name="Le site d'Apache">
+<htmlurl url="http://www.cetis.hvu.nl/~koos/wu-ftpd-faq.html" name="La FAQ de Wu-Ftpd">
+<item> Mettre en place le DNS
+<htmlurl url="http://www.freenix.org/unix/linux/HOWTO/DNS-HOWTO.html" name="DNS HOWTO">
+</itemize>
+
+Si vous n'êtes pas certain de la marche à suivre pour effectuer une des actions précédentes, il est FORTEMENT recommandé que vous suiviez les liens proposés pour vous familiariser avec tous ces paquetages. Je ne répondrai à AUCUN mail concernant les points précédents. Veuillez s'il vous plaît rediriger toute question à l'auteur du HOWTO approprié.
+
+<sect1> But
+<p>
+Le but des services virtuels est de permettre à une seule machine de reconnaître de multiples adresses IP sans avoir de multiples cartes réseau. L'IP aliasing est une option du noyau qui vous permet d'assigner plus d'une adresse IP à chaque périphérique réseau. Le noyau multiplexe (les échange très rapidement) en tâche de fond et l'utilisateur a l'impression d'avoir plusieurs cartes réseau dans sa machine.
+
+<p> 
+Ce multiplexage permet à de multiples domaines (www.domaine1.com, www.domaine2.com, etc.) d'être logés sur la même machine pour le même coût que pour un seul domaine. Malheureusement, la plupart des services (ftp, web, courrier électronique) n'ont pas été conçus pour gérer de multiples domaines. Afin de les faire fonctionner correctement, vous devrez modifier à la fois les fichiers de configuration et le code source. Ce document décrit comment réaliser ces modifications pour la mise en place d'une machine virtuelle.
+
+<p>
+Un démon est également nécessaire afin de faire fonctionner les services virtuels. Le code source de ce démon (virtuald) est fourni plus loin dans ce document.
+
+<sect1> Commentaires
+<p>
+Ce document va grossir au fur et à mesure que les paquetages seront mis à jour et que le code source ou que les modifications proposées changeront. Si quelque partie de ce document n'est pas claire, envoyez-moi vous questions ou suggestions. Afin que je n'aie pas à chercher dans le HOWTO en entier, assurez vous s'il vous plaît que les commentaires soient aussi spécifiques que possible et incluent la section où se trouve le point discutable. Il est important que tout mail ait un champ Subject: contenant VIRTSERVICES HOWTO. Tout autre mail sera considéré comme du mail personnel, et tous mes amis savent que je ne lis pas tout le temps mon mail personnel et il risque donc d'être effacé avec le leur.
+
+<p>
+Veuillez également noter que mes exemples ne sont pas autre chose que des exemples, et ne doivent pas être recopiés tels quels. Il se peut que vous ayez à insérer vos propres valeurs. Si vous rencontrez des problèmes, envoyez moi un mail, contenant tous les fichiers de configuration pertinents et les messages d'erreur que vous avez obtenu lors de l'installation. Je vous renverrai mes suggestions.
+
+<sect1> Historique des changements
+<p>
+V1.0 Document initial.
+
+<p>
+V1.1 Correction d'une erreur dans la section sur le web virtuel.
+
+<p>
+V1.2 Correction de la date.
+
+<p>
+<bf>V2.0</bf>
+<p>
+Mise à jour des liens html.
+<p>
+Mise à jour de la section Web.
+<p>
+Nouvelle option pour sendmail.
+<p>
+Nouvelle option pour Qmail.
+<p>
+Mise à jour de la section Syslogd.
+<p>
+Mise à jour de la section FTP.
+<p>
+Option par défaut de Virtuald.
+<p>
+Nouvelle section Samba.
+<p>
+Mise à jour de la FAQ.
+
+<p>
+<bf>V2.1</bf>
+<p>
+Tous les paths ont été changés pour /usr/local.
+<p>
+Ajout de l'option de compilation VERBOSELOG.
+<p>
+Correction d'un bug de setuid/setgid dans virtmailfilter.
+<p>
+Correction du bug de execl dans virtmailfilter
+<p>
+Correction du bug de captalization dans virtmailfilter.
+<p>
+Suppression du code mbox de virtmailfilter/virtmaildelivery.
+<p>
+Ajout d'une section tcpserver.init pop pour Qmail
+<p>
+Ajout de la question alias domain name à la FAQ.
+<p>
+Correction de virtmailfilter pour envoyer le répertoire home à virtmaildelivery.
+
+<sect1> Copyright/Distribution
+<p>
+Ce document est Copyright (c) 1997 par The Computer Resource Center Inc.
+
+<p>
+Une copie de ce document peut être reproduite ou distribuée sur n'importe quel support physique ou électronique sans la permission de l'auteur. De la même façon, les traductions sont autorisées sans permission expresse si elle incluent un mot disant qui l'a traduit (NdT&nbsp;: voir le début du document pour mes coordonnées). Une redistribution commerciale est autorisée et encouragée. Dans ce cas cependant, faites-en part à <htmlurl url="mailto:brian@nycrc.net" name="Computer Resource Center">.
+
+<p>
+Vous pouvez utiliser des extraits de ce document sans accord de l'auteur, à condition que l'oeuvre dérivée contienne une copie de ce document ou un pointeur vers une copie de ce document.
+
+<p>
+Vous avez la permission d'effectuer des copies ainsi que de les distribuer à condition que le paragraphe sur le copyright ainsi que cette note soient préservés sur toutes les copies.
+
+<p>
+En bref, nous désirons promouvoir la dissémination de cette information par quelque moyen que ce soit. Cependant, je désire conserver le copyright sur ce document, et aimerait être tenu au courant de tous les plans de redistribution de ce HOWTO.
+
+<sect> IP aliasing
+<p>
+
+L'IP aliasing est une option du noyau qui doit être mise en place afin de pouvoir faire tourner des services virtuels sur une machine. Il existe déjà un mini-HOWTO expliquant l'
+<htmlurl url="http://www.freenix.org/unix/linux/HOWTO/mini/IP-Alias.html" name="IP aliasing">.  
+Référez vous à ce document pour toute question concernant la mise en place de cette option.
+
+<sect> Virtuald 
+
+<sect1> Comment ça marche
+<p>
+Toute connexion réseau est composée de deux paires adresse IP/port. L'API (Applications Program Interface, ou Interface de Programmation d'Applications) pour la programmation réseau est nommée l'API Sockets. La socket agit comme un fichier ouvert, et vous pouvez envoyer ou recevoir des données à travers une connexion réseau en lisant ou en écrivant dans la socket. Il existe une fonction, <tt/getsockname/, qui retourne l'adresse IP de la socket locale. Virtuald utilise <tt/getsockname/ pour déterminer sur quel adresse IP de la machine locale la connexion a été faite. Virtuald lit un fichier de configuration pour récupérer le répertoire associé à cette adresse IP. Il va utiliser <tt/chroot/ sur ce répertoire et prendre en compte la connexion au service. <tt/Chroot/ change le répertoire / (le répertoire root) vers un nouveau point, de sorte que tout ce qui est au dessus de ce répertoire devienne inaccessible pour le programme. Ainsi, chaque adresse IP se voit assigné un système virtuel de fichiers. Pour le programme réseau, ceci est transparent, et le programme va se comporter comme si de rien n'était. Virtuald, en conjonction avec un programme comme inetd, peut être utilisé pour virtualiser n'importe quel service.
+
+<sect1> inetd 
+<p>
+Inetd est un super serveur réseau qui écoute sur de multiples ports et, lorsqu'il reçoit une demande de connexion (par exemple, une requête POP), inetd réalise la connexion et l'envoie au programme spécifié. Cela évite de faire tourner des serveurs pour rien lorsqu'il n'y a aucune demande pour eux
+
+<p>
+Un fichier <tt>/etc/inetd.conf</tt> standard ressemble à ceci&nbsp;:
+
+<verb>
+ftp stream tcp nowait root /usr/sbin/tcpd \
+        wu.ftpd -l -a
+pop-3 stream tcp nowait root /usr/sbin/tcpd \
+        in.qpop -s
+</verb>
+
+Un fichier <tt>/etc/inetd.conf</tt> virtualisé ressemble à ceci&nbsp;:
+
+<verb>
+ftp stream tcp nowait root /usr/bin/virtuald virtuald /virtual/conf.ftp wu.ftpd -l -a
+pop-3 stream tcp nowait root /usr/bin/virtuald virtuald /virtual/conf.pop in.qpop -s
+</verb>
+
+<sect1> Fichier de Configuration
+<p>
+Chaque service se voit attribué un fichier de configuration qui contrôlera quelles IPs et quels répertoires sont autorisés pour ce service. Vous pouvez avoir un fichier de configuration principal ou de nombreux fichiers de configuration si vous désirez que chaque service se voit attribuer une liste de domaines différents. Un fichier de configuration ressemble à ceci&nbsp;:
+
+<verb>
+# C'est un commentaire, comme le sont les lignes blanches
+
+# Format IP "ESPACE" dir "PAS D'ESPACES"
+10.10.10.129 /virtual/foo.bar.com
+10.10.10.130 /virtual/bar.foo.com
+10.10.10.157 /virtual/boo.la.com
+</verb>
+
+<sect1> Le code source de virtuald
+<p>
+Ceci est un code source en C du programme virtuald. Compilez-le et installez-le
+dans /usr/local/bin avec les permissions 0755, l'utilisateur root, et le 
+groupe root. La seule option de compilation est VERBOSELOG qui active ou 
+désactive l'option de log.
+
+<verb>
+#include &lt;netinet/in.h&gt;
+#include &lt;sys/socket.h&gt;
+#include &lt;arpa/inet.h&gt;
+#include &lt;stdarg.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;string.h&gt;
+#include &lt;syslog.h&gt;
+#include &lt;stdio.h&gt;
+
+#define BUFSIZE 8192
+int getipaddr(char **ipaddr)
+{
+        struct sockaddr_in virtual_addr;
+        static char ipaddrbuf[BUFSIZE];
+        int virtual_len;
+        char *ipptr;
+        virtual_len=sizeof(virtual_addr);
+        if (getsockname(0,(struct sockaddr *)&amp;virtual_addr,&amp;virtual_len)        {
+                syslog(LOG_ERR,"getipaddr: getsockname failed: %m");
+                return -1;
+        }
+        if (!(ipptr=inet_ntoa(virtual_addr.sin_addr)))
+        {
+                syslog(LOG_ERR,"getipaddr: inet_ntoa failed: %m");
+                return -1;
+        }
+        strncpy(ipaddrbuf,ipptr,sizeof(ipaddrbuf)-1);
+        *ipaddr=ipaddrbuf;
+        return 0;
+}
+
+int iptodir(char **dir,char *ipaddr,char *filename)
+{
+        char buffer[BUFSIZE],*bufptr;
+        static char dirbuf[BUFSIZE];
+        FILE *fp;
+
+        if (!(fp=fopen(filename,"r")))
+        {
+                syslog(LOG_ERR,"iptodir: fopen failed: %m");
+                return -1;
+        }
+        *dir=NULL;
+        while(fgets(buffer,BUFSIZE,fp))
+        {
+                buffer[strlen(buffer)-1]=0;
+                if (*buffer=='#' || *buffer==0)
+                        continue;
+                if (!(bufptr=strchr(buffer,' ')))
+                {
+                        syslog(LOG_ERR,"iptodir: strchr failed");
+                        return -1;
+                }
+                *bufptr++=0;
+                if (!strcmp(buffer,ipaddr))
+                {
+                        strncpy(dirbuf,bufptr,sizeof(dirbuf)-1);
+                        *dir=dirbuf;
+                        break;
+                }
+                if (!strcmp(buffer,"default"))
+                {
+                        strncpy(dirbuf,bufptr,sizeof(dirbuf)-1);
+                        *dir=dirbuf;
+                        break;
+                }
+        }
+        if (fclose(fp)==EOF)
+        {
+                syslog(LOG_ERR,"iptodir: fclose failed: %m");
+                return -1;
+        }
+        if (!*dir)
+        {
+                syslog(LOG_ERR,"iptodir: ip not found in conf file");
+                return -1;
+        }
+        return 0;
+}
+int main(int argc,char **argv)
+{
+        char *ipaddr,*dir;
+        openlog("virtuald",LOG_PID,LOG_DAEMON);
+#ifdef VERBOSELOG
+        syslog(LOG_ERR,"Virtuald Starting: $Revision: 1.49 $");
+#endif
+        if (!argv[1])
+        {
+                syslog(LOG_ERR,"invalid arguments: no conf file");
+                exit(0);
+        }
+        if (!argv[2])
+        {
+                syslog(LOG_ERR,"invalid arguments: no program to run");
+                exit(0);
+        }
+        if (getipaddr(&amp;ipaddr))
+        {
+                syslog(LOG_ERR,"getipaddr failed");
+                exit(0);
+        }
+#ifdef VERBOSELOG
+        syslog(LOG_ERR,"Incoming ip: %s",ipaddr);
+#endif
+        if (iptodir(&amp;dir,ipaddr,argv[1]))
+        {
+                syslog(LOG_ERR,"iptodir failed");
+                exit(0);
+        }
+        if (chroot(dir)&lt;0)
+        {
+                syslog(LOG_ERR,"chroot failed: %m");
+                exit(0);
+        }
+#ifdef VERBOSELOG
+        syslog(LOG_ERR,"Chroot dir: %s",dir);
+#endif
+        if (chdir("/")&lt;0)
+        {
+                syslog(LOG_ERR,"chdir failed: %m");
+                exit(0);
+        }
+        if (execvp(argv[2],argv+2)&lt;0)
+        {
+                syslog(LOG_ERR,"execvp failed: %m");
+                exit(0);
+        }
+
+        closelog();
+
+        exit(0);
+}
+
+</verb>
+
+<sect> Scripts shell
+
+<sect1> virtfs
+<p>
+Chaque domaine doit avoir une arborescence de répertoires. Puisque vous utilisez <tt/chroot/, vous aurez besoin de copies multiples des librairies, binaires, fichiers de configuration, etc. J'utilise le répertoire <tt>/virtual/domaine1.com</tt> pour chaque domaine que je crée.
+<p>
+Je comprends bien que cela représente du gaspillage d'espace disque, mais l'espace disque est meilleur marché qu'une nouvelle machine ou que des cartes réseau. Si vous désirez réellement sauver de l'espace disque, vous pouvez faire des liens, afin qu'une seule copie de chaque binaire soit présente.
+Le systeme de fichiers que j'utilise prend un peu plus de 2Mo. Le script essaye
+de copier tous les fichiers du système de fichiers principal pour que ce soit le
+plus identique possible.
+
+<p> 
+Voici un fichier virtfs d'exemple&nbsp;:
+
+<verb>
+#!/bin/bash
+
+echo '$Revision: 1.49 $'
+
+echo -n "Saisissez le nom de domaine : "
+read domain
+
+if [ "$domain" = "" ]
+then
+	echo Vous n'avez rien saisi : on arrête là
+	exit 0
+fi
+
+leadingdir=/virtual
+
+echo -n "Saisissez le nom du répertoire contenant les domaines (défaut: $leadingdir): "
+read ans
+
+if [ "$ans" != "" ]
+then
+	leadingdir=$ans
+fi 
+
+newdir=$leadingdir/$domain
+
+if [ -d "$newdir" ]
+then
+	echo Le répertoire $newdir existe déjà
+	exit 0
+else
+	echo Nouveau répertoire : $newdir
+fi
+
+echo Création de $newdir
+mkdir -p $newdir
+
+echo Création de bin
+cp -pdR /bin $newdir
+
+echo Création de dev
+cp -pdR /dev $newdir
+
+echo Création de dev/log
+ln -f /virtual/log $newdir/dev/log
+
+echo Création d'etc
+mkdir -p $newdir/etc
+for i in /etc/* 
+do 
+	if [ -d "$i" ]
+	then 
+		continue
+	fi
+	cp -pd $i $newdir/etc
+done
+
+echo Création de etc/skel
+mkdir -p $newdir/etc/skel
+
+echo Création de home
+for i in a b c d e f g h i j k l m n o p q r s t u v w x y z 
+do 
+	mkdir -p $newdir/home/$i
+done
+
+echo Création de home/c/crc
+mkdir -p $newdir/home/c/crc
+chown crc.users $newdir/home/c/crc
+
+echo Création de lib
+mkdir -p $newdir/lib
+for i in /lib/* 
+do 
+	if [ -d "$i" ]
+	then 
+		continue
+	fi
+	cp -pd $i $newdir/lib
+done
+
+echo Création de proc
+mkdir -p $newdir/proc
+
+echo Création de sbin
+cp -pdR /sbin $newdir
+
+echo Création de tmp
+mkdir -p -m 0777 $newdir/tmp
+chmod +t $newdir/tmp
+
+echo Création de usr
+mkdir -p $newdir/usr
+
+echo Création de usr/bin
+cp -pdR /usr/bin $newdir/usr
+
+echo Création de usr/lib
+mkdir -p $newdir/usr/lib
+
+echo Création de usr/lib/locale
+cp -pdR /usr/lib/locale $newdir/usr/lib
+
+echo Création de usr/lib/terminfo
+cp -pdR /usr/lib/terminfo $newdir/usr/lib
+
+echo Création de usr/lib/zoneinfo
+cp -pdR /usr/lib/zoneinfo $newdir/usr/lib
+
+echo Création de usr/lib/\*.so\*
+cp -pdR /usr/lib/*.so* $newdir/usr/lib
+
+echo Création de usr/sbin
+cp -pdR /usr/sbin $newdir/usr
+
+echo Lien de usr/tmp vers /tmp
+ln -s /tmp $newdir/usr/tmp
+
+echo Création de var
+mkdir -p $newdir/var
+
+echo Création de var/lock
+cp -pdR /var/lock $newdir/var
+
+echo Création de var/log
+mkdir -p $newdir/var/log
+
+echo Création de var/log/wtmp
+cp /dev/null $newdir/var/log/wtmp
+
+echo Création de var/run
+cp -pdR /var/run $newdir/var
+
+echo Création de var/run/utmp
+cp /dev/null $newdir/var/run/utmp
+
+echo Création de var/spool
+cp -pdR /var/spool $newdir/var
+
+echo Lien de var/tmp vers /tmp
+ln -s /tmp $newdir/var/tmp 
+
+echo Création de var/www/html
+mkdir -p $newdir/var/www/html
+chown webmast.www $newdir/var/www/html
+chmod g+s $newdir/var/www/html
+
+echo Création de var/www/master
+mkdir -p $newdir/var/www/master
+chown webmast.www $newdir/var/www/master
+
+echo Création de var/www/server
+mkdir -p $newdir/var/www/server
+chown webmast.www $newdir/var/www/server
+
+exit 0
+</verb>
+
+<sect1> Virtexec
+<p> 
+Afin d'exécuter des commandes dans un environnement virtuel, vous devez utiliser <tt/chroot/ sur ce répertoire puis lancer la commande. J'ai écrit un script shell nommé virtexec se chargeant de ces opérations, pour n'importe quelle commande&nbsp;:
+
+<verb>
+#!/bin/sh
+
+echo '$Revision: 1.49 $'
+
+BNAME=`basename $0`
+FIRST4CHAR=`echo $BNAME | cut -c1-4`
+REALBNAME=`echo $BNAME | cut -c5-`
+
+if [ "$BNAME" = "virtexec" ]
+then
+	echo Vous ne pouvez pas lancer virtexec directement. Il FAUT un lien symbolique
+	exit 0
+fi
+
+if [ "$FIRST4CHAR" != "virt" ]
+then
+	echo Le lien ne pointe pas sur une fonction virtuelle
+	exit 0
+fi
+
+list=""
+num=1
+for i in /virtual/*
+do
+        if [ ! -d "$i" ]
+        then
+                continue
+        fi
+        if [ "$i" = "/virtual/lost+found" ]
+        then
+                continue
+        fi
+        list="$list $i $num"
+        num=`expr $num + 1`
+done
+
+if [ "$list" = "" ]
+then
+        echo Je ne trouve pas d'environnement virtuel
+        exit 0
+fi
+
+dialog --clear --title 'Virtexec' --menu Pick 20 70 12 $list 2&gt; /tmp/menu.$$
+if [ "$?" = "0" ]
+then
+        newdir=`cat /tmp/menu.$$`
+else
+        newdir=""
+fi
+tput clear
+rm -f /tmp/menu.$$
+
+echo '$Revision: 1.49 $'
+
+if [ ! -d "$newdir" ]
+then
+	echo Le nouveau répertoire $newdir N'EXISTE PAS
+	exit 0
+else
+	echo Nouveau répertoire : $newdir
+fi
+
+echo bname: $BNAME
+
+echo realbname: $REALBNAME
+
+if [ "$*" = "" ]
+then
+	echo arguments: aucun
+else
+	echo args: $*
+fi
+
+echo Changement de répertoire vers $newdir
+cd $newdir
+
+echo Lancement de $REALBNAME
+
+chroot $newdir $REALBNAME $*
+
+exit 0
+</verb>
+
+Veuillez noter que vous devez disposer du programme <tt/dialog/ sur votre système pour que ce script fonctionne. Pour utiliser virtexec, créez un lien symbolique d'un programme vers celui-ci. Par exemple&nbsp;:
+
+<verb>
+ln -s /usr/local/bin/virtexec /usr/local/bin/virtpasswd
+ln -s /usr/local/bin/virtexec /usr/local/bin/virtvi
+ln -s /usr/local/bin/virtexec /usr/local/bin/virtpico
+ln -s /usr/local/bin/virtexec /usr/local/bin/virtemacs
+ln -s /usr/local/bin/virtexec /usr/local/bin/virtmailq
+</verb>
+
+A présent, si vous tapez <tt/virtvi/ ou <tt/virtpasswd/ ou encore <tt/virtmailq/, cela vous permettra d'éditer un fichier, changer le mot de passe d'un utilisateur, ou vérifier la file d'attente de mail sur votre système virtuel. Vous pouvez créer autant de liens vers virtexec que vous le désirez. Cependant, notez bien que si votre programme nécessite une librairie partagée, celle-ci doit se trouver sur le système de fichiers virtuel, ainsi que les binaires.
+
+<sect1> Notes
+<p>
+J'installe tous les scripts dans <tt>/usr/local/bin</tt>. Tout ce que je ne désire pas mettre sur le système de fichiers virtuel, je le place dans <tt>/usr/local</tt>. Le script ne touche à rien dans ce répertoire lors de la copie. Les fichiers ne devant pas chevaucher plusieurs systèmes de fichiers virtuels doivent être supprimés. Par exemple, <tt/ssh/ est installé sur mon système, et je n'ai pas voulu que les clefs privées soient disponibles sur tous les systèmes de fichier. J'ai donc supprimé le fichier des systèmes de fichiers virtuels après avoir lancé <tt/virtfs/. Je change également le <tt/resolv.conf/ et supprime tout ce qui contient le nom d'un autre domaine, pour des raisons légales. Par exemple, les fichiers <tt>/etc/hosts</tt> et <tt>/etc/HOSTNAME</tt>.
+
+<p>
+Les programmes pour lesquels je fais un lien symbolique vers virtexec sont&nbsp;:
+
+<itemize>
+<item> virtpasswd -- changer le mot de passe d'un utilisateur
+<item> virtadduser -- ajouter un utilisateur
+<item> virtdeluser -- supprimer un utilisateur
+<item> virtsmbstatus -- consulter l'état de samba
+<item> virtvi -- éditer un fichier
+<item> virtmailq -- vérifier la mailq
+<item> virtnewaliases -- reconstruire la table des alias mail
+</itemize>
+
+<sect> DNS
+<p>
+Vous pouvez configurer le DNS normalement. Vous pouvez consulter le 
+<htmlurl url="http://www.freenix.org/unix/linuxHOWTO/DNS-HOWTO.html" name="DNS HOWTO">.
+
+<sect> Syslogd
+
+<sect1> Problème
+<p>
+Syslog est l'outil de <em/logging/ couramment utilisé sur les systèmes UNIX. C'est un démon qui ouvre un fichier spécial appelé FIFO. Une FIFO est un fichier spécial, se comportant comme une file d'attente. Tout ce qui y est écrit "ressortira" en lecture. Le démon syslog attend les données en lecture. Il existe des fonctions C pour écrire dans les FIFO. Si vous utilisez ces fonctions C dans vos programmes, la sortie ira vers syslod.
+<p>
+Souvenez vous que vous avez utilisé <tt/chroot/ et que la FIFO que syslog lit <tt>/dev/log</tt> ne se trouve pas dans l'environnement virtuel. Cela implique qu'aucun des environnements virtuels ne pourra utiliser <tt/syslog/. Nous ne pouvons pas tout simplement copier le fichier, puisque les programmes utiliseraient <tt>/dev/log</tt> au lieu du nouveau que nous aurions créé.
+
+<sect1> Solution
+<p> 
+Syslog peut scruter d'autres FIFO si vous le lui dites en ligne de commande. Lancez donc syslog avec l'argument&nbsp;:
+
+<verb>
+syslog -p /virtual/log
+</verb>
+
+Faites alors un lien de <tt>/dev/log</tt> vers <tt>/virtual/log</tt> (un lien symbolique)&nbsp;:
+
+<verb>
+ln -sf /virtual/log /dev/log
+</verb>
+
+Puis liez toutes les copies de <tt>/dev/log</tt> vers ce fichier avec la commande (attention, c'est un lien NON symbolique)&nbsp;:
+
+<verb>
+ln /virtual/log /virtual/domain.com/dev/log 
+</verb>
+
+Le script virtfs ci-dessus le fait pour vous. Puisque <tt>/virtual</tt> est un disque entier, et que les <tt>/dev/log</tt> sont liés, ils ont le même numéro d'inode et pointent vers les mêmes données. Le <tt/chroot/ ne peut pas empêcher cela, et donc tous vos <tt>/dev/log</tt> virtuels vont à présent fonctionner. Notez également que tous les messages de toutes les machines virtuelles seront écrits dans un même fichier. Cependant, vous pouvez écrire des programmes pour filtrer les données.
+
+<sect2>Syslogd.init
+<p>
+Cette version du fichier <tt/syslog.init/ refait les liens vers les <tt>/dev/log</tt> à chaque fois que vous le lancez. Voici un <tt/syslog.init/ modifié&nbsp;:
+
+<verb>
+#!/bin/sh
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+case "$1" in
+  start)
+        echo -n "Starting dev log: "
+        ln -sf /virtual/log /dev/log
+        echo done
+        echo -n "Starting system loggers: "
+        daemon syslogd -p /virtual/log
+        daemon klogd
+        echo
+        echo -n "Starting virtual dev log: "
+        for i in /virtual/*
+        do
+                if [ ! -d "$i" ]
+                then
+                        continue
+                fi
+                if [ "$i" = "/virtual/lost+found" ]
+                then
+                        continue
+                fi
+                ln -f /virtual/log $i/dev/log
+                echo -n "."
+        done
+        echo " done"
+        touch /var/lock/subsys/syslog
+        ;;
+  stop)
+        echo -n "Shutting down system loggers: "
+        killproc syslogd
+        killproc klogd
+        echo
+        rm -f /var/lock/subsys/syslog
+        ;;
+  *)
+        echo "Usage: syslog {start|stop}"
+        exit 1
+esac
+
+exit 0
+</verb>
+
+<sect1> Plusieurs syslod
+
+<sect2> Un par disque
+<p>
+Si vous manquez de place sur un système de fichiers, et que vous devez séparer 
+vos domaines virtuels en plusieurs disques, rappellez-vous que les liens 
+(non symboliques) ne peuvent pas passer à travers plusieurs disques. Ce qui 
+implique de devoir lancer un syslogd pour chaque groupe de domaine par disque.
+Par exemple, si vous avez 13 domaines sur /virtual1 et 15 sur /virtual2, vous 
+devrez faire un lien pour les 13 domaines sur /virtual1/log et lancer syslogd avec 
+<tt> syslogd -p /virtual1/log </tt>, ainsi qu'un lien pour les 15 domaines sur 
+/virtual2/log et lancer <tt> syslogd -p /virtual2/log </tt>.
+
+<sect2> Un par domaine
+<p>
+Si vous ne voulez pas centrer les logs sur un seul endroit, vous pouvez aussi lancer 
+un syslogd par domaine. Cela donne des pertes de processus ID, donc je ne le 
+recommande pas, mais c'est facile à mettre en oeuvre. Vous devriez modifier votre 
+fichier syslod.init pour lancer syslogd par <tt> chroot /virtual/domain1.com 
+syslogd </tt> pour chaque domaine. Ceci lancera syslogd dans le <tt> chroot </tt> 
+et les logs se trouveront dans /virtual/domain1.com/var/log au lieu d'être tous 
+rassemblés dans /var/log. 
+N'oubliez pas de lancer syslod normalement <tt> syslod </tt> pour le système 
+principal ainsi qu'un logger pour le noyau <tt> klogd </tt>.
+
+<sect> FTP virtuel
+
+<sect1> Inetd
+<p>
+Wu-ftpd intégre en standard le support des domaines virtuels. Cependant, vous ne pouvez pas utiliser des fichiers de mot de passe différents pour chaque domaine. Par exemple, si <tt/bob@domaine1.com/ et <tt/bob@domaine2.com/ désirent tous les deux un compte, vous devrez donner à l'un des deux le nom <tt/bob2/ ou demander à un des utilisateurs de choisir un autre nom de login. Puisque vous disposez à présent de systèmes de fichiers différents pour chaque domaine, vous disposez de fichiers de mot de passe différents et ce problème disparaît. Vous n'avez qu'à créer un script <tt/virtnewuser/ et <tt/virtpasswd/ de la façon qui est expliquée ci-dessus, et tout fonctionnera.
+
+<p>
+Les entrées pour wu-ftp dans <tt/inetd.conf/ sont&nbsp;:
+
+<verb>
+ftp stream tcp nowait root /usr/local/bin/virtuald \
+        virtuald /virtual/conf.ftp wu.ftpd -l -a
+</verb>
+
+<sect1> Les FTP anonymes
+<p>
+Ils ne sont pas affectés par la presence de virtuald.
+Pour un utilisateur anonyme, créer l'utilisateur FTP dans /virtual/domain1.com/etc/passwd 
+comme vous le feriez d'habitude.
+
+<verb>
+ftp:x:14:50:Anonymous FTP:/var/ftp:/bin/false
+</verb>
+
+<p>
+Puis l'installation du répertoire anonyme du FTP. Vous avez des fichier de mot de passe 
+séparés, donc vous pouvez restreindre n'importe quel domaine à un FTP avec un compte anonyme. 
+Notez que comme le serveur à un <tt> chroot </tt> dans le répertoire 
+/virtual/domain1.com vous n'avez pas a préfixer de chemins avec. 
+
+<sect1> Utilisateurs de FTP Virtuel
+<p>
+Wu-ftpd supporte quelque chose qui s'appelle un groupe d'invité (guest group). 
+Ça permet de créer différentes zones FTP pour chaque utilisateur. Le serveur 
+FTP fait un <tt> chroot </tt> vers la zone specifiée, donc, l'utilisateur ne peut 
+sortir du répertoire. Si vous créez un utilisateur dans un domaine virtuel, il ne 
+sera pas capable de voir le système de fichiers Système.
+
+<p>
+Ajouter le group guest au fichier /virtual/domain1.com/etc/ftpaccess.
+
+<p>
+Créer une entrée dans /virtual/domain1.com/etc/passwd avec <tt> chroot </tt> 
+et le répertoire home de départ séparé par <tt> /./ </tt>&nbsp;:
+
+<verb>
+guest1:x:8500:51:Guest FTP:/home/g/guest1/./incoming:/bin/false
+</verb>
+
+<p>
+Puis installer le home du guest comme vous feriez pour un FTP anonyme. Vous 
+avez des fichiers de mots de passe separés pour chaque domaine, donc vous 
+pouvez spécifier quel domaine dispose d'un compte guest et les utilisateurs qui sont 
+des utilisateurs guest dans un domaine. Notez que depuis que le serveur FTP est 
+<tt> chrooté </tt> vers le repertoire /virtual/domain1.com vous n'avez pas à 
+préfixer de chemin.
+
+<sect> Web virtuel
+
+<sect1> Lancement avec virtuald
+
+<sect2> Non recommandé
+
+<p>
+Apache supporte en standard la gestion des domaines virtuels. C'est d'ailleurs le seul programme pour lequel je recommande d'utiliser le système de gestion des domaines virtuels fourni avec. Lorsque vous lancez un programme par l'intermédiaire d'inetd, il y a un coût supplémentaire, puisque le programme doit démarrer à chaque fois qu'il y a une demande de connexion, et vous obtenez des temps de réponse beaucoup plus longs, inacceptables pour le web. Apache intégre également un mécanisme pour stopper les connexions lorsqu'elles sont trop nombreuses.
+
+<p>
+Comme il est simplement indiqué ci-dessus, rendre virtuel Apache avec virtuald 
+est une tres mauvaise idée. Le but de virtuald est de combler la lacune des serveurs 
+qui n'ont pas leur propre systeme interne pour faire ce travail. Virtuald n'est 
+pas fait pour remplacer du bon code qui remplit déjà la tâche.
+
+<p>
+Ce qui suit ne restera pas ici, c'est pour expliquer à ceux qui sont assez idiots 
+pour le faire.
+
+<sect2> Inetd
+<p>
+Éditez /etc/inetd.conf
+
+<verb>
+vi /etc/inetd.conf # Ajouter cette ligne
+www stream tcp nowait www /usr/local/bin/virtuald \
+        virtuald /virtual/conf.www httpd -f /var/www/conf/httpd.conf
+</verb>
+
+<sect2> Httpd.conf
+<p>
+Éditez /var/www/conf/httpd.conf
+
+<verb>
+vi /var/www/conf/httpd.conf # Où l'emplacement des fichiers de configuration d'Apache
+Il doit y avoir&nbsp;:
+ServerType standalone
+
+Remplacez-le par&nbsp;:
+ServerType inetd 
+</verb>
+
+<sect2> Configuration
+<p>
+Ensuite, configurez chaque cas du serveur Apache comme si vous n'aviez qu'un seul domaine.
+
+<sect2> Httpd.init
+<p>
+Un fichier httpd.init n'est pas nécéssaire si le serveur est lancé par inetd.
+
+<sect1> Lancer Apache avec VirtualHost
+<p>
+Apache a trois fichiers de configuration <tt> access.conf </tt>, <tt> httpd.conf </tt>
+et <tt> srm.conf </tt>. De nouvelles versions d'Apache ont rendues les trois 
+fichiers de configuration inutiles. Ainsi, je trouve que séparer en trois 
+sections la configuration la rend plus simple à gérer, donc je garderai 
+ce style dans le HOWTO.
+
+<sect2> Access.conf
+<p>
+Ce fichier de configuration est utilisé pour contrôler l'accès aux répertoires dans 
+la structure du répertoire web. Voici un exemple de fichier de configuration 
+qui montre comment avoir plusieurs options pour chaque domaine.
+
+<verb>
+# /var/www/conf/access.conf: Configuration des accès globaux
+
+# Les options sont heritées du répertoire précedent
+# Mettre les options par défaut pour le répertoire principal
+&lt;Directory /&gt;
+AllowOverride None
+Options Indexes
+&lt;/Directory&gt;
+
+# Créer un répertoire protegé par mot de passe pour un domaine
+&lt;Directory /virtual/domain1.com/var/www/html/priv&gt;
+AuthUserFile /var/www/passwd/domain1.com-priv
+AuthGroupFile /var/www/passwd/domain1.com-priv-g
+AuthName PRIVSECTION
+AuthType Basic
+&lt;Limit GET PUT POST&gt;
+require valid-user
+&lt;/Limit&gt;
+&lt;/Directory&gt;
+
+# Créer un autre domaine Server Side Include (SSI) 
+&lt;Directory /virtual/domain2.com/var/www/html&gt;
+Options IncludesNOEXEC
+&lt;/Directory&gt;
+</verb>
+
+<sect2> Httpd.conf
+<p>
+Ce fichier de configuration est utilisé pour contrôler les options principales 
+du serveur Apache. Voici un exemple de fichier de configuration qui montre 
+comment avoir différentes options pour chaque domaine.
+
+<verb>
+# /var/www/conf/httpd.conf: Fichier de configuration principal du serveur
+
+# Début: Section principale
+ServerType standalone
+
+# Numéro du port
+Port 80
+
+# Log des clients avec le nom et l'IP
+HostnameLookups on
+
+# Utilisateur qui lance le serveur
+User www
+Group www
+
+# Emplacement des fichiers de config, erreurs et log
+ServerRoot /var/www
+
+# Processus ID du serveur dans ce fichier
+PidFile /var/run/httpd.pid
+
+# Informations du processus interne du serveur
+ScoreBoardFile /var/www/logs/apache_status
+
+# Les options du Timeout et KeepAlive
+Timeout 400
+KeepAlive 5
+KeepAliveTimeout 15
+
+# Nombre de Serveur à lancer
+MinSpareServers 5
+MaxSpareServers 10
+StarsServers 5
+MaxClients 150
+MaxRequestsPerChild 30
+
+# Fin: Section de configuration principale
+
+# Début: Section de l'hébergement virtuel
+
+# Indique au serveur d'accepter les connexions pour IP:Port
+# Il y a une ligne pour chaque IP nécessaire donc, vous pouvez ignorer certains 
+# domaines
+Listen 10.10.10.129:80
+Listen 10.10.10.130:80
+
+# La commande VirtualHost permet de spécifier un autre domaine virtuel sur le 
+# serveur. La plupart des options d'Apache peuvent être spécifiées dans cette 
+# section.
+&lt;VirtualHost www.domain1.com&gt;
+
+# E-mail à laquelle sont envoyées les erreurs
+ServerAdmin webmaster@domain1.com
+
+# Endroit où sont mis les documents du domaine virtuel
+DocumentRoot /virtual/domain1.com/var/www/html
+
+# Nom du serveur
+ServerName www.domain1.com
+
+# Fichiers de Log relatifs à l'option ServerRoot
+ErrorLog logs/domain1.com-error_log
+TransferLog logs/domain1.com-access_log
+RefererLog logs/domain1.com-referer_log
+AgentLog logs/domain1.com-agent_log
+
+# Utiliser les scripts CGI dans ce domaine
+ScriptAlias /cgi-bin/ /var/www/cgi-bin/domain1.com/
+AddHandler cgi-script .cgi
+AddHandler cgi-script .pl
+&lt;/VirtualHost&gt;
+
+&lt;VirtualHost www.domain2.com&gt;
+
+# E-mail à laquelle sont envoyées les erreurs
+ServerAdmin webmaster@domain2.com
+
+# Endroit où sont mis les documents du domaine virtuel
+DocumentRoot /virtual/domain2.com/var/www/html
+
+# Nom du Serveur
+ServerName www.domain2.com
+
+# Fichiers de Log relatifs à l'option ServerRoot
+ErrorLog logs/domain2.com-error_log
+TransferLog logs/domain2.com-access_log
+RefererLog logs/domain2.com-referer_log
+AgentLog logs/domain2.com-agent_log
+
+# Pas de script CGI pour ce domaine
+&lt;/VirtualHost&gt;
+# Fin: Section de l'hebergement virtuel
+</verb>
+
+<sect2> Srm.conf
+<p>
+Ce fichier de configuration est utilisé pour contrôler comment sont servies les 
+demandes et comment sont formattés les résultats. Vous n'avez pas 
+besoin d'éditer quoi que ce soit ici pour les domaines virtuels. Le fichier de 
+configuration de base d'Apache doit fonctionner.
+
+<sect2> Httpd.init
+<p>
+Rien de spécial n'est à faire dans ce fichier. Utilisez la version de base qui 
+est fournie avec Apache.
+
+<sect1> Descripteurs de fichiers&nbsp;: limite de capacité
+
+<sect2> Attention
+<p>
+Cela s'applique seulement à la version standalone du serveur Apache.
+Un serveur qui se lance au travers d'inetd n'intervient pas avec les autres domaines et à accès à toute la table des descripteurs de fichiers.
+
+<p>
+Chaque fichier de log qu'ouvre Apache est un autre descripteur de fichier 
+pour le processus. Il y a une limite de 256 descripteurs de fichier par processus au coeur du systeme Linux. Depuis que vous avez plusieurs domaines, vous 
+utilisez plus de descripteurs de fichiers. Si vous avez trop de domaines tournant 
+sur un processus du serveur Apache, vous pouvez engorger cette table. Cela peut 
+impliquer que certains logs ne fonctionneront pas et que certains CGI seront  
+interrompus.
+
+<sect2> Plusieurs serveur Apache
+<p>
+Si vous prévoyez cinq descripteurs de fichiers par domaine, vous pouvez avoir  
+50 domaines tournant sur votre serveur Apache sans problèmes. Mais, si votre 
+serveur a des problèmes, vous pouvez créer /var/www1 avec un serveur Apache 
+qui s'occupe des domaines 1 à 25 et /var/www2 avec un autre serveur qui s'occupe 
+des domaines 26 à 50. Ainsi, chaque serveur aura son propre fichier de configuration, 
+d'erreurs et de log. Chaque serveur doit être configuré separement avec ses propres 
+directives de Listen et VirtualHost. Et n'oubliez pas de lancer plusieurs serveurs 
+dans votre fichier httpd.ini.
+
+<sect1> Héberger plusieurs serveurs avec une IP
+
+<sect2> Économiser des IP
+<p>
+La version 1.1 du protocole HTTP (HyperText Transfer Protocol) inclue une fonction 
+qui communique le nom du serveur au client. Ce qui implique que le client n'a pas 
+besoin de rechercher le nom du serveur à partir de son adresse IP. Comme ça, 
+deux serveurs virtuels peuvent avoir la même adresse IP et être deux site Web 
+différents. La configuration d'Apache est la même qu'avant, à part que vous n'avez 
+pas besoin de mettre plusieurs directives Listen comme les deux domaines ont la 
+même IP.
+
+<sect2> Inconvénient
+<p>
+Le seul problème est que virtuald utilise les adresses IP pour distinguer les 
+domaines. Dans sa forme actuelle Virtuald ne serait pas capable de <tt> chroot </tt> 
+vers un répertoire de mail (spool) pour chaque domaine. Donc, les mails ne peuvent 
+etre reçus que sur une IP et il n'y aurait plus un répertoire spool pour chaque 
+domaine. Tous les clients d'un serveur web partageant une IP devront se partager 
+le meme repertoire spool. Ce qui signifierait que dupliquer les noms d'utilisateurs 
+serait encore une solution. Enfin, c'est le prix à payer pour économiser une IP.
+
+<sect1> Plus d'informations
+<p>
+Ce HOWTO montre seulement comment implémenter le support virtuel sur le serveur 
+Web Apache. 
+La plupart des serveur Web utilisent une interface similaire. Pour plus d'informations 
+sur l'hébergement de web virtuel, consultez le <htmlurl url="http://www.freenix.org/unix/l
+inux/HOWTO/WWW-HOWTO.html" name="WWW-HOWTO">, la documentation d'Apache sur le 
+<htmlurl url="http://www.apache.org" name="Site d'Apache">, ou la documentation 
+sur <htmlurl url="http://www.apacheweek.com" name="ApacheWeek">.
+
+<sect> Mail virtuel avec Pop
+
+<sect1> Problème
+<p>
+Le support du mail virtuel est une demande toujours grandissante. Sendmail affirme qu'il supporte le mail virtuel. En fait, il se contente d'être à l'écoute de mail pour différents domaines. Vous pouvez alors demander à faire suivre le mail quelque part. Cependant, si vous le faites suivre sur la machine locale et que vous avez du mail pour bob@domaine1.com et bob@domaine2.com, ils vont atteindre la même boîte. C'est un problème puisque les bob sont deux personnes différentes, avec du courrier électronique différent.
+
+<sect1> Solution
+<p>
+Vous pouvez vous assurer que chaque nom d'utilisateur est unique en utilisant une numérotation des noms d'utilisateurs&nbsp;: bob1, bob2, etc... Vous pourriez également hacker le mail et le pop pour que ces conversions soient invisibles, mais cela peut devenir désordonné. Le mail sortant à pour domaine domaineprincipal.com et vous désirez que chaque mail envoyé dans chaque sous-domaine ait une adresse From: différente.
+
+<p>
+J'ai deux solutions. L'une fonctionne avec sendmail et l'autre avec Qmail. La solution 
+avec sendmail devrait fonctionner avec une installation standard de sendmail. Cependant 
+elle partage toutes les limitations établies dans sendmail. Il est nécessaire aussi 
+qu'un sendmail ait été lancé en mode de file d'attente (queue mode) pour chaque 
+domaine. Avoir 50 ou plus processus sendmail en mode de file d'attente qui se 
+réveillent toutes les heures peut ajouter des contraintes sur une machine.
+
+<p>
+La solution pour Qmail ne requiert pas plusieurs exemplaires de Qmail et peut 
+n'utiliser qu'un seul répertoire de file d'attente. Il a besoin d'un autre
+programme puisque que Qmail ne se fonde pas sur virtuald. Je crois qu'une
+procédure similaire peut être faite avec Sendmail. Cependant, Qmail se prête
+plus aisément à cette solution.
+
+<p>
+Je ne cautionne aucun des deux programmes en particulier. L'installation de 
+Sendmail est un peu moins complexe mais Qmail est pobablement le plus puissant 
+des deux paquetages de serveur Mail.
+
+<sect1> Solution pour Sendmail 
+
+<sect2> Introduction
+<p>
+Chaque système de fichiers virtuel fournit à chaque domaine un fichier <tt>/etc/passwd</tt>. Cela signifie que bob@domaine1.com et bob@domaine2.com sont des utilisateurs différents dans des fichiers <tt>/etc/passwd</tt> différents, donc le mail ne constituera aucun problème. Ils possèdent également chacun un spool de mail, donc les boîtes aux lettres seront des fichiers différents sur des système de fichiers virtuels différents.
+
+<sect2> Créer un fichier de configuration Sendmail
+<p>
+Créez <tt> /etc/sendmail.cf </tt> comme vous le feriez d'habitude avec m4&nbsp;: 
+
+<verb>
+divert(0)
+VERSIONID(`tcpproto.mc')
+OSTYPE(linux)
+FEATURE(redirect)
+FEATURE(always_add_domain)
+FEATURE(use_cw_file)
+FEATURE(local_procmail)
+MAILER(local)
+MAILER(smtp)
+</verb>
+
+<sect2> Édition du fichier de configuration
+<p>
+Éditez /virtual/domain1.com/etc/sendmail.cf pour l'adapter à votre domaine virtuel&nbsp;: 
+
+<verb>
+vi /virtual/domain1.com/etc/sendmail.cf 
+</verb>
+Approximativement à la ligne 86 il doit y avoir&nbsp;:
+<verb>
+#Dj$w.Foo.COM
+</verb>
+Remplacez-le avec&nbsp;:
+<verb>
+Djdomain1.com
+</verb>
+
+<sect2> Distribution locale par Sendmail
+<p>
+Éditez /virtual/domain1.com/etc/sendmail.cw
+<verb>
+vi /virtual/domain1.com/etc/sendmail.cw
+mail.domain1.com
+domain1.com
+domain1
+localhost
+</verb>
+
+<sect2> Sendmail et les domaines virtuels&nbsp;: la bidouille (pre8.8.6)
+<p>
+Cependant, sendmail nécessite un changement mineur de son code source. Sendmail utilise un fichier nommé <tt>/etc/sendmail.cw</tt> qui contient tous les noms de machine pour lequel il distribuera le mail localement au lieu de le faire suivre à une autre machine. Sendmail fait une vérification interne de toutes les interfaces réseau de la machine pour initialiser cette liste avec les adresses IP locales. Cela présente un problème si vous envoyez des mails entre deux domaines virtuels de la même machine. Sendmail pensera que l'autre domaine virtuel est une adresse locale et il distribuera le mail localement. Par exemple, bob@domaine1.com envoie un mail à fred@domaine2.com. Puisque le sendmail de domaine1.com pense que domaine2.com est une adresse locale, il va envoyer ce mail à domaine1.com et ne l'enverra jamais à domaine2.com. Vous avez à modifier sendmail (ce que j'ai fait sans problème sur la version 8.8.6)&nbsp;:
+
+<verb>
+vi v8.8.5/src/main.c 
+</verb>
+Vers la ligne 494 vous devriez remplacer la ligne&nbsp;:
+<verb>
+load_if_names();
+</verb>
+Par&nbsp;:
+<verb>
+/* load_if_names(); Commenté puisque cela casse les domaines virtuels */
+</verb>
+
+Notez que cette modification n'est nécessaire que si vous désirez envoyer du mail entre des domaines virtuels, ce qui est probable, je pense.
+
+<p>
+Cela corrigera le problème. Cependant, l'adaptateur réseau principal eth0 n'est pas supprimé. Ainsi, si vous envoyez un mail depuis une adresse IP virtuelle vers une adresse sur eth0 de la même machine, il sera délivré localement. Pour cela, j'utilise une adresse IP bidon virtuel1.domaine.com (10.10.10.157). Je n'envoie jamais de mail à cet hôte, les domaines virtuels non plus. C'est aussi l'adresse IP que j'utiliserai pour me connecter sur la machine via ssh, pour vérifier si le système fonctionne.
+
+<sect2> Sendmail et les domaines virtuels&nbsp;: Nouvelle fonction (POST8.8.6)
+<p>
+Depuis la version 8.8.6 de Sendmail, il existe une option qui désactive le 
+chargement des interfaces réseaux supplémentaires. Ce qui implique la NON 
+nécéssité de toucher au code source. Elle s'appelle <tt> DontProbeInterfaces </tt>.
+
+<p>
+Editer /virtual/domain1.com/etc/sendmail.cf
+<verb>
+vi /virtual/domain1.com/etc/sendmail.cf
+</verb>
+Ajouter la ligne&nbsp;:
+<verb>
+O DontProbeInterfaces=True
+</verb>
+
+<sect2> Sendmail.init
+<p>
+Sendmail ne peut pas être lancé tel quel, vous allez devoir le lancer à travers inetd. C'est un moyen inefficace qui implique un temps de réponse plus long, mais si vous avez un site tellement occupé pour que la différence soit importante, alors vous devriez utiliser une machine dédiée à ce site. Notez que vous ne de devez PAS utiliser l'option <tt/-bd/. Notez également que vous devez lancer <tt/sendmail -q/ pour chaque domaine que vous gérez. Le nouveau fichier <tt/sendmail.init/ est le suivant&nbsp;:
+
+<verb>
+#!/bin/sh
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+case "$1" in
+  start)
+        echo -n "Starting sendmail: "
+        daemon sendmail -q1h
+        echo
+        echo -n "Starting virtual sendmail: "
+        for i in /virtual/*
+        do
+                if [ ! -d "$i" ]
+                then
+                        continue
+                fi
+                if [ "$i" = "/virtual/lost+found" ]
+                then
+                        continue
+                fi
+                chroot $i sendmail -q1h
+                echo -n "."
+        done
+        echo " done"
+        touch /var/lock/subsys/sendmail
+        ;;
+  stop)
+        echo -n "Stopping sendmail: "
+        killproc sendmail
+        echo
+        rm -f /var/lock/subsys/sendmail
+        ;;
+  *)
+        echo "Usage: sendmail {start|stop}"
+        exit 1
+esac
+
+exit 0
+</verb>
+
+<sect2> Configuration d'inetd
+<p>
+Pop devrait s'installer normalement, sans effort supplémentaire. Vous n'avez qu'à modifier l'entrée pour pop dans le fichier <tt/inetd.conf/ pour utiliser le démon virtuald. Pour sendmail et pop, cela donne&nbsp;:
+
+<verb>
+pop-3 stream tcp nowait root /usr/bin/virtuald \
+        virtuald /virtual/conf.pop in.qpop -s 
+smtp stream tcp nowait root /usr/bin/virtuald \
+        virtuald /virtual/conf.mail sendmail -bs
+</verb>
+
+<sect1> Solution pour Qmail
+
+<sect2> Introduction
+<p>
+Cette solution prend la responsabilité de distribution du qmail-local, donc 
+l'utilisation des fichiers .qmail dans les répertoire home des domaines virtuels 
+ne marcheront pas. Cependant, chaque domaine aura toujours un utilisateur maître 
+par domaine qui contrôlera les aliasing du domaine. Deux programmes externes 
+seront utilisés pour le fichier <tt> .qmail-default </tt> des maîtres de domaine. 
+Le mail passera par ces deux programmes afin de distribuer le courrier à chaque domaine. 
+
+<p>
+Deux programmes sont necéssaires, car l'un deux est lancé avec le setuid root.
+C'est un petit programme qui se change en un utilisateur non administrateur et
+lance le second programme. Consultez le site le plus proche relatif à la
+sécurité pour une discussion sur le pourquoi est-ce nécessaire.
+
+<p>
+Cette solution se passe de virtuald. Qmail est assez flexible pour 
+ne pas avoir besoin d'une configuration virtuald génerale. La conception de Qmail 
+utilise l'enchaînement de programmes pour distribuer les mails. Cette conception 
+facilite l'insertion d'une section virtuelle dans le processus de distribution
+de Qmail sans altérer une installation standard de Qmail.
+
+<p>
+Depuis que vous utilisez Qmail, tout nom de domaine non qualifié sera 
+développé en utilisant le serveur principal. C'est dû au fait que vous n'avez 
+pas un Qmail pour chaque domaine. Donc, soyez sûr que vos clients (Eudora, elm, 
+mutt, etc.) puissent developper tous vos noms de domaines non qualifiés.
+
+<sect2> Installation des domaines virtuels
+<p>
+Qmail doit être configuré de manière à accepter les mails pour chaque domaine
+que vous désservez. Tapez la commande suivante&nbsp;:
+
+<verb>
+echo "domain1.com:domain1" &gt;&gt; /var/qmail/control/virtualdomains
+</verb>
+
+<sect2> Installation de l'utilisateur maître du domaine
+<p>
+Ajouter à votre fichier <tt> /etc/passwd </tt> principal l'utilisateur domain1. 
+Je choisirais le shell /bin/false pour que le maître du domaine ne puisse se connecter. 
+Cet utilisateur sera capable d'ajouter des fichier .qmail et tous les mails 
+passeront par ce compte. Notez que les noms d'utilisateurs ne peuvent faire que 
+8 caractères et les noms de domaines peuvent être plus long. Les caractères 
+restants seront ignorés. Ce qui implique, que les utilisateurs domain12 et 
+domain123 seraient le même utilisateur et Qmail pourra être perturbé. Donc,
+attention à votre convention pour nommer les utilisateurs maîtres des domaines.
+
+<p>
+Créer les fichiers .qmail du maître de domaine avec les commandes suivantes. Ajoutez 
+les autres alias système au même endroit. Par exemple, webmaster ou hostmaster.
+
+<verb>
+echo "user@domain1.com" &gt; /home/d/domain1/.qmail-mail-daemon
+echo "user@domain1.com" &gt; /home/d/domain1/.qmail-postmaster
+echo "user@domain1.com" &gt; /home/d/domain1/.qmail-root
+</verb>
+
+Créez le fichier .qmail-default du maître de domaine. Il filtre tous les mails 
+du domaine virtuel.
+
+<verb>
+echo "| /usr/local/bin/virtmailfilter" &gt; /home/d/domain1/.qmail-default
+</verb>
+
+<sect2> Tcpserver
+<p>
+Qmail a besoin d'un pop spécial qui supporte le format maildir. Le programme pop 
+doit être rendu virtuel. L'auteur de Qmail recommande d'utiliser <tt> tcpserver </tt> 
+(un remplacement à inetd) avec Qmail, donc mes exemples utilisent tcpserver et 
+NON inetd.
+
+<p>
+Tcpserver n'a pas besoin de fichier de configuration. Toutes les informations 
+peuvent etre passées par une ligne de commande. Ci-dessous, se trouve le fichier 
+tcpserver.ini que vous devez utiliser pour le démon mail et le serveur pop&nbsp;:
+
+<verb>
+#!/bin/sh
+
+. /etc/rc.d/init.d/functions
+
+QMAILDUSER=`grep qmaild /etc/passwd | cut -d: -f3`
+QMAILDGROUP=`grep qmaild /etc/passwd | cut -d: -f4`
+
+# Regarder comment nous étions appellés.
+case "$1" in
+  start)
+        echo -n "Starting tcpserver: "
+        tcpserver -u 0 -g 0 0 pop-3 /usr/local/bin/virtuald \
+                /virtual/conf.pop qmail-popup virt.domain1.com \
+                /bin/checkpassword /bin/qmail-pop3d Maildir &amp;
+        echo -n "pop "
+        tcpserver -u $QMAILDUSER -g $QMAILDGROUP 0 smtp \
+                /var/qmail/bin/qmail-smtpd &amp;
+        echo -n "qmail "
+        echo
+        touch /var/lock/subsys/tcpserver
+        ;;
+  stop)
+        echo -n "Stopping tcpserver: "
+        killall -TERM tcpserver
+        echo -n "killing "
+        echo
+        rm -f /var/lock/subsys/tcpserver
+        ;;
+  *)
+        echo "Usage: tcpserver {start|stop}"
+        exit 1
+esac
+
+exit 0
+</verb>
+
+<sect2> Qmail.init
+<p>
+Vous pouvez utiliser le script standard de Qmail.init fourni. Qmail est livré 
+avec une très bonne documentation décrivant comment le mettre en place.
+
+<sect2> Source
+<p>
+Vous avez besoin de deux autres programmes pour que votre serveur mail virtuel 
+fonctionne avec Qmail. Ce sont virtmailfilter et virtmaildelivery. 
+Ceci est le code source en C de virtmailfilter. Il doit être installé dans 
+/usr/local/bin avec les permissions 4750, l'utilisateur root et le groupe nofiles.
+
+<verb>
+#include &lt;sys/wait.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;string.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;ctype.h&gt;
+#include &lt;pwd.h&gt;
+
+#define VIRTPRE                 "/virtual"
+
+#define VIRTPWFILE              "etc/passwd"
+#define VIRTDELIVERY            "/usr/local/bin/virtmaildelivery"
+#define VIRTDELIVERY0           "virtmaildelivery"
+
+#define PERM                    100
+#define TEMP                    111
+#define BUFSIZE                 8192
+
+int main(int argc,char **argv)
+{
+        char *username,*usernameptr,*domain,*domainptr,*homedir;
+        char virtpath[BUFSIZE];
+        struct passwd *p;
+        FILE *fppw;
+        int status;
+        gid_t gid;
+        pid_t pid;
+
+        if (!(username=getenv("EXT")))
+        {
+                fprintf(stdout,"environment variable EXT not set\n");
+                exit(TEMP);
+        }
+
+        for(usernameptr=username;*usernameptr;usernameptr++)
+        {
+                *usernameptr=tolower(*usernameptr);
+        }
+
+        if (!(domain=getenv("HOST")))
+        {
+                fprintf(stdout,"environment variable HOST not set\n");
+                exit(TEMP);
+        }
+
+        for(domainptr=domain;*domainptr;domainptr++)
+        {
+                if (*domainptr=='.' &amp;&amp; *(domainptr+1)=='.')
+                {
+                        fprintf(stdout,"environment variable HOST has ..\n");
+                        exit(TEMP);
+                }
+                if (*domainptr=='/')
+                {
+                        fprintf(stdout,"environment variable HOST has /\n");
+                        exit(TEMP);
+                }
+
+                *domainptr=tolower(*domainptr);
+        }
+
+        for(domainptr=domain;;)
+        {
+                snprintf(virtpath,BUFSIZE,"%s/%s",VIRTPRE,domainptr);
+                if (chdir(virtpath)&gt;=0)
+                        break;
+
+                if (!(domainptr=strchr(domainptr,'.')))
+                {
+                        fprintf(stdout,"domain failed: %s\n",domain);
+                        exit(TEMP);
+                }
+
+                domainptr++;
+        }
+
+        if (!(fppw=fopen(VIRTPWFILE,"r+")))
+        {
+                fprintf(stdout,"fopen failed: %s\n",VIRTPWFILE);
+                exit(TEMP);
+        }
+
+        while((p=fgetpwent(fppw))!=NULL)
+        {
+                if (!strcmp(p-&gt;pw_name,username))
+                        break;
+        }
+
+        if (!p)
+        {
+                fprintf(stdout,"user %s: not exist\n",username);
+                exit(PERM);
+        }
+
+        if (fclose(fppw)==EOF)
+        {
+                fprintf(stdout,"fclose failed\n");
+                exit(TEMP);
+        }
+
+        gid=p-&gt;pw_gid;
+        homedir=p-&gt;pw_dir;
+
+        if (setgid(gid)&lt;0 || setuid(p-&gt;pw_uid)&lt;0)
+        {
+                fprintf(stdout,"setuid/setgid failed\n");
+                exit(TEMP);
+        }
+
+        switch(pid=fork())
+        {
+                case -1:
+                        fprintf(stdout,"fork failed\n");
+                        exit(TEMP);
+                case 0:
+                        if (execl(VIRTDELIVERY,VIRTDELIVERY0,username,homedir,NU                        {
+                                fprintf(stdout,"execl failed\n");
+                                exit(TEMP);
+                        }
+                default:
+                        if (wait(&amp;status)&lt;0)
+                        {
+                                fprintf(stdout,"wait failed\n");
+                                exit(TEMP);
+                        }
+                        if (!WIFEXITED(status))
+                        {
+                                fprintf(stdout,"child did not exit normally\n");                        }
+                        break;
+        }
+
+        exit(WEXITSTATUS(status));
+}
+</verb>
+
+<sect2> Source
+<p>
+Ceci est le code source de virtmaildelivery. Il doit etre installé dans 
+/usr/local/bin avec les permissions 0755, l'utilisateur root et le groupe root. 
+
+<verb>
+#include &lt;sys/stat.h&gt;
+#include &lt;sys/file.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;errno.h&gt;
+#include &lt;time.h&gt;
+
+#define TEMP                    111
+#define BUFSIZE                 8192
+#define ATTEMPTS                10
+
+int main(int argc,char **argv)
+{
+        char *user,*homedir,*dtline,*rpline,buffer[BUFSIZE],*p,mail[BUFSIZE];
+        char maildir[BUFSIZE],newmaildir[BUFSIZE],host[BUFSIZE];
+        int fd,n,nl,i,retval;
+        struct stat statp;
+        time_t thetime;
+        pid_t pid;
+        FILE *fp;
+
+        retval=0;
+
+        if (!argv[1])
+        {
+                fprintf(stdout,"invalid arguments: need username\n");
+                exit(TEMP);
+        }
+
+        user=argv[1];
+
+        if (!argv[2])
+        {
+                fprintf(stdout,"invalid arguments: need home directory\n");
+                exit(TEMP);
+        }
+
+        homedir=argv[2];
+
+        if (!(dtline=getenv("DTLINE")))
+        {
+                fprintf(stdout,"environment variable DTLINE not set\n");
+                exit(TEMP);
+        }
+        if (!(rpline=getenv("RPLINE")))
+        {
+                fprintf(stdout,"environment variable RPLINE not set\n");
+                exit(TEMP);
+        }
+
+        while (*homedir=='/')
+                homedir++;
+        snprintf(maildir,BUFSIZE,"%s/Maildir",homedir);
+        if (chdir(maildir)&lt;0)
+        {
+                fprintf(stdout,"chdir failed: %s\n",maildir);
+                exit(TEMP);
+        }
+
+        time(&amp;thetime);
+        pid=getpid();
+        if (gethostname(host,BUFSIZE)&lt;0)
+        {
+                fprintf(stdout,"gethostname failed\n");
+                exit(TEMP);
+        }
+
+        for(i=0;i&lt;ATTEMPTS;i++)
+        {
+                snprintf(mail,BUFSIZE,"tmp/%u.%d.%s",thetime,pid,host);
+                errno=0;
+                stat(mail,&amp;statp);
+                if (errno==ENOENT)
+                        break;
+
+                sleep(2);
+                time(&amp;thetime);
+        }
+        if (i&gt;=ATTEMPTS)
+        {
+                fprintf(stdout,"could not create %s\n",mail);
+                exit(TEMP);
+        }
+
+        if (!(fp=fopen(mail,"w+")))
+        {
+                fprintf(stdout,"fopen failed: %s\n",mail);
+                retval=TEMP; goto unlinkit;
+        }
+
+        fd=fileno(fp);
+
+        if (fprintf(fp,"%s",rpline)&lt;0)
+        {
+                fprintf(stdout,"fprintf failed\n");
+                retval=TEMP; goto unlinkit;
+        }
+
+        if (fprintf(fp,"%s",dtline)&lt;0)
+        {
+                fprintf(stdout,"fprintf failed\n");
+                retval=TEMP; goto unlinkit;
+        }
+
+        while(fgets(buffer,BUFSIZE,stdin))
+        {
+                for(p=buffer;*p=='&gt;';p++)
+                        ;
+
+                if (!strncmp(p,"From ",5))
+                {
+                        if (fputc('&gt;',fp)&lt;0)
+                        {
+                                fprintf(stdout,"fputc failed\n");
+                                retval=TEMP; goto unlinkit;
+                        }
+                }
+
+                if (fprintf(fp,"%s",buffer)&lt;0)
+                {
+                        fprintf(stdout,"fprintf failed\n");
+                        retval=TEMP; goto unlinkit;
+                }
+        }
+
+        p=buffer+strlen(buffer);
+        nl=2;
+        if (*p=='\n')
+                nl=1;
+
+        for(n=0;n&lt;nl;n++)
+        {
+                if (fputc('\n',fp)&lt;0)
+                {
+                        fprintf(stdout,"fputc failed\n");
+                        retval=TEMP; goto unlinkit;
+                }
+        }
+
+        if (fsync(fd)&lt;0)
+        {
+                fprintf(stdout,"fsync failed\n");
+                retval=TEMP; goto unlinkit;
+        }
+
+        if (fclose(fp)==EOF)
+        {
+                fprintf(stdout,"fclose failed\n");
+                retval=TEMP; goto unlinkit;
+        }
+
+        snprintf(newmaildir,BUFSIZE,"new/%u.%d.%s",thetime,pid,host);
+        if (link(mail,newmaildir)&lt;0)
+        {
+                fprintf(stdout,"link failed: %s %s\n",mail,newmaildir);
+                retval=TEMP; goto unlinkit;
+        }
+
+unlinkit:
+        if (unlink(mail)&lt;0)
+        {
+                fprintf(stdout,"unlink failed: %s\n",mail);
+                retval=TEMP;
+        }
+
+        exit(retval);
+}
+</verb>
+
+<sect1> Remerciements
+<p>
+Merci à <htmlurl url="mailto:vince@nycrc.net" name="Vicente Gonzalez (vince@nycrc.net)">
+pour son aide qui a rendu possible la solution pour Qmail. Vous pouvez 
+certainement écrire a Vince, pour le remercier, ainsi que lui poser vos questions 
+et commentaires a propos de Qmail, le reste concernant ce HOWTO devant m'être 
+adressé.
+
+<sect> Samba Virtuel
+
+<sect1> Mise en place
+<p>
+L'installation de Samba Virtuel est très simple. Soyez sûr que les fichiers 
+suivants soit installés correctement&nbsp;:
+
+<itemize>
+<item>/virtual/domain1.com/etc/smb.conf FICHIER
+<item>/virtual/domain1.com/var/lock/samba REPERTOIRE
+<item>/virtual/domain1.com/var/log/ REPERTOIRE 
+<item>/usr/local/bin/virtsmbstatus SYMLINK /usr/local/bin/virtexec
+</itemize>
+
+<sect1> Inetd
+<p>
+Éditez /etc/inetd.conf
+
+<verb>
+vi /etc/inetd.conf
+</verb>
+Ajoutez cette ligne&nbsp;:
+<verb>
+netbios-ssn stream tcp nowait root /usr/local/bin/virtuald \
+	virtuald /virtual/conf.smbd smbd
+</verb>
+
+<sect1> Smb.init
+<p>
+Un fichier smb.init n'est pas nécessaire tant que le serveur est lancé via 
+inetd.
+
+<sect> Le reste
+<p>
+
+Tout autre service devrait suivre une procédure similaire&nbsp;:
+
+<itemize>
+<item> Lancer virtfs pour ajouter le binaire et les librairies au système de fichiers virtuel&nbsp;;
+<item> L'ajouter dans <tt>/etc/inetd.conf</tt>&nbsp;;
+<item> Créer un fichier <tt>/virtual/conf.service</tt>&nbsp;;
+<item> Créer tout script virtuel manquant.
+</itemize>
+
+<sect> Conclusion
+<p>
+Voici tout ce dont vous avez besoin. J'espère que cet article répond à vos attentes. Vous pouvez utiliser l'email à <htmlurl url="mailto:brian@nycrc.net" name="Computer Resource Center"> pour tout commentaire (NdT&nbsp;: en anglais bien sûr). Si vous avez une question, ou si vous me proposez une mise à jour, faites-le moi savoir et je l'ajouterai.
+
+<p>
+Ce document a rencontré un grand intêret. Je remercie toutes les personnes qui 
+m'ont envoyé des questions et qui m'ont aidé à former ce document pour 
+obtenir l'intérêt des utilisateurs. Avant de me poser des questions, je vous 
+recommande de lire la FAQ pour voir si cela n'a pas déjà été demandé. Merci encore.
+<htmlurl url="mailto:brian@nycrc.net" name="Brian">
+ 
+<sect> FAQ
+<p>
+<bf>Q1</bf>. J'ai créé un sendmail.init et syslogd.init. Je les ai mis dans 
+/usr/local/bin et essayé de les lancer, mais ils me donnent des erreurs.
+
+<p>
+<bf>R1</bf>. Ces fichiers sont appellés scripts d'initialisation. Ils sont lancés 
+par le programme init quand votre ordinateur démarre. Ils ne vont pas avec les 
+binaires de /usr/local. Consultez le Guide de l'Administrateur Système Linux 
+(Linux System Administrators Guide) ou le Guide pour Bien Démarrer avec Linux 
+(Linux Getting Started Guide) pour des informations sur la manière d'utiliser
+les scripts d'initialisation du système.
+
+<p>
+<bf>Q2</bf>. J'ai mis ces lignes dans /etc/sendmail.cf&nbsp;:  
+
+<verb>
+divert(0)
+VERSIONID(`tcpproto.mc')
+OSTYPE(linux)
+FEATURE(redirect)
+FEATURE(always_add_domain)
+FEATURE(use_cw_file)
+FEATURE(local_procmail)
+MAILER(local)
+MAILER(smtp)
+</verb>
+
+Et j'obtiens une sortie vraiment étrange. Pourquoi&nbsp;?
+
+<p>
+<bf>R2</bf>. Vous ne devez pas mettre ces lignes directement dans /etc/sendmail.cf. 
+Le fichier sendmail.cf a été écrit pour que sendmail le comprenne facilement et
+est difficile à lire aux humains.
+Ainsi, pour le rendre facile à configurer, nous utilisons un programme appellé 
+<tt> m4 </tt> et ses capacités de macros pour créer le fichier <tt> sendmailf.cf </tt>.
+Les lignes FEATURE sont en fait des macros qui se développent par rapport 
+à la configuration de Sendmail. Lisez la documentation de sendmail pour savoir 
+comment configurer sendmail avec cette méthode. Aussi, notez que vous créez un 
+fichier /etc/sendmail.cf principal et le script virtfs le copie sur 
+/virtual/domain1.com/etc/sendmail.cf. Puis, vous éditez ce sendmail.cf pour 
+l'adapter à votre domaine.
+
+<p>
+<bf>Q3</bf>. Ou puis-je trouver virtuald, qu'est-ce donc et comment l'utiliser&nbsp;?
+
+<p>
+<bf>R3</bf>. Virtuald est un programme en C que j'ai écrit pour lancer un service 
+virtuel. Il est inclus dans ce HOWTO. Vous le compilez comme un programme C normal&nbsp;:
+<tt> make virtuald </tt>. Le binaire résultant est placé dans /usr/local/bin. 
+Ajoutez les lignes nécessaires à /etc/inetd.conf pour utiliser virtuald comme
+une facade vers un programme serveur.
+
+<p>
+<bf>Q4</bf>. Dialog n'est pas installé sur mon système&nbsp;?
+
+<p>
+<bf>R4</bf>. Dialog est un programme qui permet d'avoir des fenêtres dans vos scripts 
+shell. Il est nécéssaire pour faire fonctionner mon script shell virtuel. 
+Vous pouvez trouver une copie de dialog sur <htmlurl url="ftp://metalab.unc.edu/pub/Linux/utils/shell/cdialog-0.9a.tar.gz"
+name="metalab">.
+Il ne devrait pas y avoir de problèmes pour le compiler et l'installer.
+
+<p>
+<bf>Q5</bf>. Comment puis-je savoir si le syslogd virtuel marche&nbsp;?
+
+<p>
+<bf>R5</bf>.  Quand virtuald est lancé, il doit envoyer le message suivant à 
+syslogd (/var/log/messages)&nbsp;:
+
+<verb>
+Nov 19 17:21:07 virtual virtuald[10223]: Virtuald Starting: $Revision: 1.49 $
+Nov 19 17:21:07 virtual virtuald[10223]: Incoming ip: 204.249.11.136
+Nov 19 17:21:07 virtual virtuald[10223]: Chroot dir: /virtual/domain1.com
+</verb>
+
+Le message du <tt> chroot </tt> est envoyé par virtuald une fois l'appel système
+<tt> chroot </tt> effectué. Si ce message apparaît, alors le syslogd virtuel 
+fonctionne. Si le service que vous rendez virtuel logue les messages par syslogd et que 
+vous les voyez, c'est aussi un signe que le syslod virtuel fonctionne correctement. 
+
+<p>
+Noter que si vous n'avez pas mis l'option VERBOSELOG lors de la compilation, 
+Virtuald ne loguera pas du tout. Le seul moyen de savoir si le syslogd virtuel 
+marche dans ce cas là, c'est de voir si un démon qui rend un service virtuel 
+indépendamment, logue quelque chose avec syslogd.
+
+<p>
+<bf>Q6</bf>. Comment puis-je installer des quotas à travers un système de fichiers 
+virtuel&nbsp;?
+
+<p>
+<bf>R6</bf>. Vous l'installez comme vous le feriez d'habitude. Aller voir le 
+<htmlurl url="http://www.freenix.org/unix/linux/HOWTO/mini/Quota.html" 
+name="Quota mini-HOWTO">.
+Cependant, vous devez être sûr qu'il n'y ait pas de conflits d'uid entre
+les domaines. S'il y'a des conflits, les utilisateurs devront partager un quota. 
+Préparez un intervalle d'uid qui auront le quota activé et dites aux domaines 
+qu'ils ne peuvent avoir d'utilisateurs dans cet intervalle, à part ceux qui sont 
+retenus pour avoir un quota.
+
+<p>
+<bf>Q7</bf>. Que fait cette notation "\" dans toutes les entrées du inetd.conf&nbsp;?
+
+<p>
+<bf>R7</bf>. C'est juste une méthode pour couper une ligne d'un fichier de configuration 
+en deux lignes. J'ai fait ça pour que les lignes puissent avoir un retour à la ligne 
+de manière à obtenir une meilleure présentation. Vous pouvez ingorer le "\" et 
+les rejoindre en une seule.
+
+<p>
+<bf>Q8</bf>. Quand je lance <tt> passwd </tt> ou n'importe quel programme 
+concernant les logins, le système me renvoie <tt> permission denied </tt>.
+Quand je lance FTP ou <tt> su </tt> le système me renvoié 
+<tt> no modules loaded for service XXX </tt>. Pourquoi&nbsp;?
+
+<p>
+<bf>R8</bf>. Ce sont les messages d'erreur de PAM. J'ai écrit les scripts avant que 
+PAM ne sorte. Mon script virtfs ne copie pas <tt> /etc/pam.d </tt>, 
+<tt> /usr/lib/cracklib_dict.* </tt>, <tt> /lib/security </tt> ou n'importe quel 
+fichier dont PAM a besoin. PAM en a besoin pour fonctionner. Si vous éditez 
+mon script virtfs pour copier ces fichiers, il n'y aura plus de problèmes.
+
+<p>
+<bf>Q9</bf>. Est-ce que virtuald peut fonctionner avec les hosts.allow et 
+hosts.deny de tcpd&nbsp;?
+
+<p>
+<bf>R9</bf>. Oui, il peut, mais avec quelques modifications.
+
+<p>
+D'abord, le code source doit être changé en deux endroits.
+
+<p>
+Il faut insérer ces lignes là où les arguments sont analysés.
+
+<verb>
+	if (!argv[3])
+	{
+		syslog(LOG_ERR,"invalid arguments: no program to run");
+		exit(0);
+	}
+</verb>
+
+La ligne d'exécution doit remplacer&nbsp;:
+
+<verb>
+	if (execvp(argv[2],argv+2)&lt;0)
+</verb>
+
+par&nbsp;:
+
+<verb>
+        if (execvp(argv[2],argv+3)&lt;0)
+</verb>
+
+Deuxièmement, les lignes du fichier <tt> inetd.conf </tt>&nbsp;: 
+
+<verb>
+ftp stream tcp nowait root /usr/local/bin/virtuald \
+	virtuald /virtual/conf.ftp tcpd wu.ftpd -l -a
+</verb>
+
+Troisièmement, éditer les fichier <tt> /virtual/domain1.com/etc/hosts.allow </tt> 
+et <tt> /virtual/domain1.com/etc/hosts.deny</tt> pour mettre vos paramètres. 
+
+<p>
+<bf>Q10</bf>. Est-ce que mon serveur virtuel peut lancer des CGI&nbsp;?
+
+<p>
+<bf>R10</bf>. Bien sûr, mais je vous recommande de mettre le répertoire 
+<tt> /cgi-bin </tt> à un endroit en dehors du <tt> chroot </tt>, où vous seul 
+avez accès. Par exemple, /var/www/cgi-bin/domain1.com. Donner l'accès aux 
+cients à /cgi-bin leur donne la possibilité de lancer des programmes sur votre 
+serveur. C'est un gros trou de sécurité. Soyez prudent. Je ne laisse aucun CGI 
+tourner sur mon système sans que je n'ai pas personnellement cherché
+d'éventuels bugs.
+
+<p>
+<bf>Q11</bf>. Mes fichiers de configuration sont différents de vos exemples. 
+Que dois je faire&nbsp;?
+
+<p>
+<bf>R11</bf> Il y a deux styles de configuration&nbsp;: System V et BSD. Les exemples 
+fournis dans ce HOWTO sont basés sur les fichiers de configuration System V. 
+Les services virtuels marchent aussi bien sur l'autre système. Pour des
+informations sur la méthode pour configurer vos fichier de style BSD,
+consultez l'origine de votre distribution ou le site LDP le plus près.
+
+<p>
+<bf>Q12</bf>. Je vous ai envoyé un mail et n'ai pas reçu de réponses ou alors 
+elles ont pris un long moment avant de me parvenir. Pourquoi&nbsp;?
+
+<p>
+<bf>R12</bf>. Vous n'avez sûrement pas mis VIRTSERVICES HOWTO dans le sujet.
+Sachez que je suis un administrateur réseau, et que parmi mes 20 heures par    
+jour, j'administre mes machines virtuelles et celles de mes clients. Un mail qui 
+est proprement adressé aura toujours une réponse dans les deux ou trois jours 
+suivants. Les mails mal adressés ne seront pas filtrés vers ma boîte aux lettres pour 
+VIRTSERVICES, et peuvent m'être inconnus pendant plusieurs jours, voir semaines.
+
+<p>
+<bf>Q13</bf>. Est-ce que virtuald marche avec une connection a 100Mbit&nbsp;?
+
+<p>
+<bf>R13</bf>. La vitesse d'une carte réseau est totalement indépendante du fait 
+que virtuald fonctionne ou pas. Vérifiez que votre serveur tourne sous 10Mbit 
+et que votre carte 100Mbit fonctionne normalement sans un serveur virtuel.
+
+<p>
+<bf>Q14</bf>. Est-ce que je dois utiliser la <tt> table virthost </tt> de sendmail&nbsp;? 
+
+<p>
+<bf>R14</bf>. Non, c'est une fonctionnalité de Sendmail qui reçoit les informations 
+pour plusieurs domaines. Virtuald donne à chaque Sendmail son propre environnement 
+<tt> chroot </tt>. Installez Virtuald et configurez sendmail comme vous le feriez 
+à l'habitude pour chaque domaine.
+
+<p>
+<bf>Q15</bf>. Puis-je installer un telnet virtuel sur ma machine&nbsp;? Et est-il possible 
+de créer un compte root virtuel, pour que les client puissent administrer leur 
+propre domaine&nbsp;?
+
+<p>
+<bf>R15</bf>. Ces questions reviennent souvent, et pour etre honnête, j'en ai 
+un peu marre de les entendre. La réponse, qui est dans ce document, est que n'importe 
+quel service lancé par inetd peut être rendu virtuel, donc rien ne vous empêche 
+de le faire. Rien, à part le bon sens.
+Cependant, les bénéfices que vous pouvez avoir sont fortement altérés par le prix 
+de la securité de votre machine virtuelle (ainsi que les sites que vous êtes supposés héberger 
+d'une manière résponsable). Voici quelques exemples&nbsp;:
+
+<itemize>
+<item> Afin de duper une session telnet entrante vous devez modifier
+le noyau, pour avoir plusieurs proccessus, réinitialiser votre adresse IP 
+source pour les connections sortantes, duper <tt> gethostname </tt> pour qu'il 
+utilise le nom de domaine virtuel et non celui du système, etc.
+Si vous êtes un utilisateur avancé, hackez le kernel. Pour un débutant, je ne le 
+recommande pas.
+<item> En autorisant les utilisateurs à venir sur votre machine en telnet, vous 
+les autorisez à lancer des programmes dangereux. Et ceux qui savent hacker  
+peuvent prendre les privilèges root et causer des dommages sur votre système.
+<item> Donner un accès root en telnet sur une machine virtuelle est très mauvais. 
+Un utilisateur root virtuel peut quand même lire les fichiers des péripheriques ,
+ce qui annule le <tt> chroot </tt>, peut éteindre le système et tuer les autres 
+processus sur le système.
+<item> Telnet est un service réseau non sécurisé. Des mots de passes  
+sont envoyés en clair par le réseau. Si un utilisateur avec de mauvaises intentions 
+récupère ce mot de passe, il ou elle peut utiliser les attaques mentionnées 
+ci-dessus pour nuire à votre système.
+<item> Votre environnement virtuel devra être plus gros. Vous aurez besoin de plus 
+de librairies, plus de fichiers de configuration, et plus d'exécutables. Un 
+disque de 6Go peut être très vite rempli.
+</itemize>
+
+<p>
+Comme quoi, c'est une très mauvaise idée d'autoriser des connections sur une 
+machine virtuelle. Si vous le permettez, tous les sites hebergés sur cette machine 
+seront en danger. Si vous voulez autoriser un propriétaire de site à administrer 
+ses utilisateurs, vous devez alors écrire (pas de script) le programme nécessaire 
+pour lancer un processus virtuel qui l'autorise à les ajouter, effacer ou modifier
+en se connectant par ssh. Ceci devra être complètement exécuté par menus, vous ne 
+devrez jamais autoriser de consoles, ou d'accès root. Afin d'accomplir ceci, vous 
+devrez changer le propriétaire des fichiers concernés de root à un autre utilisateur. 
+Si c'est fait de cette maniere, c'est assez securisé pour être incorporé dans une
+machine virtuelle. Il ne sera jamais acceptable d'autoriser des connections root 
+en telnet ou ssh. Le faire, serait simplement une invitation au désastre. S'il 
+y avait une raison de le faire, le site devrait être hébergé sur une machine 
+dédiée, où le risque serait juste pour lui. Aucun administrateur responsable ne 
+ferait autrement et donc je ne perdrai pas plus de temps sur cette question.
+
+<p>
+<bf>Q16</bf>. Y a-t-il un rpm, tar, site web, liste de diffusion, etc. associé à 
+virtuald et au Virtual-Services HOWTO&nbsp;?
+
+<p>
+<bf>R16</bf>. Pour le moment il n'y a rien de tout ceci. Ce HOWTO est la seule 
+source d'information sur tout ce que j'ai fait concernant ce projet. Je trouve 
+ce HOWTO assez informatif, rendant le besoin d'autres renseignements superflu.
+
+<p>
+<bf>Q17</bf>. Quand j'essaye de lancer virtexec en tant que simple utilisateur, 
+j'ai <tt> chroot: operation not permitted </tt>. Pourquoi&nbsp;?
+
+<p>
+<bf>R17</bf>. <tt> chroot </tt> est un appl système restreint au root. Seulement 
+le super utilisateur peut l'executre. Le script virtexec lance le programme 
+<tt> chroot </tt> ce qui implique le besoin d'être root pour le lancer.
+
+<p>
+<bf>Q18</bf>. J'ai mis en place pop et sendmail, mais la récuperation des mails 
+ne semble pas marcher. D'où cela vient-il&nbsp;?
+
+<p>
+<bf>R18</bf>. Certains programmes pop prennent comme emplacement des fichiers mail 
+<tt> /usr/spool/mail </tt>. Je sais que <tt> qpop </tt> doit etre édité manuellement 
+pour résoudre ce problème. Soit vous recompilez les sources de votre programme, soit 
+vous faites un lien symbolique de <tt> /virtual/domain1.com/usr/spool </tt> vers 
+<tt> /virtual/domain1.com/var/spool </tt>.
+
+<p>
+<bf>Q19</bf>. Je n'ai pas utilisé le programme mentionné dans votre HOWTO, 
+j'utilise le programme XXX. Il ne marche pas. Pourquoi&nbsp;?
+
+<p>
+<bf>R19</bf>. J'ai essayé de faire des exemples le plus génerique possible pour 
+chaque serveur. Je sais que certaines personnes ont leur version favorite de 
+chaque serveur. Envoyez-moi le plus d'informations possible, et j'essaierai de 
+trouver une solution à votre problème et je l'incluerai dans la FAQ.
+L'information la plus importante est de me dire ou trouver la version du
+programme que vous 
+utilisez (sous la forme ftp://ftp.domain.com/subdir/subdir/file.tgz).
+
+<p>
+<bf>Q20</bf>. Quand je lance virtexec il dit <tt> symlink not a virt function </tt>.
+Qu'est-ce que cela veut dire et comment le réparer&nbsp;?
+
+<p>
+<bf>R20</bf>. Virtexec est programme pour lequel les arguments sont les quatres 
+premiers caractères, et il lance le nom restant dans l'environnement virtuel. 
+Par exemple, <tt> virtpasswd </tt> lance <tt> passwd </tt>. Si les quatres 
+premiers caracteres ne sont pas <tt> virt </tt>, il se plaint et sort un message 
+d'erreur. Virtexec est écrit en script shell et devrait être très simple à porter. 
+Référez vous aux pages de manuels de bash ou du shell que vous utilisez pour 
+vos question sur la programmation de script shell.
+
+<p>
+<bf>Q21</bf>. J'ai une question à propos de Qmail, Samba, Apache, etc. qui n'a
+aucun rapport avec la mise en place de virtuald ou l'interface entre le
+paquetage et virtuald.
+
+<p>
+<bf>R21</bf>. Tous les paquetages décris ici sont pleinement documentés. 
+Certains ont un site web comme <tt> www.nom_du_paquetage.org </tt> qui leur
+est entièrement dédié. S'il vous plait consultez ces documents à propos de ce
+genre de questions.
+
+<p>
+<bf>Q22</bf>. J'ai plusieurs alias de domaines pointant sur domain1.com mais 
+les mails continuent à être renvoyés aux alias. D'où est-ce que ca vient&nbsp;?
+
+<bf>A22</bf>. Virtmaildelivery compte sur les variables d'environnement qui 
+lui sont passées pour déterminer quel répertoire /virtual/domain1.com utiliser
+pour distribuer le courrier. Il ne fait pas de recherche DNS pour déterminer l'adresse du mail.
+Puis, si l'adresse est <tt> submail.mail.domain1.com </tt>, virtmaildelivery 
+essayera en premier cette adresse puis <tt> mail.domain1.com </tt> et puis 
+<tt> domain1.com </tt>. Il essaye dans cet ordre, jusqu'à ce qu'une concordance 
+ait lieu où qu'il ne reste plus de noms de domaines.
+
+<p>
+De toutes facons, si vous avez des alias de domaines qui ne sont pas des sous-domaines 
+d'un autre, vous devez créer des liens symboliques comme&nbsp;:
+
+<verb>
+cd /virtual
+ln -s domain1.com domain1alias.com
+</verb>
+
+De cette manière, virtmaildelivery sera trompé en pensant que ces mêmes répertoires 
+existent même si l'un d'eux est un lien symbolique et le mail pourra être distribué à
+<tt> user@domain1.com </tt> ou <tt> user@domain1alias.com </tt>. Notez que 
+<tt> virtexec </tt> listera les deux répertoires des domaines dans la boîte de 
+dialogue quand vous le lancerez. Vous pouvez choisir n'importe lequel, mais ce
+sera le même système de fichier.
+
+<!-- Ending -->
+
+</article>

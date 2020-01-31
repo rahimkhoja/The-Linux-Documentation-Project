@@ -1,0 +1,957 @@
+<!doctype linuxdoc system>
+<!-- $Id: Kerneld.sgml,v 1.1.1.1 2003/01/03 02:40:54 traduc Exp $ -->
+<!-- Time-stamp: <1999-02-13 ajad> -->
+  <article>
+    <title>Kerneld mini-HOWTO</title>
+    <author>
+      par Henrik Storner <htmlurl url="mailto:storner@osiris.ping.dk"
+      name="storner@osiris.ping.dk">
+    </author>
+    <date>
+      Version 1.7 19 juillet 1997
+    </date>
+    
+    <abstract>
+      (Adaptation française par Alexandre Devaure <htmlurl
+        url="mailto:adevaure@mail.dotcom.fr"
+        name="adevaure@mail.dotcom.fr">, 14 janvier 1999).
+    </abstract>
+    <toc>
+
+      <sect>Introduction
+        <p>
+          Ce document explique comment utiliser la fonction
+          <tt>kerneld</tt> avec les noyaux Linux. Il décrit :
+          <itemize>
+            <item> ce qu'est <tt>kerneld</tt> ;</item>
+            <item> pourquoi l'utiliser ; </item>
+            <item> comment avoir les outils nécessaires ; </item>
+            <item> comment les configurer ;</item>
+            <item> comment faire fonctionner <tt>kerneld</tt> avec des
+            modules qu'il ne connaît pas ;</item>
+            <item> comment espionner <tt>kerneld</tt> (peut s'avérer très
+            utile lors de la mise au point) ;</item>
+            <item> les utilisations spéciales de <tt>kerneld</tt> ;</item>
+            <item> les problèmes courants et les dysfonctionnements.</item>
+          </itemize>
+        </p>
+        <p>
+          La dernière version de ce document peut être trouvée à
+          l'adresse <htmlurl
+          url="http://eolicom.olicom.dk/~storner/kerneld-mini-HOWTO.html"
+          name="http://eolicom.olicom.dk/~storner/kerneld-mini-HOWTO.html">.
+          Entre les versions du mini-HOWTO, vous pouvez trouver des
+          mises à jour sur ma liste non triée des modifications à
+          <htmlurl url="http://eolicom.olicom.dk/~storner/kern.html"
+          name="http://eolicom.olicom.dk/~storner/kern.html">
+         </p>
+         <p>
+         La dernière version française se trouve à
+         l'adresse <htmlurl
+         url="http://www.freenix.fr/linux/HOWTO/mini/"
+         name="http://www.freenix.fr/linux/HOWTO/mini/">.
+      </sect>
+      <sect>Contributeurs
+      <p>
+      Si vous découvrez dans ce document des choses fausses,
+      envoyez-moi un mot à ce sujet. Les personnes suivantes ont contribué à
+      ce mini-HOWTO sur certains points :
+      <p>
+      <itemize>
+      <item> Bjorn Ekwall <htmlurl url="mailto:bjorn@blox.se"
+      name="bjorn@blox.se">
+      <item> Ben Gaillart <htmlurl url="mailto:bgallia@luc.edu"
+      name="bgalliac@luc.edu">
+      <item> Cedric Tefft <htmlurl url="mailto:cedric@earthling.net"
+      name="cedric@earthling.net">
+      <item> Brian Miller <htmlurl url="mailto:bmiller@netspace.net.au"
+      name="bmiller@netspace.net.au">
+      <item> James C. Tsiao <htmlurl
+      url="mailto:jtsiao@madoka.jpl.nasa.gov"
+      name="jtsiao@madoka.jpl.nasa.gov">
+      </itemize>
+      <p>
+      J'apprécierai les encouragements et les suggestions des 
+      lecteurs de ce mini-HOWTO.
+      </sect>
+      <sect>Qu'est-ce que <tt>kerneld</tt> ?
+      <p>
+      <tt>kerneld</tt> est lié à une fonctionnalité introduite lors du
+      développement des noyaux de la série 1.3 par Bjorn Ekwall. 
+      Il perdure avec les noyaux 2.0 et 2.1. Il permet aux modules du
+      noyau (c'est-à-dire les pilotes de périphériques, de réseaux,
+      les systèmes de fichiers...) d'être chargés automatiquement
+      en fonction des besoins, sans utilisation manuelle des 
+      commandes <tt>modprobe</tt> ou <tt>insmod</tt>.
+      <p>
+      Des aspects plus amusants, bien que ceux-ci ne soient pas
+      (encore ?) intégrés dans le noyau standard :
+      <itemize>
+      <item> on peut configurer kerneld pour qu'il exécute un
+      programme utilisateur à la place de l'économiseur d'écran, ce qui
+      vous permet d'utiliser n'importe quel programme.
+      <item> dans le même genre que l'économiseur d'écran, vous pouvez
+      aussi changer le traditionel ``beep'' en quelque chose de
+      complètement différent...
+      </itemize>
+      <p>
+      <tt>kerneld</tt> est composé de deux entités séparées :
+      <itemize>
+      <item> gestion dans le noyau de Linux afin d'envoyer des requêtes
+      au démon afin de savoir si un module doit être utilisé pour
+      certaines tâches ;
+      <item> un démon au niveau utilisateur qui peut montrer quels
+      modules doivent être chargés pour accomplir la requète du noyau.
+      </itemize>
+      <p>
+      Ces deux parties doivent fonctionner pour que <tt> kerneld </tt>
+      soit opérationnel. Le fait qu'une des deux soit initialisée ne 
+      suffit pas.
+      </sect>
+      <sect>Pourquoi est-ce que je veux l'utiliser ?
+      <p>
+      Il y a de bonnes raisons pour utiliser <tt>kerneld</tt>. Voici 
+      les miennes. D'autres peuvent l'utiliser pour d'autres raisons.
+      <itemize>
+      <item> Si vous devez construire des noyaux pour de nombreux
+      systèmes qui diffèrent peu (par exemple, une marque différente
+      de carte réseau), alors vous pouvez construire un seul noyau et
+      des modules, à la place d'avoir à construire un noyau par
+      système.
+      <item> Les modules sont plus faciles à tester pour les
+      développeurs : il ne faut pas relancer le système pour charger et
+      enlever le pilote. Ceci s'applique pour tous les modules et non
+      juste pour ceux qui sont montés par <tt>kerneld</tt>.
+      <item> Il réduit l'usage de la mémoire du noyau, ce qui donne
+      plus de mémoire pour les applications. La mémoire utilisée par
+      le noyau n'est jamais ``swappée'' sur disque, donc si vous avez
+      100Ko de pilotes non utilisés compilés dans le noyau, ils
+      occasionnent simplement une perte de RAM.
+      <item> Certaines choses que j'utilise, le pilote <tt>ftape</tt>, par
+      exemple ou <tt>iBCS</tt>, ne sont valables que sous forme de
+      modules. Mais je ne veux
+      pas m'embêter avec leur chargement et leur déchargement à chaque
+      fois que j'en ai besoin.
+      <item> Les personnes qui font des distributions Linux ne veulent
+      pas construire 284 images de boot différentes, chaque
+      utilisateur charge les pilotes dont il a besoin pour sa
+      configuration. C'est la méthode retenue par la RedHat 4.0 dans
+      son installation.
+      </itemize>
+      <p>
+      Bien sûr, il y a aussi des raisons pour que vous ne vouliez pas
+      l'utiliser : vous préfèreriez avoir juste un fichier image de
+      votre noyau avec tous vos pilotes à l'intérieur. Dans ce cas,
+      vous lisez le mauvais document.
+      </sect>
+      <sect>Où puis-je trouver les outils nécessaires ?
+      <p> Le support dans le noyau de Linux a été introduit avec Linux
+      1.3.57. Si vous avez une version plus ancienne, vous devrez
+      la mettre à jour si vous voulez qu'il supporte <tt>kerneld</tt>. Tous
+      les sites ftp majeurs de Linux offrent les sources du noyau. Je
+      recommande que vous le mettiez à jour avec la dernière version
+      2.0 (actuellement la 2.0.36) :
+      <itemize>
+      <item><htmlurl url="
+      ftp://sunsite.unc.edu/pub/Linux/kernel/v2.0/linux-2.0.36.tar.gz"
+      name="
+      ftp://sunsite.unc.edu/pub/Linux/kernel/v2.0/linux-2.0.36.tar.gz">
+      <item><htmlurl
+      url=
+      "ftp://tsx-11.mit.edu/pub/linux/sources/system/v2.0/linux-2.0.36.tar.gz"
+      name="
+      ftp://tsx-11.mit.edu/pub/linux/sources/system/v2.0/linux-2.0.36.tar.gz">
+      <item><htmlurl url="
+      ftp://ftp.funet.fi/pub/Linux/PEOPLE/Linus/v2.0/linux-2.0.36.tar.gz"
+      name="
+      ftp://ftp.funet.fi/pub/Linux/PEOPLE/Linus/v2.0/linux-2.0.36.tar.gz">
+      </itemize>
+      <p>Pour les utilisateurs français, il vaut mieux utiliser le
+       miroir francais <htmlurl
+      url="ftp://ftp.lip6.fr/pub2/linux/kernel/sources/v2.0/linux-2.0.36.tar.gz"
+      name="ftp://ftp.lip6.fr/pub2/linux/kernel/sources/v2.0/linux-2.0.36.tar.gz">
+      <p>
+      Le démon en mode utilisateur a été introduit avec le
+      paquetage <tt>modules-1.2.8</tt> et avec le nouveau paquetage
+      <tt>modules-2.0</tt>. Ils sont normalement trouvables à la même place que
+      les sources des noyaux mais les sites officiels sont :
+      <itemize>
+      <item><htmlurl
+      url="ftp://sunsite.unc.edu/pub/Linux/kernel/v2.0/modules-2.0.0.tar.gz"
+      name="ftp://sunsite.unc.edu/pub/Linux/kernel/v2.0/modules-2.0.0.tar.gz">
+      <item><htmlurl
+      url="ftp://tsx-11.mit.edu/pub/linux/sources/sbin/modules-2.0.0.tar.gz"
+      name="ftp://tsx-11.mit.edu/pub/linux/sources/sbin/modules-2.0.0.tar.gz">
+      <item><htmlurl
+      url="ftp://ftp.funet.fi/pub/Linux/tools/modules-2.0.0.tar.gz"
+      name="ftp://ftp.funet.fi/pub/Linux/tools/modules-2.0.0.tar.gz">
+      </itemize>
+      <p>Pour les utilisateurs français :  <htmlurl
+      url="ftp://ftp.lip6.fr/pub2/linux/kernel/sources/v2.0/modules-2.0.0.tar.gz"
+      name="ftp://ftp.lip6.fr/pub2/linux/kernel/sources/v2.0/modules-2.0.0.tar.gz">
+      <p> AVERTISSEMENT : si vous voulez essayer de charger des
+      modules avec les derniers noyaux 2.1 (développement), vous
+      devrez utiliser le dernier paquetage <tt>modutils-</tt> (PAS
+      <tt>modules-</tt>).
+      Mais regardez plus bas au sujet des problèmes avec les modules
+      et les noyaux 2.1.
+      </sect>
+      <sect>Comment le configure-t-on ?
+      <p> D'abord, ayez les parties nécessaires : un noyau et les
+      derniers <tt>modules-utilities</tt>. Ensuite, vous devez
+      installer les <tt>modules-utilities</tt>. C'est très simple : il
+      faut juste désempaqueter les sources et lancer <tt>make
+      install</tt>. Ceci compile et installe les programmes suivants
+      dans <tt>/sbin</tt> : <tt>genkym</tt>, <tt>insmod</tt>,
+      <tt>lsmod</tt>, <tt>modprobe</tt>, <tt>depmod</tt>,
+      <tt>kerneld</tt>. Je recommande que vous ajoutiez quelques
+      lignes dans les scripts de démarrage pour faire les
+      initialisations nécessaires lors du démarrage de Linux. Ajoutez
+      les lignes suivantes à votre fichier
+      <tt>/etc/rc/rc.d/rc.sysinit</tt> (si vous utilisez la
+      Slackware) ou à <tt>/etc/rc.d/rc.sysinit</tt> (si vous
+      utilisez SysVinit, c'est-à-dire les distributions Debian,
+      RedHat, Caldera) :
+      <verb>
+      # Demarrer kerneld - ceci doit arriver tres tot dans le
+      # processus de demarrage, certainement AVANT que vous lanciez
+      # fsck sur les systèmes de fichiers qui ont besoins que les
+      # pilotes de disque soient chargés automatiquement
+      if [ -x /sbin/kerneld ]
+      then
+          /sbin/kerneld
+      fi
+
+      # Vos commandes fsck fonctionnent ici
+      # et votre command mount monte le système de fichiers racine
+      # en lecture seule.
+
+      # Mettez à jour le fichier de dépendance des modules du noyau
+      # Votre système de fichier racine doit être monté en
+      # lecture-écriture à partir de maintenant
+      if [ -x /sbin/depmod ]
+      then
+          /sbin/depmod -a
+      fi
+      </verb>
+      La première partie lance <tt>kerneld</tt> lui-même.
+      <p> La second appelle <tt>depmod -a</tt> au démarrage. Le
+      programme <tt>depmod</tt> construit une liste de tous les
+      modules disponibles et analyse leurs inter dépendances. Donc il
+      sait si un module a besoin qu'un autre soit chargé avant lui.
+      <p> NOTE : Les versions récentes de <tt>kerneld</tt> ont une
+      option pour utiliser la librairie GNU dbm : <tt>libgdbm</tt>. Si
+      vous l'activez quand vous construisez les
+      <tt>modules-utilities</tt>, <tt>kerneld</tt> ne se lancera pas
+      si <tt>lidgdbm</tt> n'est pas disponible, ce qui pourrait être
+      le cas si vous avez <tt>/usr</tt> sur une partition séparée et
+      que vous lanciez <tt>kerneld</tt>avant que <tt>/usr</tt> ne soit
+      montée. La solution recommandée est de déplacer <tt>libgdm</tt>
+      de <tt>/usr/lib</tt> vers <tt>/lib</tt> ou de faire un lien
+      statique de <tt>kerneld</tt>.
+      <p>
+      Ensuite, défaîtes les sources du noyau, configurez et
+      construisez un noyau à votre convenance. Si vous ne l'avez jamais
+      fait avant, vous devriez lire le fichire README à la racine des
+      sources du noyau. Quand vous lancez <tt>make config</tt> pour
+      configurer le noyau, vous devrez faire attention à des questions
+      qui apparaissent au début :
+      <verb>
+      Enable loadable module support (CONFIG_MODULES) [Y/n/?] Y
+      </verb>
+      Vous devez sélectioner la gestion des modules chargeables, sinon,
+      il n'y aura pas de modules à charger pour <tt>kerneld</tt>.
+      Répondez seulement oui (Y).
+      <verb>
+      Kernel daemon support (CONFIG_KERNELD) [Y/n/?] Y
+      </verb>
+      Ceci est aussi nécessaire. Ensuite, de nombreuses choses peuvent
+      être mises sous forme de modules. Vous verrez des questions du
+      genre :
+      <verb>
+      Normal floppy disk support (CONFIG_BLK_DEV_FD) [M/n/y/?]
+      </verb>
+      où vous pouvez répondre M pour Module. Généralement, seuls les
+      pilotes nécessaires lors du démarrage de votre système (le
+      pilote du disque dur, le pilote du système de fichiers racine)
+      doivent être mis dans le noyau ; le reste pouvant être construit
+      sous forme de modules.
+      <p>
+      Quand vous avez fini avec <tt>make config</tt>, lancez <tt>make
+      dep</tt>, <tt>make clean</tt>, <tt>make zImage</tt> ou <tt>make
+      modules</tt>, <tt>make modules</tt> et <tt>make
+      modules_install</tt>.
+      <p> Ouf !
+      <p>
+      La commande <tt>make zImage</tt> crée la nouvelle image du noyau
+      dans le fichier <tt>arch/i386/boot/zImage</tt>. Vous devrez le
+      copier où vous mettez votre image de boot. N'oubliez pas de
+      relancer LILO.
+      <p>
+      Pour plus d'informations sur la configuration, la construction
+      et l'installation de votre propre noyau, regardez le
+      <tt>Kerneld-HOWTO</tt> posté régulièrement au
+      <tt>comp.os.linux.answers</tt> et disponible sur le site
+      <tt>sunsite.unc.edu</tt> à <tt>/pub/Linux/docs/HOWTO</tt>. La
+      version française est disponible à <htmlurl
+      url="http://www.freenix.fr/linux" name="www.freenix.fr/linux">
+      </sect>
+      <sect>Tester kerneld
+      <p>
+      Maintenant, relancez le système avec le nouveau noyau. Quand le
+      système est prêt, vous pouvez exécuter un <tt>ps ax</tt> et vous
+      devriez voir une ligne pour <tt>kerneld</tt> :
+      <verb>
+      PID TTY STAT  TIME COMMAND
+      59  ?  S     0:01 /sbin/kerneld
+      </verb>
+      <p> Une des choses intéressantes de <tt>kerneld</tt> est qu'une fois
+      le noyau et le démon installés, seule une très petite initialisation
+      est nécessaire. Pour commencer, essayez d'utiliser un des
+      pilotes que vous avez construit comme module. J'ai construit le
+      pilote de disquette comme module, donc je peux mettre une
+      disquette DOS dans le lecteur et :
+      <verb>
+      osiris:~ $ mdir a:
+        Volume in drive A has no label
+        Volume Serial Number is 2E2B-1102
+        Directory for A:/
+
+        binuti~1 gz       1942 02-14-1996  11:35a binutils-2.6.0.6-2.6.0.7.diff.gz
+        libc-5~1 gz      24747 02-14-1996  11:35a libc-5.3.4-5.3.5.diff.gz
+                2 file(s)        26689 bytes
+      </verb>
+      le pilote de disquette fonctionne : il a été chargé
+      automatiquement  par <tt>kerneld</tt> quand j'ai voulu utiliser
+      la disquette.
+      <p> Pour voir que le module <tt>floppy</tt> est en effet chargé,
+      vous pouvez lancer <tt>/sbin/lsmod</tt> qui listera tous les
+      modules chargés à l'instant :
+      <verb>
+      osiris:~ $ /sbin/lsmod
+      Module:        #pages:  Used by:
+      floppy            11    0 (autoclean)
+      </verb>
+      Le mot ``autoclean'' signifie que le module sera automatiquement
+      enlevé par <tt>kerneld</tt> quand il n'aura pas été utilisé
+      pendant plus d'une minute. Les 11 pages de mémoire (soit 44ko,
+      une page faisant 4ko) seront donc seulement utilisées quand
+      j'accèderai au lecteur de disquette ; si je n'utilise pas la
+      disquette pendant plus d'une minute, elles seront libérées. Très
+      intêressant si vous êtes à court de mémoire pour vos
+      applications !
+      </sect>
+      <sect>Comment <tt>kerneld</tt> sait-il quel module charger ?
+      <p>
+      Bien que <tt>kerneld</tt> connaisse déjà les types les plus
+      communs de modules, il y a des situations dans lesquelles
+      <tt>kerneld</tt> ne sera pas comment satisfaire une requête
+      venant du noyau. C'est le cas avec les pilotes de CD-ROM ou de
+      cartes réseau, où il existe plus d'un module possible 
+      susceptible d'être chargé.
+      <p> Les requêtes que le démon de <tt>kerneld</tt> reçoit du
+      noyau viennent d'un des éléments suivants :
+      <itemize>
+      <item> un pilote de périphérique bloc ;
+      <item> un pilote de périphérique caractère ;
+      <item> un format binaire ;
+      <item> une discipline de ligne tty ;
+      <item> un système de fichier ;
+      <item> un périphérique réseau ;
+      <item> un service réseau (par exemple rarp) ;
+      <item> un protocole réseau (par exemple IPX).
+      </itemize>
+      <p> <tt>kerneld</tt> détermine quel module doit être chargé
+      regardant le fichier de configuration
+      <tt>/etc/conf.modules</tt>. Il y a deux types d'entrée dans ce
+      fichier : les chemins (où les fichiers des modules sont stockés)
+      et les alias (quel module doit être chargé). Si vous n'avez pas
+      déjà ce fichier, vous devrez le créer en lançant
+      <tt>/sbin/modprobe -c | grep -v '^path' >
+      /etc/conf.modules</tt>
+      <p> Si vous voulez ajouter encore une autre directive ``path''
+      aux chemins par défaut, vous devez inclure aussi tous les chemins
+      par défaut étant donné qu'une directive <tt>path</tt> dans
+      <tt>/etc/conf.modules</tt> remplacera toutes celles que
+      <tt>modprobe</tt> connaît par défaut.
+      <p> Normalement, vous ne voudrez pas ajouter de <tt>path</tt>
+      par vous-même étant donné que l'ensemble des chemins par défaut
+      prend en compte toutes les configurations normales, je vous le
+      promets !
+      <p> D'un autre côté, si vous voulez juste ajouter un alias ou
+      une directive d'option, vos nouvelles entrées dans
+      <tt>/etc/conf.modules</tt> seront ajoutées à celles que
+      <tt>modprobe</tt> connaît déjà. Si vous deviez redéfinir un
+      alias ou une option, vos nouvelles entrées dans
+      <tt>/etc/conf.modules</tt> remplaceront celles déjà présentes.
+      <sect1>Les périphériques bloc
+      <p> Si vous lancez <tt>/sbin/modprobe -c</tt>, vous aurez la
+      liste des modules connus par  <tt>kerneld</tt> et à quelles
+      requêtes ils correspondent. Par exemple, la requête qui termine
+      le chargement du gestionnaire de disquettes correspond au
+      périphérique bloc dont le numéro majeur est 2 :
+      <verb>
+      osiris:~ $ /sbin/modprobe -c | grep floppy
+      alias block-major-2 floppy
+      </verb>
+      <p>
+      Pourquoi <tt>block-major-2</tt> ? Parce que les lecteurs de
+      disquettes <tt>/dev/fd*</tt> utilisent un numéro majeur égal
+      à 2 et sont de type bloc :
+      <verb>
+      osiris:~ $ ls -l /dev/fd0 /dev/fd1
+      brw-rw-rw-   1 root     root       2,   0 Mar  3  1995 /dev/fd0
+      brw-r--r--   1 root     root       2,   1 Mar  3  1995 /dev/fd1
+      </verb>
+      </sect1>
+      <sect1>Les périphériques caractères
+      <p> Les périphériques de type caractère sont utilisés de la même
+      manière. Par exemple, le lecteur de bande correspond au numéro 
+      majeur 27 :
+      <verb>
+      osiris:~ $ ls -lL /dev/ftape
+      crw-rw----   1 root     disk      27,   0 Jul 18  1994 /dev/ftape
+      </verb>
+      <p>Toutefois, <tt>kerneld</tt> ne le connaît pas par défaut : il
+      n'est pas listé dans le résultat de <tt>/sbin/modprobe -c</tt>.
+      <p>Donc, pour configurer <tt>kerneld</tt> de manière à charger
+      le gestionnaire <tt>ftape</tt>, je dois ajouter une ligne au
+      fichier de configuration <tt>/etc/conf.modules</tt> :
+      <verb>
+      alias char-major-27 ftape
+      </verb> 
+      </sect1>
+      <sect1> Les périphériques réseau
+      <p> Vous pouvez aussi utiliser le nom du périphérique à la place
+      de <tt>char-major-xxx</tt> ou <tt>block-major-yyy</tt>. Ceci est
+      particulièrement utilisé pour les gestionnaires réseaux. Par
+      exemple, un pilote pour une carte réseau ne2000 utilisée comme
+      <tt>eth0</tt> pourrait être chargé avec :
+      <verb>
+      alias eth0 ne
+      </verb>
+      <p> Si vous devez passer des options au gestionnaire (comme de
+      dire au module quelle IRQ la carte réseau utilise), vous ajoutez
+      une ligne <tt>options</tt> :
+      <verb>
+      options ne irq=5
+      </verb>
+      <p> Ainsi <tt>kerneld</tt> lancera le gestionnaire
+      NE2000 avec la commande :
+      <verb>
+      /sbin/modprobe ne irq=5
+      </verb>
+      <p> Bien sûr, les options disponibles sont spécifiques aux 
+      modules que vous chargez.
+      </sect1>
+      <sect1>Les formats binaires
+      <p> Les formats binaires sont gérés de la même façon. A chaque
+      fois que vous essayez de lancer un programme que le noyau ne
+      sait pas comment exécuter, <tt>kerneld</tt> lance une requête
+      pour <tt>binfmt-xxx</tt>, ou <tt>xxx</tt> est le nombre
+      déterminé à partir des tous premiers octets de l'exécutable.
+      Donc la configuration de <tt>kerneld</tt> pour la gestion du
+      chargement du module binfmt_aout pour les exécutable ZMAGIC
+      (a.out) est :
+      <verb>
+      alias binfmt-267 binfmt_aout
+      </verb>
+      vu que le nombre magique pour les fichiers ZMAGIC est 267 (voir
+      <tt>/etc/magic</tt>). Si vous regardez <tt>/etc/magic</tt>,
+      vous verrez le nombre 0413, ceci parce que ce fichier utilise des 
+      nombres octaux alors que <tt>kerneld</tt> utilise des décimaux ( 413
+      en octal correspond à 267 en décimal ). Il y a en réalité trois
+      variantes des exécutables a.out peu différentes (NMAGIC,
+      QMAGIC et ZMAGIC).  Pour un support total du format a.out, vous 
+      devez avoir :
+      <verb>
+      alias binfmt-264 binfmt_aout  # pure executable (NMAGIC)
+      alias binfmt-267 binfmt_aout  # demand-paged executable (ZMAGIC)
+      alias binfmt-204 binfmt_aout  # demand-paged executable (QMAGIC)
+      </verb>
+      <p> Les formats binaires a.out, Jave et iBCS sont reconnus
+      automatiquement par <tt>kerneld</tt> sans la moindre configuration.
+      </sect1>
+      <sect1>Les disciplines de ligne (slip, cslip et ppp)
+      <p> Les disciplines de lignes sont demandées avec
+      <it>tyy-ldisc-x</it> où <it>x</it> est généralement 1 (pour
+      SLIP) ou 3 (pour PPP). Ces deux sont reconnus automatiquement
+      par <tt>kerneld</tt>.
+      <p>Concernant PPP, si vous voulez que <tt>kerneld</tt> charge le
+      module de compression de données pour PPP <tt>bsd_comp</tt>, vous
+      devez ajouter les deux lignes suivantes au fichier
+      <tt>/etc/conf.modules</tt> :
+      <verb>
+      alias tty-ldisc-3 bsd_comp
+      alias ppp0 bsd_comp
+      </verb>
+      </sect1>
+      <sect1>Les familles de protocoles réseau (IPX, AppleTalk, AX.25)
+      <p> Certains protocoles réseau peuvent être aussi chargés sous
+      la forme de modules. Le noyau demande à <tt>kerneld</tt> une
+      famille de protocole (par exemple IPX) avec une requête pour
+      <it>net-pf-X</it> où <it>X</it> est un nombre indiquant la
+      famille voulue. Par exemple, <it>netpf-3</it> correspond à
+      AX.25, <it>net-pf-4</it> à IPX et <it>net-pf-5</it> à AppleTalk.
+      (Ces nombres sont déterminés par les macros <tt>AF_AX25</tt>,
+      <tt>AF_IPX</tt> etc., que l'on trouve dans le fichier source
+      <tt>include/linux/socket.h</tt>. Donc, pour charger
+      automatiquement le module IPX, vous devrez ajouter une entrée
+      dans <tt>/etc/conf.modules</tt> :
+      <verb>
+      alias net-pf-4 ipx
+      </verb>
+      <p> Consultez également la section traitant des problèmes
+      courants pour éviter des messages d'avertissment lors de
+      l'amorçage relatifs à des familles de protocoles indéfinies.
+      </sect1>
+      <sect1>Les systèmes de fichiers
+      <p>
+      Les requêtes soumises à <tt>kerneld</tt> pour les systèmes de
+      fichiers sont simplement constituées par le type du système de
+      fichiers. Un usage courant est de charger le module
+      <it>isofs</it> pour les systèmes de fichiers des CD-ROM,
+      c'est-à-dire les systèmes de fichiers de type <it>iso9660</it> :
+      <verb>
+      alias iso9660 isofs
+      </verb>
+      </sect1>
+      </sect>
+      <sect>Périphériques demandant une configuration spéciale
+      <p>Certains périphériques demandent un peu plus de configuration
+      que le simple alias d'un périphérique et d'un module.
+      <itemize>
+      <item>les périphériques de type caractère de numéro majeur 10 :
+      divers périphériques ;
+      <item>les périphériques SCSI :
+      <item>les périphériques qui demandent une initialisation
+      spéciale.
+      </itemize>
+      <sect1>char-major-10 : souris, watchdogs, et random
+      <p>Les périphériques sont habituellement identifiés par leur
+      nombre majeur, par exemple 27 pour <tt>ftape</tt>. Toutefois, si
+      vous regardez les entrées de <tt>/dev</tt> pour le nombre majeur
+      10, vous verrez un certain nombre de périphériques très
+      différents. Parmi ceux-ci :
+      <itemize>
+      <item>des souris de toutes sortes (souris bus, PS/2,...) ;
+      <item>les chiens de garde (watchdog) ;
+      <item>le périphérique noyau <it>random</it> ;
+      <item>l'interface APM (Advanced Power Management).
+      </itemize>
+      <p>De façon évidente, ces périphériques sont contrôlés par
+      différents modules et non un seul. Pour cela, <tt>kerneld</tt>
+      utilise le nombre majeur et le nombre mineur :
+      <verb>
+      alias char-major-10-1 psaux     # For PS/2 mouse
+      alias char-major-10-130 wdt     # For WDT watchdog
+      </verb>
+      <p>Vous avez besoin d'un version du noyau 1.3.82 ou supérieure
+      pour l'utiliser. Les versions plus anciennes ne passaient pas le
+      nombre mineur à <tt>kerneld</tt>, ce qui ne permettait pas à
+      <tt>kerneld</tt> de savoir quel module il fallait charger.
+      </sect1>
+      <sect1>Charger les gestionnaires SCSI : l'entrée
+      <it>scsi_hostadapter</it>
+      <p> Les gestionnaires de périphériques SCSI sont constitués d'un
+      adaptateur pour la carte SCSI (par exemple pour une Adaptec
+      1542) et d'un gestionnaire pour le type de périphérique SCSI que
+      vous utilisez, comme un disque dur, un lecteur de CD-ROM ou un
+      lecteur de cartouche. Tous peuvent être chargés sous forme de
+      modules. Cependant, lorsque vous voulez accéder à un lecteur de
+      CD-ROM connecté à une carte Adaptec, le noyau et
+      <tt>kerneld</tt> savent seulement qu'il faut charger le module
+      <it>sr_mod</it> pour gérer le CD-ROM SCSI, mais ils ignorent 
+      à quel contrôleur SCSI il est connecté, donc quel module 
+      charger pour gérer le contrôleur SCSI.
+      <p>Pour résoudre cela, vous pouvez ajouter une entrée pour le
+      module du contrôleur SCSI au fichier <tt>/etc/conf.modules</tt>
+      qui indiquera à <tt>kerneld</tt> quel module charger parmi
+      toutes les possibilités :
+      <verb>
+      alias scd0 sr_mod               # sr_mod pour SCSI CD-ROM's ...
+      alias scsi_hostadapter aha1542  # ... doit utiliser le pilote
+                                      # Adaptec 1542
+      </verb>
+      <p>Cela ne fonctionne que pour un noyau de version 1.3.82 ou
+      supérieure.
+      <p>Cela marche si vous n'avez qu'une carte SCSI, sinon, c'est un
+      peu plus difficile. En général, vous ne pouvez pas avoir
+      <tt>kerneld</tt> qui charge le pilote d'une carte SCSI si le
+      gestionnaire d'un autre contrôleur est déjà installé. Vous
+      devez soit construire un noyau avec les deux gestionnaires (ils
+      ne sont plus sous forme de modules) soit les charger manuellement.
+      <p>Il y a une possibilité pour que <tt>kerneld</tt>charge
+      plusieurs gestionnaires SCSI. James Tsiao a eu cette idée : vous
+      pouvez avoir <tt>kerneld</tt> qui charge le second controleur
+      SCSI en mettant la dépendance dans le fichier
+      <tt>modules.dep</tt> à la main. Vous avez juste besoin d'une
+      entrée comme :
+      <verb>
+      /lib/modules/2.0.30/scsi/st.o: /lib/modules/2.0.30/scsi/aha1542.o
+      </verb>
+      Pour que <tt>kerneld</tt>charge le module <it>aha1542.o</it>
+      avant qu'il charge <it>st.o</it>. Ma machine à la maison est
+      configurée exactement comme au-dessus et fonctionne très bien
+      pour tous les périphérique de mon second contrôleur SCSI,
+      incluant lecteurs de cartouche, CD-ROM et des périphériques SCSI
+      génériques. L'inconvéniant est que <tt>depmod -a</tt> ne peut
+      pas détecter ces dépendances. Donc, l'utilisateur doit les
+      ajouter à la main et ne pas lancer <tt>depmod -a</tt> au
+      démarrage. Une fois configuré, <tt>kerneld</tt> chargera
+      automatiquement <it>aha1542.o</it> comme il faut.
+      <p>Vous devez être conscient que cette technique ne marche que
+      si vous avez différents types de périphériques sur deux
+      contrôleurs. Par exemple les disques durs sur un contrôleur et
+      les lecteurs de CD-ROM, de cartouches et les périphériques
+      génériques sur l'autres.
+      </sect1>
+      <sect1>Quand charger un module n'est pas suffisant : l'entrée
+      <tt>post-install</tt>
+      <p>Parfois, charger un module n'est pas suffisant pour qu'il
+      fonctionne correctement. Par exemple, si vous avez compilé le pilote
+      de votre carte son en tant que module, il est souvent pratique de
+      le régler pour un certain volume sonore. Le seul problème, c'est
+      que cette initialisation disparaît lors du chargement suivant du
+      module. Voici un truc de Ben Galliart <htmlurl
+      url="malto:bgallia@luc.edu" name="bgailla@luc.edu"> :
+      <p>Il faut installer le paquetage <tt>setmix-0.1</tt> (<htmlurl
+      url="ftp://sunsite.unc.edu/pub/Linux/apps/sound/mixers/setmix-0.1.tar.gz"
+      name="ftp://sunsite.unc.edu/pub/Linux/apps/sound/mixers/setmix-0.1.tar.gz">)
+      <p>et ensuite ajouter les lignes suivantes au fichier
+      <tt>/etc/conf.modules</tt> :
+      <verb>
+      post-install sound /usr/local/bin/setmix -f /etc/volume.conf
+      </verb>
+      Ainsi <tt>kerneld</tt> exécute la commande indiquée
+      par l'entrée <tt>post-install sound</tt> après que le module son
+      ait été chargé. Donc, le module son est configuré par la commande
+      <tt>/usr/local/bin/setmix -f /etc/volume.conf</tt>.
+      <p>Cela peut s'avérer très utile pour d'autres modules, par exemple
+      le module <it>lp</it> peut être configuré par le programme
+      <tt>tunelp</tt> en ajoutant :
+      <verb>
+      post-install lp tunelp <options>
+      </verb>
+      Pour que <tt>kerneld</tt>reconnaisse ces options, vous devez
+      avoir une version 1.3.69 de <tt>kerneld</tt> ou supérieure.
+      <p>
+      Note : une version précédente de ce mini-HOWTO mentionne une
+      option <tt>pre-remove</tt> qui peut être utilisée pour excécuter
+      une commande juste avant que <tt>kerneld</tt> ne décharge un
+      module. Toutefois, cela n'a jamais marché et son utilisation est
+      déconseillée. Heureusement, cette options disparaitra dans une
+      future version de <tt>kerneld</tt>. L'ensemble des opérations
+      d'initialisation des modules est en cours de modification en ce
+      moment, et peut différer sur votre système au moment où
+      vous lirez ceci.
+      </sect1>
+      </sect>
+      <sect>Espionner kerneld
+      <p>Si vous avez tout essayé et que vous ne comprenez pas ce que
+      le noyau demande à <tt>kerneld</tt>, il y a une solution pour
+      voir les requêtes que reçoit <tt>kerneld</tt> et par conséquent
+      comprendre ce qu'il faut mettre dans <tt>/etc/conf.modules</tt>.
+      Pour cela, il faut utiliser l'utilitaire <tt>kdstat</tt>.
+      <p>Ce petit programme est livré avec le paquetage
+      <tt>modules</tt>, mais il n'est ni compilé, ni installé par
+      défaut. Pour le compiler :
+      <verb>
+      cd /usr/src/modules-2.0.0/kerneld
+      make kdstat
+      </verb>
+      <p>Ensuite, pour que <tt>kerneld</tt> affiche les informations
+      sur ce qu'il est en train de faire, il faut lancer :
+      <verb>
+      kdstat debug
+      </verb>
+      et <tt>kerneld</tt> commencera à envoyer des messages à la
+      console sur son activité. Si vous essayez de lancer la commande
+      que vous voulez utiliser, vous verrez les requêtes adressées à
+      <tt>kerneld</tt>. Elles peuvent être copiées dans le fichier
+      <tt>/etc/conf.modules</tt> et mises en alias du module demandé
+      pour réaliser la tâche.
+      <p> Pour arrêter le debuggage, lancez :
+      <verb>
+      /sbin/kdstat nodebug
+      </verb>
+      </sect>
+      <sect>Utilisations spéciales de kerneld
+      <p>Je savais bien que vous me demanderiez comment configurer le
+      module d'économiseur d'écran...
+      <p>Le répertoire <tt>kerneld/GOODIES</tt> dans le paquetage
+      <tt>modules</tt> a un certain nombre de patches noyau pour
+      la gestion de l'économiseur d'écran ainsi que le beep de la
+      console par <tt>kerneld</tt>. Ils ne font pas partie du noyau
+      officiel. Vous devrez donc installer les patches noyau et le
+      recompiler.
+      <p>Pour installer un patch, utilisez la commande ``patch'' :
+      <verb>
+      cd /usr/src/linux
+      patch -s -p1 &etago;usr/src/modules-2.0.0/kerneld/GOODIES/blanker_patch
+      </verb>
+      Ensuite recompilez et installez le nouveau noyau.
+      <p>Quand il sera temps de lancer l'économiseur d'écran,
+      <tt>kerneld</tt> exécutera la commande
+      <tt>/sbin/screenblanker</tt> (il peut s'agir d'un script shell qui
+      lance votre économiseur d'écran favorixt.
+      <p>Quand le noyau veut l'arrêter, il envoie un signal
+      <tt>SIGQUIT</tt> au processus exécutant
+      <tt>/sbin/screenblanker</tt>. Votre script shell ou économiseur
+      d'écran doit le capter et se terminer. Pensez à restaurer
+      l'écran dans le mode texte initial !
+      </sect>
+      <sect>Problèmes courants
+      <sect1>Pourquoi est-ce que j'ai des messages ``Cannot locate
+      module for net-pf-X'' quand j'excécute <tt>ifconfig</tt> ?
+      <p>Le code du noyau a été modifié pour permettre le chargement
+      des familles de protocoles réseau (comme IPX, AX25 et AppelTalk)
+      comme modules vers la version 1.3.80. Cela a eu pour effet
+      d'ajouter une nouvelle requête pour <tt>kerneld</tt>,
+      <it>net-pf-X</it>, où <it>X</it> est un nombre identifiant le
+      protocole (voir le fichier
+      <tt>/usr/src/linux/include/linux/socket.h</tt> pour la
+      signification de ces nombres).
+      <p>Malheureusement, <tt>ifconfig</tt> envoie ces messages, donc
+      un bon nombre de personnes recoivent ces messages lors le
+      système se lance et qu'il exécute <tt>ifconfig</tt> pour
+      initialiser le périphérique <tt>loopback</tt>. Ces messages sont
+      sans danger et vous pouvez les retirer en ajoutant les lignes
+      suivantes :
+      <verb>
+      alias net-pf-3 off  # oubliez AX.25
+      alias net-pf-4 off  # oubliez IPX
+      aliad net-pf-5 off  # oubliez AppleTalk
+      </verb>
+      au fichier <tt>/etc/conf.modules</tt>. Biensûr, si vous utilisez
+      IPX comme module, n'ajoutez pas la ligne qui retire IPX.
+      </sect1>
+      <sect1>Après voir lancer <tt>kerneld</tt>, mon système ralentit
+      quand j'active ma connexion PPP
+      <p>Il y a bon nombre de messages à ce sujet. Il semble qu'il y ait
+      une malheureuse interaction entre <tt>kerneld</tt> et le script
+      <tt>tkPPP</tt> qui est utilisé sur certains systèmes pour
+      configurer et surveiller la connexion PPP. Le script exécute
+      apparemment des boucles quand il lance <tt>ifconfig</tt>.
+      Celui-ci déclenche <tt>kerneld</tt> pour rechercher les modules
+      <it>net-pf-X</it> (voir ci-dessous), ce qui provoque une
+      surcharge du système et l'envoi possible de messages <tt>``Cannot
+      locate module for net-pf-X''</tt>. Il n'y a pas d'autres
+      solutions que de ne pas utiliser <tt>tkPPP</tt> ou de changer sa
+      façon de surveiller la connexion.
+      </sect1>
+      <sect1><tt>kerneld</tt>ne charge pas mon gestionnaire SCSI
+      <p>Ajoutez une entrée pour la carte SCSI au fichier
+      <tt>/etc/conf.modules</tt>. Regardez la description de l'entrée
+      <tt>scsi_hostadapter</tt> plus haut.
+      </sect1>
+      <sect1><tt>modprobe</tt> se plaint que <tt>gcc2_compiled</tt>
+      n'est pas défini
+      <p>Ceci est une erreur dans <tt>module-utilities</tt> qui ne se
+      voit qu'avec <tt>binutils 2.6.0.9</tt> ou supérieur et elle est
+      aussi documentée dans les notes de mises à jour du paquetage
+      <tt>binutils</tt>. Lisez-le donc ou mettez à jour le paquetage
+      des modules par un qui corrige ce problème, par exemple le
+      <tt>modules-2.0.0</tt>.
+      </sect1>
+      <sect1>Le volume de ma carte son n'est pas initialisé etc.
+      <p>Les options de configuration d'un modules sont stockées dans
+      le module lui-même quand il est chargé. Donc, quand
+      <tt>kerneld</tt> décharge un module, la configuration que vous
+      aviez faite est perdue et la prochaine fois que le module sera
+      chargé, il héritera de la configuration par défaut.
+      <p>Vous pouvez indiquer à <tt>kerneld</tt> de configurer un
+      module en exécutant un programme après son chargement
+      automatique. Voir la section sur l'entrée <tt>post-install</tt>.
+      </sect1>
+      <sect1>DOSEMU a besoin de modules, comment <tt>kerneld</tt>
+      peut-il les charger ?
+      <p>Vous ne pouvez pas. Aucune des versions de <tt>dosemu</tt>
+      (officielles ou de développement) ne gèrent le chargement des
+      modules à travers <tt>kerneld</tt>. Cependant, if vous avez un
+      noyau 2.0.26 ou supérieur, vous n'avez pas besoin de modules
+      dosemu particuliers. Installez juste dosemu 0.66.1.
+      </sect1>
+      <sect1>Pourquoi ai-je des messages ``Ouch, kerneld time
+      out, message failed'' ?
+      <p>Quand le noyau envoit une requête à <tt>kerneld</tt>, il
+      s'attend à recevoir un acquittement dans un délai d'une seconde. Si
+      <tt>kerneld</tt> n'envoie pas cet acquittement, ce message est
+      diffusé. La requête est retransmise et peut éventuellement réussir
+      <p>Cela arrive couramment sur des systèmes lourdement chargés.
+      <tt>kerneld</tt> étant un processus en mode utilisateur, il
+      est ordonnancé comme tout processus du système. Sous de 
+      fortes charges, il peut ne pas s'exécuter pour envoyer
+      l'acquittement avant l'expiration du délai.
+      <p>Si cela se produit quand la charge est faible, essayez de
+      redémarrer <tt>kerneld</tt>. Tuez le processus
+      <tt>kerneld</tt> et redémarrez-le avec la commande
+      <tt>/usr/sbin/kerneld</tt>. Si le problème persiste, vous
+      devrez envoyer un message d'erreur à <htmlurl
+      url="mailto:linux-kernel@vger.rutgers.edu"
+      name="linux-kernel@vger.rutgers.edu"> mais, <bf>s'il vous
+      plaît</bf> soyez sûr que votre version du noyau et de
+      <tt>kerneld</tt> soient à jour avant d'envoyer un message sur ce
+      problème.
+      </sect1>
+      <sect1><tt>mount</tt> n'attend pas que <tt>kerneld</tt> charge
+      le module du système de fichier
+      <p>Il existe un certain nombre de messages sur le fait que la
+      commande <tt>mount(8)</tt> n'attende pas que <tt>kerneld</tt>
+      ait chargé le module du système de fichiers. <tt>lsmod</tt>
+      montre que <tt>kerneld</tt> a chargé le module et si vous
+      répétez la commande <tt>mount</tt> immédiatement, le montage
+      sera réussi. Cela semble être une erreur dans le paquetage
+      <tt>modules</tt> version 1.3.69f qui affecte des utilisateurs de
+      Debian (elle peut être corrigée en installant la dernière version
+      de ce paquetage).
+      </sect1>
+      <sect1><tt>kerneld</tt> n'arrive pas à charger le module
+      <it>ncpfs</it>
+      <p>Vous devez compiler les utilitaires <tt>ncpfs</tt> avec
+      l'option <tt>-DHAVE_KERNELD</tt>. Voir le fichier
+      <tt>Makefile</tt> de <tt>ncpfs</tt>.
+      </sect1>
+      <sect1><tt>kerneld</tt> n'arrive pas à charger le module
+      <it>smbfs</it>
+      <p>Vous utilisez une vieille version des utilitaires
+      <tt>smbmount</tt>. Prenez la dernière version (0.10 ou
+      supérieure) à <htmlurl
+      url="ftp://tsx-11.mit.edu/pub/linux/filesystems/smbfs/"
+      name="ftp://tsx-11.mit.edu/pub/linux/filesystems/smbfs/">.
+      </sect1>
+      <sect1>J'ai tout recompilé sous forme de modules et maintenant,
+      mon système ne peut plus démarrer : <tt>kerneld</tt> n'arrive
+      pas à charger le module du système de fichier racine.
+      <p>Vous ne pouvez pas <bf>tout</bf> mettre sous forme de modules
+      : le noyau doit avoir assez de gestionnaires pour monter votre
+      système de fichiers racine et exécuter les programmes
+      nécessaires au démarrage de <tt>kerneld</tt>. Donc vous ne
+      pouvez pas mettre sous forme de modules :
+      <itemize>
+      <item>le gestionnaire de votre disque dur où réside votre
+      système de fichiers racine ;
+      <item>le gestionnaire du système de fichiers racine ;
+      <item>le chargeur du format de binaire pour <tt>init</tt>,
+      <tt>kerneld</tt> et d'autres prgrammes.
+      </itemize>
+      <p>En fait ce n'est pas vrai. Les dernières version 1.3.x et
+      toutes les 2.x du noyau, supportent l'utilisation d'un disque ram
+      qui est chargé par <tt>lilo</tt> ou <tt>loadlin</tt> et
+      il est possible de charger des modules de ce ``disque'' très tôt
+      dans le processus de démarrage. La marche à suivre est décrite
+      dans le fichier <tt>Documentation/initrd.txt</tt> dans
+      l'arborescence des sources du noyau.
+      </sect1>
+      <sect1><tt>kerneld</tt>ne se lance pas lors de l'amorçage de la
+      machine : il veut <it>libgdbm</it>
+      <p>Les nouvelles versions de <tt>kerneld</tt> ont besoin de la
+      librairie GNU dbm, <it>libgdbm.so</it> pour fonctionner. La
+      plupart des installations ont ce fichier dans <tt>/usr/lib</tt>
+      mais vous avez probablement lancé <tt>kerneld</tt> avant que le
+      système de fichiers de <tt>/usr</tt> ne soit monté. Un des
+      symptomes de ceci est que <tt>kerneld</tt> ne marche pas lors du
+      démarrage du système et de l'exécution des script rc, mais
+      fonctionne parfaitement si vous le lancez à la main après. La
+      solution est soit de déplacer le lancement de <tt>kerneld</tt>
+      après que <tt>/usr</tt> ne soit monté, soit de mettre la librairie
+      <it>gdbm</it> dans le système de fichiers racine (par exemple
+      dans <tt>/lib</tt>).
+      </sect1>
+      <sect1>J'ai ``Cannot load module xxx'' mais j'ai reconfiguré
+      mon noyau sans la gestion de xxx !
+      <p>L'installation de la Slackware (et peut-être d'autres) crée
+      un fichier <tt>/etc/rc.d/rc.modules</tt> par défaut qui fait un
+      <tt>modprobe</tt> explicite sur une grande variété de modules.
+      Quels modules exactement sont ``modprobés'' ?, cela dépend de la
+      configuration initiale du noyau. Vous avez probablement
+      reconfiguré votre noyau pour enlever un ou plusieurs modules qui
+      est modprobé dans <tt>rc.modules</tt>, d'où les messages
+      d'erreur. Mettez à jour votre fichier <tt>rc.modules</tt> en
+      commentant tout module que vous n'utilisez plus, ou enlevez
+      entièrement ce fichier et laissez <tt>kerneld</tt> charger les
+      modules quand on en a besoin.
+      </sect1>
+      <sect1>J'ai recompilé mon noyau et les modules et j'ai toujours
+      des messages sur des symboles non résolus au démarrage
+      <p>Vous avez probablement reconfiguré et recompilé votre noyau
+      et exclu des modules. Vous avez d'anciens modules que vous
+      n'utilisez pas dans le répertoire <tt>/lib/modules</tt>.
+      La solution la plus simple est d'effacer le répertoire
+      <tt>/lib/modules/x.y.z</tt> et de retaper <tt>make
+      modules_install</tt> depuis le répertoire des sources du noyau.
+      Notez que ce problème arrive seulement quand vous reconfigurez le
+      noyau sans changer de version. Si vous voyez cette erreur quand
+      vous passer à une nouvelle version du noyau, vous avez un autre 
+      problème.
+      </sect1>
+      <sect1>J'ai installé Linux 2.1 et aucun module ne se charge
+      <p>Linux 2.1 est un noyau de développement. Pour cette raison, il se
+      peut que certaines choses ne fonctionnent pas de temps en temps.
+      La façon dont les modules sont manipulés a changé de façon 
+      significative. Richard Henderson a la charge du développement du 
+      noyau des modules.
+      <p>En bref, si vous voulez utiliser les modules avec un noyau
+      2.1, vous devez :
+      <itemize>
+      <item>lire le fichier <tt>Documentation/Changes</tt> et voir
+      quels paquetages doivent être mis à jour sur votre système ;
+      <item>utiliser le dernier paquetage <tt>modutils</tt>,
+      disponible sur <htmlurl
+      url="ftp://ftp.redhat.com/pub/alphabits/"
+      name="ftp://ftp.redhat.com/pub/alphabits/"> ou sur le site
+      mirroir <htmlurl
+      url="ftp://tsx-11.mit.edu/pub/linux/packages/alphabits/"
+      name="ftp://tsx-11.mit.edu/pub/linux/packages/alphabits/">
+      </itemize>
+      <p>Je recommande le noyau 2.1.29, si vous voulez utiliser les 
+      modules avec un noyau 2.1.
+      </sect1>
+      <sect1> Que dire d'un réseau utilisant la ligne téléphonique ?
+      <p><tt>kerneld</tt> peut à l'origine gérer l'établissement de
+      connexions réseau à travers le réseau téléphonique à la demande
+      : essayer d'envoyer des paquets à un réseau sans être connecté,
+      peut entraîner <tt>kerneld</tt> à lancer le script
+      <tt>/sbin/request_route</tt> pour initialiser une connexion PPP
+      ou SLIP.
+      <p>Il s'est avéré que c'était une mauvaise idée. Alan Cox, bien
+      connu pour ses travaux sur le réseau dans Linux a écrit
+      sur la liste de diffusion linux-kernel que :
+      <p>``Le truc request-route est obsolète, cassé et non requis...
+      Il est aussi enlevé des versions 2.1.x.''
+      <p>A la place d'utiliser le script <tt>request-route</tt> et
+      <tt>kerneld</tt>, je vous encourage vivement à installer le
+      paquetage <tt>diald</tt> d'Eric Schenk, disponible à l'url
+      <htmlurl url="http://www.dna.lth.se/~erics/diald.html"
+      name="http://www.dna.lth.se/~erics/diald.html">
+      </sect1>
+      </sect>
+      <sect>Copyright
+      <p>Ce document est copyrighté (c) Henrik Storner, 1996, 1997.
+      <p>Sauf contre-ordre, les documents HowTo pour Linux sont
+      copyrightés pas leurs auteurs respectifs. Ces documents peuvent
+      être reprodruits et distribués dans leur ensemble ou en partie,
+      sur n'importe quel type de support physique ou électronique, du
+      moment que cette notice légale se trouve sur toutes les copies.
+      Les redistributions commerciales sont autorisées et encouragées.
+      Toutefois, l'auteur aimerait bien être avisé de toute
+      distribution de ce genre.
+      <p>Toute traduction, travail dérivé ou complémentaire incluant
+      tout ou partie de document HowTo Linux doit être couvert par ce
+      copyriht. De cette manière, vous ne pouvez créer un document qui
+      s'inspire de ce document et imposer des restrictions
+      supplémentaires à sa diffusion. Des exceptions à ces conditions
+      peuvent être données sous certaines conditions. Contactez le
+      coordonnateur des HowTo Linux à l'adresse donnée un peu plus
+      bas.
+      <p>En résumé, nous souhaitons promouvoir la diffusion de ces
+      informations à travers un maximum de moyens de communication.
+      Toutefois, nous souhaitions conserver un copyright sur les
+      documents HowTo et  nous souhaitons être avertis de leur
+      redistribution.
+      <p>Si vous avez des questions, vous pouvez contacter Greg
+      Hankins, le coordonnateur des HowTo Linux par courrier
+      électronique à <htmlurl url="mailto:gregh@sunsite.unc.edu"
+      name="gregh@sunsite.unc.edu">
+      </sect>
+  </article>

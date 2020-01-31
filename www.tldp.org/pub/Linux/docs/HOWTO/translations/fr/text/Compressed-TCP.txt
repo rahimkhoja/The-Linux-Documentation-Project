@@ -1,0 +1,747 @@
+      Compressions des sessions TCP/IP avec des outils de type SSH
+
+  Version française du Compressed TCP/IP-Sessions using SSH-like tools
+
+  Sebastian Schreiber
+
+   <Schreib CHEZ SySS POINT de>
+
+   Adaptation française: Vincent Chartier
+
+   <vchartier CHEZ kyxar POINT fr>
+
+   Relecture de la version française: Claude Thomassin
+
+   <cthomassin CHEZ waika9 POINT com>
+
+   Préparation de la publication de la v.f.: Jean-Philippe Guérard
+
+   <jean TIRET philippe POINT guerard CHEZ tigreraye POINT org>
+
+   Version : 2000-02-02.fr.1.0
+
+   2003-12-31
+
+   +----------------------------------------------------------------+
+   | Historique des versions                                        |
+   |----------------------------------------------------------------|
+   | Version v2000-02-02.fr.1.0     | 2003-07-23     | VC,CT,JPG    |
+   |--------------------------------+----------------+--------------|
+   | Version v2000-02-02            | 2000-02-02     | SS           |
+   +----------------------------------------------------------------+
+
+   Résumé
+
+   Ce guide pratique explique pas à pas comment compresser ses
+   connexions en utilisant SSH. Compresser les connexions permet,
+   d'une part, de limiter la bande passante utilisée et, d'autre
+   part, d'accélérer les connexions à faible débit (modem, GSM,
+   RNIS).
+
+   -------------------------------------------------------------------
+
+   Table des matières
+
+   1. Introduction
+
+   2. Compresser HTTP, FTP...
+
+   3. Compression du courrier électronique
+
+                3.1. Courrier entrant (POP3, IMAP4)
+
+                3.2. Courrier sortant (SMTP)
+
+   4. Notes sur les performances
+
+   5. Remerciements
+
+   6. Droits d'utilisation
+
+   A. GNU Free Documentation License
+
+                1. PREAMBLE
+
+                2. APPLICABILITY AND DEFINITIONS
+
+                3. VERBATIM COPYING
+
+                4. COPYING IN QUANTITY
+
+                5. MODIFICATIONS
+
+                6. COMBINING DOCUMENTS
+
+                7. COLLECTIONS OF DOCUMENTS
+
+                8. AGGREGATION WITH INDEPENDENT WORKS
+
+                9. TRANSLATION
+
+                10. TERMINATION
+
+                11. FUTURE REVISIONS OF THIS LICENSE
+
+                12. ADDENDUM: How to use this License for your
+                documents
+
+1. Introduction
+
+   Dans le passé, nous avions l'habitude de compresser les fichiers
+   pour économiser de l'espace disque. Aujourd'hui, l'espace disque
+   est peu onéreux mais la bande passante est limitée. En compressant
+   les flux de données réseau, vous atteindrez deux objectifs :
+
+    1. Vous économiserez la bande passante et le volume transféré (ce
+       qui est important si vous devez payer le trafic ou si votre
+       réseau est chargé).
+
+    2. Vous accélérez les connexions à faible bande passante (Modem,
+       GSM, RNIS).
+
+   Ce guide va vous expliquer comment économiser la bande passante et
+   le temps de connexion en utilisant des outils comme SSH1, SSH2,
+   OpenSSH ou LSH.
+
+2. Compresser HTTP, FTP...
+
+   Mon bureau est connecté à internet par une ligne RNIS à 64 kbit/s.
+   Le taux de transfert maximum de cette ligne est donc d'environ
+   7 ko/s. Il est possible d'accélérer le débit de cette connexion en
+   compressant les données échangées : quand je télécharge des
+   fichiers, Netscape affiche un taux de transfert allant jusqu'à
+   40 ko/s (Il est possible de compresser les fichiers d'historique
+   par un facteur de 15). SSH est un outil principalement conçu pour
+   la mise en place de connexions sécurisées au travers de réseaux
+   non-sécurisés. De plus, SSH est capable de compresser les données
+   échangées et de faire suivre des ports (comme le font rinetd ou
+   redir). C'est donc l'outil approprié pour compresser n'importe
+   quelle connexion TCP simple. « Simple » signifie que seule une
+   connexion TCP est ouverte. Une connexion FTP ou la connexion entre
+   les produits Microsoft Outlook et Exchange ne sera pas simple
+   puisque qu'elle impliquera la mise en place de plusieurs
+   connexions. SSH utilise l'algorithme de compression Lempel-Ziv
+   (LZ77) -- donc vous atteindrez les mêmes importants taux de
+   compression que winzip et pkzip. Pour compresser toutes les
+   connexions HTTP provenant de mon intranet vers internet, il me
+   suffit d'exécuter une commande sur ma machine :
+
+ ssh -C -L8080:mandataire:80 -f identifiant@nom_d_hote "sleep 10000"
+
+   nom_d_hote = la machine hébergée par le fournisseur d'accès
+   internet (FAI). Un accès via SSH à cette machine est nécessaire.
+
+   identifiant = mon nom d'utilisateur sur nom_d_hote.
+
+   mandataire = le serveur mandataire (proxy) de mon FAI.
+
+   Le navigateur de mon PC est configuré pour utiliser localhost:8080
+   comme serveur mandataire (localhost étant le nom d'hôte par défaut
+   permettant de se connecter à la machine locale). Mon portable se
+   connecte lui aussi sur le port 8080 de mon PC (en utilisant
+   l'adresse IP de mon PC au lieu de localhost). La connexion est
+   compressée et redirigée vers le véritable serveur mandataire via
+   SSH. L'infrastructure ressemble à celle-ci :
+
+               64 kbit/s RNIS
+ Mon PC ----------------------------- Un PC
+ Client SSH      compressé     (Unix/Linux/Win-NT)
+ Port 8080                        chez mon FAI
+  |                               Serveur SSH
+  |                                 Port 22
+  |                                    |
+  |                                    |
+  |                                    |
+  | Ethernet 10 mbit/s                 | 100 mbit/s
+  | non compressé                      | non compressé
+  |                                    |
+  |                                    |
+ Mon second PC                Serveur mandataire (proxy)
+ avec Netscape,...                 de mon FAI
+ (portable)                         Port 80
+
+3. Compression du courrier électronique
+
+  3.1. Courrier entrant (POP3, IMAP4)
+
+   La plupart des internautes rapatrient leur courrier électronique à
+   partir de leur serveur de messagerie via le protocole POP3. Ce
+   protocole présente de nombreux inconvénients :
+
+    1. POP3 fait transiter le mot de passe en clair (des versions de
+       POP et d'IMAP utilisant SSL ont été développées et un
+       mécanisme d'authentification via un protocole de type
+       défi-réponse est défini dans les RFC 2095 et 2195).
+
+    2. POP3 est un protocole très bavard : le client doit tout
+       d'abord demander un message. Puis le serveur lui envoie le
+       message. Ensuite, le client demande la suppression du message
+       transféré. Le serveur lui confirme la suppression. Une fois
+       cela fait, le serveur est prêt à passer au message suivant.
+       Cela nécessite donc 4 transactions par courrier électronique.
+
+    3. POP3 transfère les courriers électroniques sans aucune
+       compression, bien que les courriers électroniques soient
+       hautement compressible (d'un facteur de 3,5).
+
+   Vous pourriez compresser les connexions POP3 en redirigeant le
+   port 110 de la machine locale (localhost:110) via une connexion
+   compressée vers le serveur POP3 de votre fournisseur d'accès.
+   Après cela, il suffirait de configurer votre client de messagerie
+   pour qu'il se connecte sur l'adresse localhost:110 afin de
+   télécharger le courrier électronique. Ce qui permettrait de
+   sécuriser et d'accélérer la connexion -- mais le temps de
+   téléchargement reste inhérent à la surcharge due au protocole
+   POP3.
+
+   Il est intéressant de substituer au protocole POP3 un protocole
+   plus efficace. L'idée est de télécharger la boîte aux lettres
+   toute entière en une seule fois sans avoir à supporter la
+   surcharge due au protocole. De plus, il est intéressant de
+   compresser cette connexion. L'outil approprié offrant ces deux
+   caractéristiques est SCP. Vous pouvez télécharger votre fichier
+   boîte aux lettres de la manière suivante :
+
+ scp -C identifiant@serveur-de-messagerie:/var/spool/mail/identifiant \
+        /tmp/nouveau_courrier
+
+   Mais il y a un problème : que se passe-t-il si un nouveau courrier
+   arrive sur le serveur pendant que vous téléchargez votre boîte aux
+   lettres ? Le nouveau courrier serait perdu. On a plutôt intérêt à
+   utiliser les commandes suivantes :
+
+ ssh identifiant@serveur-de-messagerie \
+     "mv /var/spool/mail/identifiant /tmp/identifiant_a_rapatrier"
+ scp -C identifiant@serveur-de-messagerie:/tmp/identifiant_a_rapatrier \
+        /tmp/nouveau_courrier
+
+   Un déplacement de fichier (mv) est une opération élémentaire, donc
+   vous n'aurez pas de problème si vous recevez de nouveaux courriers
+   durant l'exécution des commandes. Cependant si les répertoires
+   /tmp et /var/spool/mail/ du serveur de messagerie ne sont pas sur
+   le même disque, vous pourriez avoir des problèmes. Une solution
+   est de créer un fichier de verrouillage sur le serveur avant
+   d'exécuter la commande de déplacement :
+
+ touch /var/spool/mail/identifiant.lock
+
+   Vous devrez le supprimer après coup. Une meilleure solution est de
+   déplacer le fichier identifiant dans le même répertoire :
+
+ ssh identifiant@serveur-de-messagerie \
+     "mv /var/spool/mail/identifiant /var/spool/mail/identifiant_a_rapatrier"
+
+   Après cela, vous pourrez utiliser formail à la place de procmail
+   pour filtrer /tmp/nouveau_courrier dans les répertoires
+   correspondants :
+
+ formail -s procmail < /tmp/nouveau_courrier
+
+  3.2. Courrier sortant (SMTP)
+
+   Envoyez des courriers électroniques au travers de connexions SSH
+   compressées et chiffrées, permet de :
+
+     o Économiser du trafic réseau.
+
+     o Sécuriser la connexion (cela n'a pas d'intérêt si le courrier
+       électronique transite par des réseaux non sécurisés par la
+       suite).
+
+     o Authentifier l'émetteur. Beaucoup de serveurs de messagerie
+       n'autorisent pas le transit des courriers pour éviter les
+       abus. Si vous envoyez un courrier au travers d'une connexion
+       SSH, le serveur de messagerie distant (par exemple Sendmail ou
+       MS Exchange) pensera être connecté localement, et acceptera
+       donc de faire transiter le message.
+
+   Si vous avez un accès SSH au serveur de messagerie, vous aurez
+   besoin de la commande suivante :
+
+ ssh -C -L2525:serveur_de_messagerie:25 identifiant@serveur_de_messagerie
+
+   Si vous n'avez pas d'accès SSH au serveur de messagerie, mais que
+   vous avez un accès SSH à un serveur autorisé à utiliser le serveur
+   de messagerie comme relais, la commande sera la suivante :
+
+ ssh -C -L2525:serveur_de_messagerie:25 identifiant@autre_server
+
+   Après cela, vous pourrez configurer votre client de messagerie
+   local (ou le serveur de messagerie, recherchez de la documentation
+   sur les relais de messagerie (smarthosts)) pour envoyer les
+   messages sortants vers le port 2525 de la machine locale
+   (localhost).
+
+4. Notes sur les performances
+
+   Bien sûr, la compression et le chiffrement utilisent du temps
+   processeur. Il a été calculé qu'un vieux Pentium-133 peut chiffrer
+   et compresser environ 1 Go / heure -- ce qui est assez important.
+   Si vous compilez SSH avec l'option « --with-none » vous indiquerez
+   à SSH de ne pas utiliser de chiffrement. Cela permet d'augmenter
+   un peu les performances. Voici une évaluation de
+
+   le compromis entre différentes méthodes de téléchargement (pendant
+   le test, un fichier non compressé de 6 Mo est transféré à partir
+   d'un Pentium à 133 MHz vers un portable équipé d'un Pentium 2 à
+   233 MHz et ceci sur un segment Ethernet à 10 Mbit/s sans autre
+   charge).
+
+ +--------------------------+---------+---------+-----------+-----------+
+ |                          |  FTP    | chiffré | compressé | compressé |
+ |                          |         |         |           | & chiffré |
+ +--------------------------+---------+---------+-----------+-----------+
+ +--------------------------+---------+---------+-----------+-----------+
+ |     Temps écoulé (s)     |   7.6   |    26   |      9    |     23    |
+ +--------------------------+---------+---------+-----------+-----------+
+ | Taux de transfert (ko/s) |   790   |   232   |    320    |    264    |
+ +--------------------------+---------+---------+-----------+-----------+
+ |   Facteur compression    |     1   |     1   |    3.8    |    3.8    |
+ +--------------------------+---------+---------+-----------+-----------+
+
+5. Remerciements
+
+   Merci à Harald König <koenig CHEZ tat POINT physik POINT uni TIRET
+   tuebingen POINT de>, qui a utilisé rcp pour télécharger les boîtes
+   aux lettres complètes. La dernière version de ce guide pratique en
+   version originale est disponible à l'adresse suivante :
+   http://www.tldp.org/HOWTO/Compressed-TCP.html
+   [http://www.tldp.org/HOWTO/Compressed-TCP.html].
+
+   La dernière version française de ce document est toujours
+   disponible à l'adresse
+   http://www.traduc.org/docs/howto/lecture/Compressed-TCP.html
+   [http://www.traduc.org/docs/howto/lecture/Compressed-TCP.html].
+
+6. Droits d'utilisation
+
+   Copyright © 2002 Sebastian Schreiber pour la version originale.
+
+   Copyright © 2003-2004 Vincent Chartier, Claude Thomassin et
+   Jean-Philippe Guérard pour la version française.
+
+   Vous est autorisé de copier, distribuer ou modifier la version
+   originale de ce document selon les termes de la licence de
+   documentation libre GNU (GFDL), version 1.2 ou ultérieure, telle
+   que publiée par la Free Software Foundation ; sans section
+   inaltérable, ni texte de première de couverture, ni texte de
+   quatrième de couverture. Une copie de cette licence est incluse
+   dans la section intitulée « GNU Free Documentation License ».
+
+   Permission is granted to copy, distribute and/or modify this
+   document under the terms of the GNU Free Documentation License,
+   Version 1.2 or any later version published by the Free Software
+   Foundation; with no Invariant Sections, no Front-Cover Texts, and
+   no Back-Cover Texts. A copy of the license is included in the
+   section entitled "GNU Free Documentation License".
+
+A. GNU Free Documentation License
+
+     Copyright © 2000,2001,2002 Free Software Foundation, Inc. 59
+     Temple Place, Suite 330, Boston, MA 02111-1307 USA Everyone is
+     permitted to copy and distribute verbatim copies of this license
+     document, but changing it is not allowed.
+
+  1. PREAMBLE
+
+   The purpose of this License is to make a manual, textbook, or
+   other functional and useful document "free" in the sense of
+   freedom: to assure everyone the effective freedom to copy and
+   redistribute it, with or without modifying it, either commercially
+   or noncommercially. Secondarily, this License preserves for the
+   author and publisher a way to get credit for their work, while not
+   being considered responsible for modifications made by others.
+
+   This License is a kind of "copyleft", which means that derivative
+   works of the document must themselves be free in the same sense.
+   It complements the GNU General Public License, which is a copyleft
+   license designed for free software.
+
+   We have designed this License in order to use it for manuals for
+   free software, because free software needs free documentation: a
+   free program should come with manuals providing the same freedoms
+   that the software does. But this License is not limited to
+   software manuals; it can be used for any textual work, regardless
+   of subject matter or whether it is published as a printed book. We
+   recommend this License principally for works whose purpose is
+   instruction or reference.
+
+  2. APPLICABILITY AND DEFINITIONS
+
+   This License applies to any manual or other work, in any medium,
+   that contains a notice placed by the copyright holder saying it
+   can be distributed under the terms of this License. Such a notice
+   grants a world-wide, royalty-free license, unlimited in duration,
+   to use that work under the conditions stated herein. The
+   "Document", below, refers to any such manual or work. Any member
+   of the public is a licensee, and is addressed as "you". You accept
+   the license if you copy, modify or distribute the work in a way
+   requiring permission under copyright law.
+
+   A "Modified Version" of the Document means any work containing the
+   Document or a portion of it, either copied verbatim, or with
+   modifications and/or translated into another language.
+
+   A "Secondary Section" is a named appendix or a front-matter
+   section of the Document that deals exclusively with the
+   relationship of the publishers or authors of the Document to the
+   Document's overall subject (or to related matters) and contains
+   nothing that could fall directly within that overall subject.
+   (Thus, if the Document is in part a textbook of mathematics, a
+   Secondary Section may not explain any mathematics.) The
+   relationship could be a matter of historical connection with the
+   subject or with related matters, or of legal, commercial,
+   philosophical, ethical or political position regarding them.
+
+   The "Invariant Sections" are certain Secondary Sections whose
+   titles are designated, as being those of Invariant Sections, in
+   the notice that says that the Document is released under this
+   License. If a section does not fit the above definition of
+   Secondary then it is not allowed to be designated as Invariant.
+   The Document may contain zero Invariant Sections. If the Document
+   does not identify any Invariant Sections then there are none.
+
+   The "Cover Texts" are certain short passages of text that are
+   listed, as Front-Cover Texts or Back-Cover Texts, in the notice
+   that says that the Document is released under this License. A
+   Front-Cover Text may be at most 5 words, and a Back-Cover Text may
+   be at most 25 words.
+
+   A "Transparent" copy of the Document means a machine-readable
+   copy, represented in a format whose specification is available to
+   the general public, that is suitable for revising the document
+   straightforwardly with generic text editors or (for images
+   composed of pixels) generic paint programs or (for drawings) some
+   widely available drawing editor, and that is suitable for input to
+   text formatters or for automatic translation to a variety of
+   formats suitable for input to text formatters. A copy made in an
+   otherwise Transparent file format whose markup, or absence of
+   markup, has been arranged to thwart or discourage subsequent
+   modification by readers is not Transparent. An image format is not
+   Transparent if used for any substantial amount of text. A copy
+   that is not "Transparent" is called "Opaque".
+
+   Examples of suitable formats for Transparent copies include plain
+   ASCII without markup, Texinfo input format, LaTeX input format,
+   SGML or XML using a publicly available DTD, and
+   standard-conforming simple HTML, PostScript or PDF designed for
+   human modification. Examples of transparent image formats include
+   PNG, XCF and JPG. Opaque formats include proprietary formats that
+   can be read and edited only by proprietary word processors, SGML
+   or XML for which the DTD and/or processing tools are not generally
+   available, and the machine-generated HTML, PostScript or PDF
+   produced by some word processors for output purposes only.
+
+   The "Title Page" means, for a printed book, the title page itself,
+   plus such following pages as are needed to hold, legibly, the
+   material this License requires to appear in the title page. For
+   works in formats which do not have any title page as such, "Title
+   Page" means the text near the most prominent appearance of the
+   work's title, preceding the beginning of the body of the text.
+
+   A section "Entitled XYZ" means a named subunit of the Document
+   whose title either is precisely XYZ or contains XYZ in parentheses
+   following text that translates XYZ in another language. (Here XYZ
+   stands for a specific section name mentioned below, such as
+   "Acknowledgements", "Dedications", "Endorsements", or "History".)
+   To "Preserve the Title" of such a section when you modify the
+   Document means that it remains a section "Entitled XYZ" according
+   to this definition.
+
+   The Document may include Warranty Disclaimers next to the notice
+   which states that this License applies to the Document. These
+   Warranty Disclaimers are considered to be included by reference in
+   this License, but only as regards disclaiming warranties: any
+   other implication that these Warranty Disclaimers may have is void
+   and has no effect on the meaning of this License.
+
+  3. VERBATIM COPYING
+
+   You may copy and distribute the Document in any medium, either
+   commercially or noncommercially, provided that this License, the
+   copyright notices, and the license notice saying this License
+   applies to the Document are reproduced in all copies, and that you
+   add no other conditions whatsoever to those of this License. You
+   may not use technical measures to obstruct or control the reading
+   or further copying of the copies you make or distribute. However,
+   you may accept compensation in exchange for copies. If you
+   distribute a large enough number of copies you must also follow
+   the conditions in section Section 4, « COPYING IN QUANTITY ».
+
+   You may also lend copies, under the same conditions stated above,
+   and you may publicly display copies.
+
+  4. COPYING IN QUANTITY
+
+   If you publish printed copies (or copies in media that commonly
+   have printed covers) of the Document, numbering more than 100, and
+   the Document's license notice requires Cover Texts, you must
+   enclose the copies in covers that carry, clearly and legibly, all
+   these Cover Texts: Front-Cover Texts on the front cover, and
+   Back-Cover Texts on the back cover. Both covers must also clearly
+   and legibly identify you as the publisher of these copies. The
+   front cover must present the full title with all words of the
+   title equally prominent and visible. You may add other material on
+   the covers in addition. Copying with changes limited to the
+   covers, as long as they preserve the title of the Document and
+   satisfy these conditions, can be treated as verbatim copying in
+   other respects.
+
+   If the required texts for either cover are too voluminous to fit
+   legibly, you should put the first ones listed (as many as fit
+   reasonably) on the actual cover, and continue the rest onto
+   adjacent pages.
+
+   If you publish or distribute Opaque copies of the Document
+   numbering more than 100, you must either include a
+   machine-readable Transparent copy along with each Opaque copy, or
+   state in or with each Opaque copy a computer-network location from
+   which the general network-using public has access to download
+   using public-standard network protocols a complete Transparent
+   copy of the Document, free of added material. If you use the
+   latter option, you must take reasonably prudent steps, when you
+   begin distribution of Opaque copies in quantity, to ensure that
+   this Transparent copy will remain thus accessible at the stated
+   location until at least one year after the last time you
+   distribute an Opaque copy (directly or through your agents or
+   retailers) of that edition to the public.
+
+   It is requested, but not required, that you contact the authors of
+   the Document well before redistributing any large number of
+   copies, to give them a chance to provide you with an updated
+   version of the Document.
+
+  5. MODIFICATIONS
+
+   You may copy and distribute a Modified Version of the Document
+   under the conditions of sections 2 and 3 above, provided that you
+   release the Modified Version under precisely this License, with
+   the Modified Version filling the role of the Document, thus
+   licensing distribution and modification of the Modified Version to
+   whoever possesses a copy of it. In addition, you must do these
+   things in the Modified Version:
+
+    A. Use in the Title Page (and on the covers, if any) a title
+       distinct from that of the Document, and from those of previous
+       versions (which should, if there were any, be listed in the
+       History section of the Document). You may use the same title
+       as a previous version if the original publisher of that
+       version gives permission.
+    B. List on the Title Page, as authors, one or more persons or
+       entities responsible for authorship of the modifications in
+       the Modified Version, together with at least five of the
+       principal authors of the Document (all of its principal
+       authors, if it has fewer than five), unless they release you
+       from this requirement.
+    C. State on the Title page the name of the publisher of the
+       Modified Version, as the publisher.
+    D. Preserve all the copyright notices of the Document.
+    E. Add an appropriate copyright notice for your modifications
+       adjacent to the other copyright notices.
+    F. Include, immediately after the copyright notices, a license
+       notice giving the public permission to use the Modified
+       Version under the terms of this License, in the form shown in
+       the Addendum below.
+    G. Preserve in that license notice the full lists of Invariant
+       Sections and required Cover Texts given in the Document's
+       license notice.
+    H. Include an unaltered copy of this License.
+    I. Preserve the section Entitled "History", Preserve its Title,
+       and add to it an item stating at least the title, year, new
+       authors, and publisher of the Modified Version as given on the
+       Title Page. If there is no section Entitled "History" in the
+       Document, create one stating the title, year, authors, and
+       publisher of the Document as given on its Title Page, then add
+       an item describing the Modified Version as stated in the
+       previous sentence.
+    J. Preserve the network location, if any, given in the Document
+       for public access to a Transparent copy of the Document, and
+       likewise the network locations given in the Document for
+       previous versions it was based on. These may be placed in the
+       "History" section. You may omit a network location for a work
+       that was published at least four years before the Document
+       itself, or if the original publisher of the version it refers
+       to gives permission.
+    K. For any section Entitled "Acknowledgements" or "Dedications",
+       Preserve the Title of the section, and preserve in the section
+       all the substance and tone of each of the contributor
+       acknowledgements and/or dedications given therein.
+    L. Preserve all the Invariant Sections of the Document, unaltered
+       in their text and in their titles. Section numbers or the
+       equivalent are not considered part of the section titles.
+    M. Delete any section Entitled "Endorsements". Such a section may
+       not be included in the Modified Version.
+    N. Do not retitle any existing section to be Entitled
+       "Endorsements" or to conflict in title with any Invariant
+       Section.
+    O. Preserve any Warranty Disclaimers.
+
+   If the Modified Version includes new front-matter sections or
+   appendices that qualify as Secondary Sections and contain no
+   material copied from the Document, you may at your option
+   designate some or all of these sections as invariant. To do this,
+   add their titles to the list of Invariant Sections in the Modified
+   Version's license notice. These titles must be distinct from any
+   other section titles.
+
+   You may add a section Entitled "Endorsements", provided it
+   contains nothing but endorsements of your Modified Version by
+   various parties--for example, statements of peer review or that
+   the text has been approved by an organization as the authoritative
+   definition of a standard.
+
+   You may add a passage of up to five words as a Front-Cover Text,
+   and a passage of up to 25 words as a Back-Cover Text, to the end
+   of the list of Cover Texts in the Modified Version. Only one
+   passage of Front-Cover Text and one of Back-Cover Text may be
+   added by (or through arrangements made by) any one entity. If the
+   Document already includes a cover text for the same cover,
+   previously added by you or by arrangement made by the same entity
+   you are acting on behalf of, you may not add another; but you may
+   replace the old one, on explicit permission from the previous
+   publisher that added the old one.
+
+   The author(s) and publisher(s) of the Document do not by this
+   License give permission to use their names for publicity for or to
+   assert or imply endorsement of any Modified Version.
+
+  6. COMBINING DOCUMENTS
+
+   You may combine the Document with other documents released under
+   this License, under the terms defined in section 4 above for
+   modified versions, provided that you include in the combination
+   all of the Invariant Sections of all of the original documents,
+   unmodified, and list them all as Invariant Sections of your
+   combined work in its license notice, and that you preserve all
+   their Warranty Disclaimers.
+
+   The combined work need only contain one copy of this License, and
+   multiple identical Invariant Sections may be replaced with a
+   single copy. If there are multiple Invariant Sections with the
+   same name but different contents, make the title of each such
+   section unique by adding at the end of it, in parentheses, the
+   name of the original author or publisher of that section if known,
+   or else a unique number. Make the same adjustment to the section
+   titles in the list of Invariant Sections in the license notice of
+   the combined work.
+
+   In the combination, you must combine any sections Entitled
+   "History" in the various original documents, forming one section
+   Entitled "History"; likewise combine any sections Entitled
+   "Acknowledgements", and any sections Entitled "Dedications". You
+   must delete all sections Entitled "Endorsements".
+
+  7. COLLECTIONS OF DOCUMENTS
+
+   You may make a collection consisting of the Document and other
+   documents released under this License, and replace the individual
+   copies of this License in the various documents with a single copy
+   that is included in the collection, provided that you follow the
+   rules of this License for verbatim copying of each of the
+   documents in all other respects.
+
+   You may extract a single document from such a collection, and
+   distribute it individually under this License, provided you insert
+   a copy of this License into the extracted document, and follow
+   this License in all other respects regarding verbatim copying of
+   that document.
+
+  8. AGGREGATION WITH INDEPENDENT WORKS
+
+   A compilation of the Document or its derivatives with other
+   separate and independent documents or works, in or on a volume of
+   a storage or distribution medium, is called an "aggregate" if the
+   copyright resulting from the compilation is not used to limit the
+   legal rights of the compilation's users beyond what the individual
+   works permit. When the Document is included in an aggregate, this
+   License does not apply to the other works in the aggregate which
+   are not themselves derivative works of the Document.
+
+   If the Cover Text requirement of section Section 4, « COPYING IN
+   QUANTITY » is applicable to these copies of the Document, then if
+   the Document is less than one half of the entire aggregate, the
+   Document's Cover Texts may be placed on covers that bracket the
+   Document within the aggregate, or the electronic equivalent of
+   covers if the Document is in electronic form. Otherwise they must
+   appear on printed covers that bracket the whole aggregate.
+
+  9. TRANSLATION
+
+   Translation is considered a kind of modification, so you may
+   distribute translations of the Document under the terms of section
+   Section 5, « MODIFICATIONS ». Replacing Invariant Sections with
+   translations requires special permission from their copyright
+   holders, but you may include translations of some or all Invariant
+   Sections in addition to the original versions of these Invariant
+   Sections. You may include a translation of this License, and all
+   the license notices in the Document, and any Warranty Disclaimers,
+   provided that you also include the original English version of
+   this License and the original versions of those notices and
+   disclaimers. In case of a disagreement between the translation and
+   the original version of this License or a notice or disclaimer,
+   the original version will prevail.
+
+   If a section in the Document is Entitled "Acknowledgements",
+   "Dedications", or "History", the requirement (section Section 5,
+   « MODIFICATIONS ») to Preserve its Title (section Section 2,
+   « APPLICABILITY AND DEFINITIONS ») will typically require changing
+   the actual title.
+
+  10. TERMINATION
+
+   You may not copy, modify, sublicense, or distribute the Document
+   except as expressly provided for under this License. Any other
+   attempt to copy, modify, sublicense or distribute the Document is
+   void, and will automatically terminate your rights under this
+   License. However, parties who have received copies, or rights,
+   from you under this License will not have their licenses
+   terminated so long as such parties remain in full compliance.
+
+  11. FUTURE REVISIONS OF THIS LICENSE
+
+   The Free Software Foundation may publish new, revised versions of
+   the GNU Free Documentation License from time to time. Such new
+   versions will be similar in spirit to the present version, but may
+   differ in detail to address new problems or concerns. See
+   http://www.gnu.org/copyleft/.
+
+   Each version of the License is given a distinguishing version
+   number. If the Document specifies that a particular numbered
+   version of this License "or any later version" applies to it, you
+   have the option of following the terms and conditions either of
+   that specified version or of any later version that has been
+   published (not as a draft) by the Free Software Foundation. If the
+   Document does not specify a version number of this License, you
+   may choose any version ever published (not as a draft) by the Free
+   Software Foundation.
+
+  12. ADDENDUM: How to use this License for your documents
+
+   To use this License in a document you have written, include a copy
+   of the License in the document and put the following copyright and
+   license notices just after the title page:
+
+     Copyright © YEAR YOUR NAME. Permission is granted to copy,
+     distribute and/or modify this document under the terms of the
+     GNU Free Documentation License, Version 1.2 or any later version
+     published by the Free Software Foundation; with no Invariant
+     Sections, no Front-Cover Texts, and no Back-Cover Texts. A copy
+     of the license is included in the section entitled "GNU Free
+     Documentation License".
+
+   If you have Invariant Sections, Front-Cover Texts and Back-Cover
+   Texts, replace the "with...Texts." line with this:
+
+     with the Invariant Sections being LIST THEIR TITLES, with the
+     Front-Cover Texts being LIST, and with the Back-Cover Texts
+     being LIST.
+
+   If you have Invariant Sections without Cover Texts, or some other
+   combination of the three, merge those two alternatives to suit the
+   situation.
+
+   If your document contains nontrivial examples of program code, we
+   recommend releasing these examples in parallel under your choice
+   of free software license, such as the GNU General Public License,
+   to permit their use in free software.
+

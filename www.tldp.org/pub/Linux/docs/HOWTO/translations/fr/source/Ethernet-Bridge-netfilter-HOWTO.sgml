@@ -1,0 +1,843 @@
+<!DOCTYPE article  PUBLIC  "-//OASIS//DTD DocBook V4.1//EN" [
+  <!ENTITY howto	"http://www.traduc.org/docs/HOWTO/lecture/">
+  <!ENTITY mini-howto	"http://www.traduc.org/docs/HOWTO/mini/lecture/">
+]>
+<!-- Created:       2002-06-08, 10:59:43 Nils.Radtke_@_Think-Future.de  -->
+<!-- Last modified: 2002-10-08, 13:36:23 -> nr                          -->
+
+<article lang="fr">
+
+<articleinfo>
+  <title>Associer un pont Ethernet et netfilter</title>
+  <subtitle>Version française du <foreignphrase>Ethernet Bridge + 
+            netfilter Howto</foreignphrase></subtitle>
+
+  <author>
+    <firstname>Nils</firstname>
+    <surname>Radtke</surname>
+    <affiliation>
+      <address><email>Nils.Radtke_@_Think-Future.de</email></address>
+    </affiliation>
+  </author>
+
+  <othercredit role="traduction">
+    <firstname>François</firstname>
+    <surname>Romieu</surname>
+    <affiliation>
+      <jobtitle>Traduction française</jobtitle>
+      <address><email>francois@ueimor.eu.org</email></address>
+    </affiliation>
+    <contrib>Traduction française</contrib>
+  </othercredit>
+
+  <othercredit role="relecture">
+    <firstname>Guillaume</firstname>
+    <surname>Lelarge</surname>
+    <affiliation>
+      <jobtitle>Relecture de la version française</jobtitle>
+      <address><email>gleu@wanadoo.fr</email></address>
+    </affiliation>
+    <contrib>Relecture de la version française</contrib>
+  </othercredit>
+
+  <releaseinfo>0.2.fr.1.0</releaseinfo>
+  <pubdate>2003-03-09</pubdate>
+
+  <revhistory>
+    <revision>
+      <revnumber>0.2.fr.1.0</revnumber>
+      <date>2003-03-09</date>
+      <authorinitials>FR</authorinitials>
+      <revremark>Première traduction française</revremark>
+    </revision>
+    <revision>
+      <revnumber>0.2</revnumber>
+      <date>2002-10-08</date>
+      <authorinitials>NR</authorinitials>
+      <revremark>
+        Ajout de la partie <link 
+        linkend="TestingActualConfiguration">d'exemple de 
+        configuration</link> et d'indications dans <link 
+        linkend="BridgeRouting">la configuration du routage</link> et 
+        <link linkend="TestingRouting">le test du routage</link> 
+        respectivement.
+      </revremark>
+    </revision>
+    <revision>
+      <revnumber>0.1</revnumber>
+      <date>2002-09-19</date>
+      <authorinitials>NR</authorinitials>
+      <revremark>
+        Mise à jour du lien vers ebtables dans la section des 
+        &laquo;&nbsp;Thèmes voisins&nbsp;&raquo;. Ajout d'une remarque 
+        ayant trait aux <link linkend="HintFalsePositive">messages de 
+        déverminage des faux positifs de br_nf</link>
+      </revremark>
+    </revision>
+  </revhistory>
+
+	<abstract>
+		<para>
+			La mise en place d'un pont Ethernet permet d'ajouter une entité d'audit
+			ou de régulation à un réseau de façon transparente. Une telle installation
+			n'impose aucun changement à la topologie du réseau d'accueil.
+			Elle s'effectue en connectant le pont Ethernet entre le réseau à analyser
+			et l'élément responsable du routage (l'équipement connecté à l'Internet).
+		</para>
+	</abstract>
+
+</articleinfo>
+
+<sect1>
+	<title>Introduction</title>
+<para>
+  La version originale de ce guide pratique est disponible dans d'<ulink
+  url="http://www.think-future.de/DOCUMENTATION/Ethernet-Bridge-netfilter-HOWTO/other_formats/">autres 
+  formats</ulink>.
+  Pour le téléchargement, nous vous recommandons cette <ulink
+  url="http://www.think-future.de/DOCUMENTATION/Ethernet-Bridge-netfilter-HOWTO/Ethernet-Bridge-netfilter-HOWTO.tar.gz">archive 
+  tar</ulink>.
+  La version originale de ce document est publié par le <ulink 
+  url="http://www.tldp.org/docs.html#howto">Projet de documentation 
+  Linux</ulink> (LDP).
+</para>
+<para>
+  La dernière <ulink 
+  url="&howto;Ethernet-Bridge-netfilter-HOWTO.html">version 
+  française</ulink> de ce document est disponible sur le site du projet 
+  de traduction <ulink url="http://www.traduc.org">traduc.org</ulink>.
+</para>
+<para>
+  Pour ceux qui sont à la recherche d'une traduction, il existe aussi 
+  une version <ulink
+  url="http://www.think-future.de/DOCUMENTATION/Ethernet-Bridge-netfilter-HOWTO_de/">version
+	allemande</ulink>&nbsp;!
+</para>
+</sect1>
+
+<!-- #################### -->
+<!-- ### introduction ### -->
+<sect1>
+  <title>Introduction</title>
+  <para>
+    Les ponts Ethernet joignent de façon transparente plusieurs segments
+    Ethernet. 
+  </para>
+  <para>
+    Un pont Ethernet distribue les trames qui se présentent à un port aux
+    autres ports. Il l'effectue de façon intelligente&nbsp;: une fois qu'il
+		sait grâce à partir de quel port joindre une interface d'adresse MAC donnée,
+		la trame ne sera émise que sur le port correspondant sans polluer les autres
+    segments.
+  </para>
+  <para>
+    Des interfaces Ethernet peuvent s'ajouter à une interface existante et
+    devenir des ports (logiques) de l'interface du pont.
+  </para>
+  <para>
+    L'emploi d'un dispositif de type netfilter au dessus d'un pont rend
+    le système capable d'effectuer du filtrage. On obtient ainsi un filtrage
+    transparent. Aucune adresse IP n'est même nécessaire. Il est bien sûr
+    possible d'en affecter une à l'interface de pontage à des fins de
+    maintenance (via ssh :o) ).
+  </para>
+  <para>
+    L'intérêt du dispositif est évident. La transparence épargne à
+    l'administrateur la charge de reprise de la topologie réseau.
+    Les utilisateurs ne remarquent pas l'existence du pont mais les
+    connexions sont bloquées. Enfin, la transition ne perturbe pas le
+    fonctionnement opérationnel (qu'on se figure un réseau où la perte de
+    connectivité réseau coûte cher&nbsp;!).
+  </para>
+  <para>
+    L'autre cas courant concerne les personnes connectées à l'Internet
+    au moyen d'un routeur dédié. Les fournisseurs d'accès ne partagent
+    guère les privilèges d'administration sur les équipements loués et
+    le client ne peut donc pas modifier la configuration. Le client a
+    cependant un réseau dont il ne veut pas reprendre toute la
+    configuration. Il n'est effectivement pas obligé de le faire s'il
+    a recours à un pont.
+  </para>
+</sect1>
+<!--
+Bridging: Legt die Ethernet frames eines Segmentes auf das Interface
+eines anderen Segmentes. FW auf der Ethernet Bridge ermoeglicht die
+Verbindungskontrolle.
+Eine Ethernet Bridge ist fuer die verbundenen Netzwerke nicht sichtbar.
+Sie kann 2 oder mehr Ethernet Segmente verbinden, ohne Eingriff in die
+bestehende Netzwerk-Topologie. Ein weiterer Vorteil eroeffnet sich, wenn
+der Router nach extern nicht der eigenen Administration angehoert und
+somit eine Modifikation der Netzwerk-Topologie ausgeschlossen ist.
+-->
+
+<!-- ### introduction ### -->
+<!-- #################### -->
+
+<!-- ############ -->
+<!-- ### make ### -->
+<sect1>
+  <title>Logiciels requis</title>
+  <para>
+    La configuration logicielle suivante est nécessaire sur l'hôte de
+    pontage conformément à notre
+    <link linkend="TestingTestingGrounds">terrain de test</link>.
+  </para>
+  <sect2>
+    <title>Noyau Linux</title>
+    <para>
+      La prise en charge du pontage Ethernet est disponible en standard
+      à partir du noyau <emphasis>2.4.18</emphasis>. Aucun ajout n'est requis.
+	  </para>
+	  <para>
+      Pour disposer de netfilter et pouvoir se servir d'iptables, il
+      faut toutefois appliquer un supplément de code. Le nécessaire se
+      trouve dans la <link linkend="LinkBridgeHome">page</link>
+			sourceforge du pontage Ethernet.
+    </para>
+<informalexample><screen>
+root@bridge:~> cd /usr/src/
+root@bridge:~> wget -c http://bridge.sourceforge.net/devel/bridge-nf/bridge-nf-0.0.7-against-2.4.18.diff
+root@bridge:~> cd /usr/src/linux/
+root@bridge:~> patch -p1 -i ../bridge-nf/bridge-nf-0.0.7-against-2.4.18.diff
+</screen></informalexample>
+    <para>
+      Une fois le noyau standard rectifié, on active les options de
+      configuration adéquates du noyau. On peut se reporter au document
+      suivant pour la mise au point d'un noyau personnel&nbsp;:
+      <ulink
+        url="http://www.think-future.de/DOCUMENTATION/CD-Net-Install-HOWTO/CD-Net-Install-HOWTO-4.html#Kernel_Configuration">CD-Net-Install-HOWTO, boîte à outils</ulink>.
+      Oui, c'est encore en allemand. Je corrigerai ça à l'occasion.
+      Pour l'instant, dans&nbsp;:
+    </para>
+<informalexample><screen>
+        Code maturity level options
+</screen></informalexample>
+    <para>
+      on active&nbsp;:
+    </para>
+<informalexample><screen>
+        [*] Prompt for development and/or incomplete code/drivers
+</screen></informalexample>
+    <para>
+      et dans&nbsp;:
+    </para>
+<informalexample><screen>
+        Loadable module support
+</screen></informalexample>
+<informalexample><screen>
+        [*] Enable loadable module support  
+        [*]   Set version information on all module symbols
+        [*]   Kernel module loader
+</screen></informalexample>
+    <para>
+      Jusqu'ici, tout va bien. À présent, dans&nbsp;:
+    </para>
+<informalexample><screen>
+        Networking options
+</screen></informalexample>
+    <para>
+      on active&nbsp;:
+    </para>
+<informalexample><screen>
+        [*] Network packet filtering (replaces ipchains)
+        [*]   Network packet filtering debugging
+</screen></informalexample>
+    <para>
+      De même, dans&nbsp;:
+    </para>
+<informalexample><screen>
+          IP: Netfilter Configuration  --->
+</screen></informalexample>
+    <para>
+      on choisit tout ce qui est souhaité&nbsp;. Enfin, on active&nbsp;:
+    </para>
+<informalexample><screen>
+        [M] 802.1d Ethernet Bridging
+</screen></informalexample>
+    <para>
+      et&nbsp;
+      <footnote>
+				<para>
+  	      Remarque&nbsp;:
+	        Cette entrée n'est disponible qu'avec un noyau modifié&nbsp;!
+				</para>
+      </footnote>
+			&nbsp;:
+    </para>
+<informalexample><screen>
+        [*]   netfilter (firewalling) support
+</screen></informalexample>
+    <para>
+Il ne reste plus qu'à exécuter un cycle&nbsp;:
+    </para>
+<informalexample><screen>
+root@bridge:~> make dep clean bzImage modules modules_install
+</screen></informalexample>
+    <para>
+  C'est tout. On n'oubliera pas d'éditer le fichier
+      <filename>/etc/lilo.conf</filename> en conséquence avant de taper:
+    </para>
+<informalexample><screen>
+root@bridge:~> lilo -t
+root@bridge:~> lilo
+root@bridge:~> reboot
+</screen></informalexample>
+    <para>
+			<note>
+				<para>
+	        Pourquoi ne pas identifier le noyau comme destiné au pontage&nbsp;?
+	        On édite le Makefile de plus haut niveau dans les sources
+	        du noyau et on modifie la ligne qui comprend
+	        <emphasis>EXTRAVERSION =</emphasis>. On peut la positionner à
+					<emphasis>bridge</emphasis>
+	        par exemple.
+	        Une fois l'étape <emphasis>modules_install</emphasis> effectuée, les
+	       	modules se trouveront dans le répertoire
+					<filename>/lib/modules/2.4.18bridge</filename>.
+    		</para>
+			</note>
+    </para>
+  </sect2>
+  <sect2>
+    <title>L'utilitaire <application>brctl</application></title>
+    <para>
+      Une fois le noyau capable de jouer les ponts Ethernet et de supporter
+      netfilter, on prépare l'utilitaire <application>brctl</application>.
+			<application>brctl</application> est l'outil de
+			<link linkend="SetupLinuxBrctl">configuration</link> pour le pontage.
+      On <link linkend="LinkBridgeHome">télécharge les sources</link> du
+      paquetage puis on le décompresse et on se positionne dans le répertoire
+			créé.
+    </para>
+<informalexample><screen>
+root@bridge:~> wget -c http://bridge.sourceforge.net/bridge-utils/bridge-utils-0.9.5.tar.gz
+root@bridge:~> tar xvzf bridge-utils-0.9.5.tar.gz
+root@bridge:~> cd bridge-utils-0.9.5
+</screen></informalexample>
+    <para>
+      Il est temps de lire le fichier <filename>README</filename> ainsi
+			que ceux qui se trouvent dans le répertoire <filename>doc/</filename>.
+			On peut alors lancer une commande make. L'exécutable
+			<application>brctl/brctl</application> qui en résulte est à copier dans
+			le répertoire <filename>/sbin/</filename>.
+    </para>
+<informalexample><screen>
+root@bridge:~> make
+root@bridge:~> cp -vi brctl/brctl /sbin/
+</screen></informalexample>
+    <para>
+      On peut à présent passer à la section d'<link 
+      linkend="SetupLinuxBrctl">installation</link>.
+    </para>
+  </sect2>
+</sect1>
+<!-- ### make ### -->
+<!-- ############ -->
+
+<!-- ############# -->
+<!-- ### Setup ### -->
+<sect1>
+  <title>Mise en service de Linux</title>
+  <sect2 id="SetupLinuxBrctl">
+    <title>Mise en service du pont</title>
+    <para>
+      Linux doit être mis au courant de l'existence du pont. On commence
+      donc par réclamer une interface de pontage Ethernet virtuelle
+      (à exécuter sur la machine <emphasis>bridge</emphasis>, voir la
+      <link linkend="TestingTestingGrounds">configuration de test</link>)&nbsp;:
+    </para>
+<informalexample><screen>
+root@bridge:~> brctl addbr br0
+</screen></informalexample>
+    <para>
+      Le protocole d'établissement d'arbre (Spanning Tree) n'est pas
+      nécessaire. On suppose qu'il n'y a qu'un seul routeur. Une boucle
+      est donc peu probable. La fonctionnalité correspondante peut donc
+      être désactivée. Le bavardage réseau diminue alors.
+    </para>
+<informalexample><screen>
+root@bridge:~> brctl stp br0 off
+</screen></informalexample>
+    <para>
+      Après cette phase préparatoire, on lance enfin quelques
+			commandes intéressantes. On ajoute les interfaces Ethernet
+      physiques en les attachant à l'interface de pontage virtuelle
+			<emphasis>br0</emphasis>
+      qui vient d'être créée&nbsp;:
+    </para>
+<informalexample><screen>
+root@bridge:~> brctl addif br0 eth0
+root@bridge:~> brctl addif br0 eth1
+</screen></informalexample>
+    <para>
+      À présent les interfaces Ethernet sont chacune devenues une extrémité
+      du pont. Certes, elles étaient et elles sont toujours là (on peut les
+      voir :o) ) mais comme elles appartiennent au pont, elles n'ont plus
+			besoin de leur adresse IP. On leur retire donc celle-ci&nbsp;:
+    </para>
+<informalexample><screen>
+root@bridge:~> ifconfig eth0 down
+root@bridge:~> ifconfig eth1 down
+root@bridge:~> ifconfig eth0 0.0.0.0 up
+root@bridge:~> ifconfig eth1 0.0.0.0 up
+</screen></informalexample>
+    <para>
+      Parfait, on dispose donc à présent d'une station sans adresse IP.
+      Si ce n'était pas déjà le cas, il est temps de passer sur une console
+      locale à la machine pour la configurer. Une console série est la
+      bienvenue.
+      <note>
+				<para>
+	        Option&nbsp;:
+					On affecte une adresse IP à l'interface logique et on l'active&nbsp;:
+        </para>
+<informalexample><screen>
+root@bridge:~> ifconfig br0 10.0.3.129 up
+</screen></informalexample>
+      </note>
+      C'est tout.
+      Il est conseillé de s'attarder sur une
+      <link linkend="TestingImportantNote">remarque importante</link>&nbsp;!
+    </para>
+  </sect2>
+  <sect2 id="BridgeRouting">
+    <title>Configuration du routage</title>
+    <para>
+      Dans le cas de la configuration d'un passerelle, on active la
+			transmission de paquets du noyau Linux&nbsp;:
+    </para>
+<informalexample><screen>
+root@bridge:~> echo "1" > /proc/sys/net/ipv4/ip_forward
+</screen></informalexample>
+    <para>
+      La machine dispose déjà d'une adresse IP mais n'a aucune route par
+      défaut. On corrige ce manque &nbsp;:
+		</para>
+<informalexample><screen>
+root@bridge:~> route add default gw 10.0.3.129
+</screen></informalexample>
+    <para>
+      La connectivité réseau devrait être normale, depuis, vers et au
+      travers de la passerelle.
+    </para>
+  </sect2>
+</sect1>
+
+<!-- ### Setup ### -->
+<!-- ############# -->
+
+<!-- ############### -->
+<!-- ### Testing ### -->
+<sect1 id="TestingTestingGrounds">
+  <title>Test du pontage Ethernet</title>
+  <sect2>
+    <title>Configuration de test</title>
+    <para>
+      On part de la situation suivante ou d'un schéma analogue&nbsp;:
+    </para>
+<informalexample><screen>
+                                                           /\
+          Ethernet            Ethernet             ATM    /  -/\
++---------+       +---------+          +---------+     /-/      !
+| Station |-------|  Pont   |----------| Routeur |-----| Inter-  \
++---------+       +---------+          +---------+     \  net  ---|
+         ^        ^         ^          ^                \     /
+         |        |         |          |                 \---/
+        eth0     eth0      eth1       if0                  ^
+         |        |         |          |                   |
+      10.0.3.2   rien/10.0.3.1      195.137.15.7   le reste du monde
+                  \         /
+                   \       /
+   ^                \-br0-/
+   |                                      ^             ^
+   |                   ^                  |             |
+   |                   |                  |             |
+ perso               perso             étranger      agressif 
+</screen></informalexample>
+    <para>
+      Les possibilités d'administration sont limitées aux équipements
+      marqués <emphasis>perso</emphasis>. Le routeur, et l'Internet,
+			sont inaccessibles.
+		</para>
+		<para>
+      Si on veut contrôler le trafic sur le brin Ethernet, on ne peut
+      qu'ajouter un pare-feu ou intégrer un pont.
+		</para>
+		<para>
+      La méthode habituelle a pour revers le changement de route par
+      défaut sur chaque machine du réseau interne. C'est extrêmement
+      pénible et personne n'a envie de devoir changer 5 routes par défaut
+      sur 5 hôtes plus d'une fois. En outre, ça consomme du temps, on peut
+      se tromper et la sécurité n'est pas améliorée.
+		</para>
+		<para>
+      La seconde approche est plus systématique, consomme moins de temps et
+      réduit les risques d'erreur. Elle est plus sûre en ce sens qu'il n'est
+      pas nécessaire de faire apparaître une adresse IP supplémentaire.
+      Pas d'IP, pas de danger. Enfin, il s'agit de la théorie en supposant
+      que les piles sont sûres (ce qui a intérêt à être vérifié). L'emploi
+      d'un pont est transparent, pas de changements d'IP ou d'adresses MAC,
+      c'est là son attrait.
+		</para>
+		<para>
+      Chacun choisira sa méthode mais seule la plus amusante est examinée ici.
+    </para>
+  </sect2>
+  <sect2 id="TestingRouting">
+    <title>Ping le, Max&nbsp;!</title>
+    <para>
+      On configure l'interface eth0 comme d'habitude. Les interfaces du pont
+      sont configurées conformément à la
+      <link linkend="SetupLinuxBrctl">section d'installation</link>.
+		</para>
+		<para>
+      La commande ci-dessous est importante pour activer la transmission de
+      paquets.
+    </para>
+<informalexample><screen>
+root@bridge:~> echo "1" > /proc/sys/net/ipv4/ip_forward
+</screen></informalexample>
+    <para>
+      On configure éventuellement une route par défaut&nbsp;:
+    </para>
+<informalexample><screen>
+root@bridge:~> route add default gw 10.0.3.129
+</screen></informalexample>
+    <para>
+      On met en place les règles de filtrage sur
+			<emphasis>bridge</emphasis>&nbsp;:
+    </para>
+<informalexample id="TestingIptablesListing"><screen>
+root@bridge:~> iptables -P FORWARD DROP
+root@bridge:~> iptables -F FORWARD
+root@bridge:~> iptables -I FORWARD -j ACCEPT
+root@bridge:~> iptables -I FORWARD -j LOG
+root@bridge:~> iptables -I FORWARD -j DROP
+root@bridge:~> iptables -A FORWARD -j DROP
+root@bridge:~> iptables -x -v --line-numbers -L FORWARD
+</screen></informalexample>
+    <para>
+      La dernière ligne produit l'affichage suivant&nbsp;:
+    </para>
+<informalexample><screen>
+Chain FORWARD (policy DROP 0 packets, 0 bytes)
+num      pkts      bytes target   prot opt in     out     source   destination
+1           0        0 DROP       all  --  any    any     anywhere anywhere
+2           0        0 LOG        all  --  any    any     anywhere anywhere      LOG level warning
+3           0        0 ACCEPT     all  --  any    any     anywhere anywhere
+4           0        0 DROP       all  --  any    any     anywhere anywhere
+</screen></informalexample>
+    <para>
+      La cible <emphasis>LOG</emphasis> trace tous les paquets via
+			<emphasis>syslogd</emphasis>.
+			Une telle configuration devrait se limiter à la phase de test
+			puisqu'elle ouvre la voie à un épuisement prématuré de la capacité
+			de stockage de la machine en cas d'attaque de type déni de service.
+		</para>
+		<para>
+      On teste les règles de filtrage en pingant l'adresse IP (195.137.15.7)
+      du routeur sur la machine <emphasis>babasse</emphasis>&nbsp;:
+    </para>
+<informalexample><screen>
+root@box:~> ping -c 3 195.137.15.7
+PING router.provider.net (195.137.15.7) from 10.0.3.2 : 56(84) bytes of data.
+--- router.provider.net ping statistics ---
+3 packets transmitted, 0 received, 100% loss, time 2020ms
+^C
+root@box:~> 
+</screen></informalexample>
+    <para>
+      La règle par défaut rejette (DROP) le trafic. Pas de réponse ni
+      de traçage des trames. Cette configuration netfilter est destinée
+      à jeter toutes les trames à moins que la règle 1 qui précède la
+			règle LOG ne soit supprimée&nbsp;:
+    </para>
+<informalexample><screen>
+root@bridge:~> iptables -D FORWARD 1
+root@bridge:~> iptables -x -v --line-numbers -L FORWARD
+</screen></informalexample>
+    <para>
+      Les règles sont à présent&nbsp;:
+    </para>
+<informalexample><screen>
+Chain FORWARD (policy DROP 0 packets, 0 bytes)
+num      pkts      bytes target   prot opt in     out     source   destination
+2           0        0 LOG        all  --  any    any     anywhere anywhere      LOG level warning
+3           0        0 ACCEPT     all  --  any    any     anywhere anywhere
+4           0        0 DROP       all  --  any    any     anywhere anywhere
+</screen></informalexample>
+    <para>
+      Tous les paquets devraient passer. On le confirme avec un ping
+      sur l'hôte <emphasis>babasse</emphasis>&nbsp;:
+    </para>
+<informalexample><screen>
+root@box:~> ping -c 3 195.137.15.7
+PING router.provider.net (195.137.15.7) from 10.0.3.2 : 56(84) bytes of data.
+64 bytes from router.provider.net (195.137.15.7): icmp_seq=1 ttl=255 time=0.103 ms
+64 bytes from router.provider.net (195.137.15.7): icmp_seq=2 ttl=255 time=0.082 ms
+64 bytes from router.provider.net (195.137.15.7): icmp_seq=3 ttl=255 time=0.083 ms
+
+--- router.provider.net ping statistics ---
+3 packets transmitted, 3 received, 0% loss, time 2002ms
+rtt min/avg/max/mdev = 0.082/0.089/0.103/0.012 ms
+root@box:~> 
+</screen></informalexample>
+    <para>
+      Parfait, le routeur est vivant et opérationnel (bien sûr, il l'a été
+      toute la journée).
+      <note id="TestingImportantNote">
+    		<para>
+	        Une fois l'interface du pont activée, il faut compter dans les trente
+	        secondes pour que le pont soit complètement opérationnel. La phase
+	        d'apprentissage du pont est d'à peu près trente secondes. Pendant
+	        ce temps, le pont analyse les adresses MAC au contact de chaque port.
+	        L'auteur du code, Lennert, précise que ce point est susceptible
+	        d'amélioration un de ces jours.
+	        Pendant la période d'apprentissage, aucun paquet n'est transmis et
+	        aucun ping n'obtiendra de réponse. Il vaut mieux ne pas l'oublier.
+    		</para>
+      </note>
+    </para>
+  </sect2>
+  <sect2 id="TestingActualConfiguration">
+    <title>Exemple de configuration</title>
+    <para>
+      Cette partie est destinée à donner au lecteur quelques indications
+      sur l'allure que doit avoir son système après avoir suivi les
+      indications du HOWTO.
+    </para>
+    <sect3>
+      <title>Configuration de l'interface</title>
+      <para>
+        Résultat de la commande <application>ifconfig</application>&nbsp;:
+    <para>
+<informalexample><screen>
+root@bridge:~> ifconfig
+br0       Link encap:Ethernet  HWaddr 00:04:75:81:D2:1D
+          inet addr:10.0.3.129  Bcast:195.30.198.255  Mask:255.255.255.128
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:826 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:737 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:161180 (157.4 Kb)  TX bytes:66708 (65.1 Kb)
+
+eth0      Link encap:Ethernet  HWaddr 00:04:75:81:ED:B7
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:5729 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:3115 errors:0 dropped:0 overruns:0 carrier:656
+          collisions:0 txqueuelen:100
+          RX bytes:1922290 (1.8 Mb)  TX bytes:298837 (291.8 Kb)
+          Interrupt:11 Base address:0xe400
+
+eth1      Link encap:Ethernet  HWaddr 00:04:75:81:D2:1D
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:1 frame:0
+          TX packets:243 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:100
+          RX bytes:342 (342.0 b)  TX bytes:48379 (47.2 Kb)
+          Interrupt:7 Base address:0xe800
+
+lo        Link encap:Local Loopback
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          UP LOOPBACK RUNNING  MTU:16436  Metric:1
+          RX packets:1034 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:1034 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:82068 (80.1 Kb)  TX bytes:82068 (80.1 Kb)
+</screen></informalexample>
+      </para>
+    </sect3>
+    <sect3>
+      <title>Configuration du routage</title>
+      <para>
+        Résultat de la commande <application>route</application>&nbsp;:
+    </para>
+<informalexample><screen>
+root@bridge:~> route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+10.0.3.129      0.0.0.0         255.255.255.128 U     0      0        0 br0
+0.0.0.0         10.0.3.129      0.0.0.0         UG    0      0        0 br0
+root@bridge:~>
+</screen></informalexample>
+    </sect3>
+    <sect3>
+      <title>Configuration d'iptables</title>
+      <para>
+        On se reportera à la section
+        <link linkend="TestingIptablesListing">Ping le, Max!</link>.
+      </para>
+    </sect3>
+  </sect2>
+  <sect2 id="HintFalsePositive">
+    <title>Remarque</title>
+    <para>
+      Il semble y avoir une anomalie dans le code br-nf&nbsp;:
+    </para>
+<informalexample><screen>
+From: Bart De Schuymer
+Date: Sun, 1 Sep 2002 21:52:46 +0200
+To: Nils Radtke 
+Subject: Re: Ethernet-Brigde-netfilter-HOWTO
+
+Hello Nils,
+
+[...]
+Also, network packet filtering debugging is generally a bad idea with the
+br-nf patch. It can gives a lot of false warnings (about bugs) in the logs.
+[...]
+</screen>
+</informalexample>
+    <para>
+      NdT: l'auteur du message électronique signale que l'emploi des options
+      de déverminage lorsque br-nf a été appliqué est susceptible de remplir
+      les fichiers d'enregistrement de fausses alertes.
+    </para>
+    <para>
+      Pour ma part je n'ai jamais eu de fausse alerte dans mes logs.
+      Peut-être que l'anomalie a été corrigée. Contacté sur ce point,
+      Bart a répondu&nbsp;
+    </para>
+<informalexample><screen>
+From: Bart De Schuymer
+Date: Mon, 2 Sep 2002 18:30:25 +0200
+To: Nils Radtke 
+Subject: Re: Ethernet-Brigde-netfilter-HOWTO
+
+On Monday 02 September 2002 00:39, Nils Radtke wrote:
+> Will the revision of the nf-debug code in br-nf be subject of improvement?
+
+I must admit I haven't been running any kernel with netfilter debugging
+lately. It sure used to give false positives a few months ago (the bridge
+mailing list has posts about that), I've been lacking time to see why and if
+it is still the case. It's on my todo list.
+[...]
+</screen></informalexample>
+    <para>
+      NdT: l'auteur reconnaît ne pas avoir essayé la combinaison sus-citée
+      depuis un moment. Il n'a pas eu le temps dernièrement de confirmer 
+      le problème ni de l'analyser. Il figure en tout cas dans son pense-bête.
+    </para>
+    <para>
+      À la date d'écriture de ce document (19/09/2002), je n'ai trouvé
+      aucun message comme quoi l'erreur aurait disparu. Il est donc
+      conseillé de garder un &oelig;il sur la
+      <link linkend="LinkMailinglist">liste de diffusion du pontage 
+      Ethernet</link>
+    </para>
+  </sect2>
+</sect1>
+<!-- ### Testing ### -->
+<!-- ############### -->
+
+
+<!-- ############# -->
+<!-- ### links ### -->
+<sect1>
+  <title>Liens</title>
+  <para>
+    L'auteur du document peut être contacté en anglais ou en allemand 
+    par <ulink 
+    url="mailto:Ethernet-Bridge-netfilter-Howto_@_Think-Future.de">courrier
+		électronique</ulink>. Voir la <ulink 
+		url="http://www.Think-Future.de/">page web</ulink> de l'auteur.
+  </para>
+  <para>Merci d'envoyer vos commentaires, remarques, corrections 
+  concernant la version française de ce document à <ulink 
+  url="mailto:commentaires@traduc.org?subject=Ethernet-Bridge-netfilter-HOWTO">commentaires@traduc.org</ulink></para>
+  <sect2>
+    <title>Pontage Ethernet</title>
+    <para>
+      <itemizedlist>
+         <listitem id="LinkMailinglist"><para>
+           La <ulink 
+           url="http://www.math.leidenuniv.nl/pipermail/bridge/">liste</ulink> 
+           de diffusion du pontage Ethernet.
+        </para></listitem>
+
+        <listitem id="LinkBridgeHome"><para>
+          Utilitaires, correctifs, et cætera&nbsp;: page web du
+          <ulink url="http://bridge.sourceforge.net">pontage Ethernet du 
+          noyau Linux</ulink>.
+			  </para></listitem>
+
+        <listitem id="LinkBridgeStpHowto"><para>
+          Le <ulink 
+          url="&howto;BRIDGE-STP-HOWTO.html">Guide 
+          pratique du pontage et de STP</ulink>.
+			  </para></listitem>
+
+        <listitem id="LinkEnterpriseFw"><para>
+          Le <ulink 
+          url="http://bridge.sourceforge.net/docs/Firewalling%20for%20Free.pdf">pare-feu</ulink>
+          économique, par Shawn Grimes.
+				</para></listitem>
+      </itemizedlist>
+    </para>
+  </sect2>
+  <sect2>
+    <title>Thèmes voisins</title>
+    <para>
+      <itemizedlist>
+        <listitem>
+					<para>
+          Filtrage au niveau des trames, Ethernet-Bridging-Tables&nbsp;:
+          <itemizedlist>
+            <listitem><para><ulink 
+						  url="http://sourceforge.net/projects/ebtables">ebtables chez
+						  sourceforge</ulink></para></listitem>
+						<listitem><para><ulink 
+  					  url="http://ebtables.sourceforge.net/">page
+  				    page de garde</ulink> sourceforge 
+  				    d'ebtables</para></listitem>
+  				  <listitem><para><ulink 
+  					  url="http://users.pandora.be/bart.de.schuymer/ebtables/properties.html">fonctionnalités
+							d'ebtables</ulink></para></listitem>
+            <listitem><para>exemples pour ebtables&nbsp;: <ulink 
+              url="http://users.pandora.be/bart.de.schuymer/ebtables/examples.html">simples</ulink>,
+				    <ulink 
+					    url="http://users.pandora.be/bart.de.schuymer/ebtables/battlefield_examples.html">évolués</ulink></para></listitem>
+					  <listitem><para><ulink 
+					    url="http://users.pandora.be/bart.de.schuymer/ebtables/br_fw_ia/br_fw_ia.html">documentation
+					détaillée d'ebtables</ulink></para></listitem>
+					  <listitem><para><ulink 
+					    url="http://ebtables.sourceforge.net/ebtables-hacking/ebtables-hacking-HOWTO.html">guide
+							du bricoleur ebtables</ulink></para></listitem>
+          </itemizedlist>
+					</para>
+        </listitem>
+        <listitem>
+					<para>
+	          extension IP du pontage Linux
+					 	<ulink 
+					 		url="http://www.linuxvirtualserver.org/~julian/#bridging">IP mode, LVS</ulink>
+					</para>
+        </listitem>
+        <listitem>
+					<para>
+	          Linux et la haute disponibilité&nbsp;:
+					 	<ulink 
+					 		url="http://www.linux-ha.org/">Linux haute disponibilité</ulink>
+					</para>
+        </listitem>
+        <listitem>
+					<para>
+	          Serveur virtuel Linux&nbsp;: 
+						<ulink 
+						 	url="http://www.linuxvirtualserver.org/">LVS</ulink>
+					</para>
+        </listitem>
+      </itemizedlist>
+    </para>
+  </sect2>
+</sect1>
+
+<!-- ### links ### -->
+<!-- ############# -->
+
+<!-- ### inf.misc_make ### -->
+<!-- ###################### -->
+
+</article>
+<!-- EOF -->
+<!-- vim: set ai ts=2 tw=72: -->

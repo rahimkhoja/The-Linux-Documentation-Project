@@ -1,0 +1,913 @@
+
+Battery Powered Linux Mini-HOWTO
+
+David Lechnyr
+
+   <david@lechnyr.com>
+   Diario delle Revisioni
+   Revisione 2.31 30 luglio 2003   Revisionato da: drl
+   Aggiornamenti minori
+   Revisione 2.0  08 ottobre 2002  Revisionato da: drl
+   Aggiornamenti maggiori e conversione al SGML
+   Revisione 1.0  21 dicembre 1997 Revisionato da: hm
+   Stesura iniziale di Hanno Mueller
+
+   Questo documento spiega come ottimizzare e configurare la gestione
+   dell'energia su un sistema Linux preconfigurato per l'uso su laptop
+   alimentati a batteria, il che sarà utile a chiunque usi Linux su un
+   computer portatile. Saranno discussi i metodi di gestione dell'energia
+   APM/ACPI insieme a suggerimenti e tecniche di risparmio energetico. Si
+   accennerà anche ai differenti tipi di batterie disponibili.
+
+   Traduzione a cura di Massimo Soricetti <maxsoricetti@geocities.com>,
+   aggiornamento a cura di Tito Rizzo <tito.rizzo@tiscali.it> e revisione
+   a cura di Sandro Cardelli <sacarde@tiscali.it>.
+     _________________________________________________________________
+
+   Sommario
+   1. Gestione dell'energia
+
+        1.1. Advanced Power Management (APM)
+        1.2. Advanced Configuration and Power Interface (ACPI)
+        1.3. APM vs. ACPI: Quale tra i due?
+        1.4. SMP, Hyper-Threading, IA64 & NUMA
+
+   2. DPMS
+
+        2.1. Normal
+        2.2. Standby
+        2.3. Suspend
+        2.4. Off
+
+   3. Metodi di gestione dell'energia
+
+        3.1. swsusp(8)
+        3.2. hdparm(8)
+        3.3. sysklogd(8)
+        3.4. XFree86
+        3.5. KDE 3.1
+        3.6. Energy Star
+        3.7. File di Swap
+        3.8. tmpfs
+        3.9. Affinamenti vari
+        3.10. Miti del risparmio di energia
+
+   4. Tipi di batterie
+
+        4.1. Nickel Cadmium (Ni-Cd)
+        4.2. Nickel Metal Hydride (Ni-MH)
+        4.3. Lithium Ion (Li-ion)
+        4.4. Batterie smart
+        4.5. Cura generale delle batterie
+
+   5. Appendice
+
+1. Gestione dell'energia
+
+   Se possedete un laptop x86 relativamente recente, è probabile che
+   supporti sia l'Advanced Power Management (APM) che l'Advanced
+   Configuration and Power Interface (ACPI). ACPI è la più recente tra le
+   due tecnologie e affida la gestione dell'energia al sistema operativo,
+   permettendo una gestione più intelligente rispetto a APM, che è
+   controllato dal BIOS, il che è molto utile per i laptop alimentati a
+   batteria. Il controllo dell'energia della macchina può essere affidato
+   a una sola interfaccia alla volta, per cui è importante stabilire
+   quale metodo si adatta meglio alla singola situazione.
+     _________________________________________________________________
+
+1.1. Advanced Power Management (APM)
+
+   L'Advanced Power Management (APM) permette al BIOS del computer di
+   controllare la gestione dell'energia del sistema, senza il
+   coinvolgimento del sistema operativo. Sotto Linux, APM ha il vantaggio
+   di essere stabile, ben supportato dai venditori Linux e di avere una
+   solida storia alle spalle. Tuttavia, negli ultimi anni non gli è stato
+   dedicato molto sviluppo.
+
+   Per usarlo, bisogna abilitare l'APM nel kernel:
+      [*] Power Management support
+      <*>   Advanced Power Management BIOS support
+      [ ]     Ignore USER SUSPEND (NEW)
+      [ ]     Enable PM at boot time (NEW)
+      [ ]     Make CPU Idle calls when idle (NEW)
+      [ ]     Enable console blanking using APM (NEW)
+      [ ]     RTC stores time in GMT (NEW)
+      [ ]     Allow interrupts during APM BIOS calls (NEW)
+      [ ]     Use real mode APM BIOS call to power off (NEW)
+
+   La maggior parte delle opzioni per APM dovrebbero rimediare a problemi
+   noti con dispositivi hardware specifici, per cui è probabile che si
+   voglia abilitare solo la prima (CONFIG_APM).
+
+     * Advanced Power Management BIOS support (CONFIG_APM): È necessario
+       abilitarla se si vuole combinare qualcosa di utile con APM. Ai
+       programmi in spazio utente saranno notificati gli eventi APM (per
+       es., cambiamento dello stato della batteria) e un dispositivo
+       /proc/apm informerà sullo stato della batteria.
+     * Ignore USER SUSPEND (CONFIG_APM_IGNORE_USER_SUSPEND): Si tratta di
+       un aggiustamento per i notebook NEC Versa M.
+     * Enable PM at boot time (CONFIG_APM_DO_ENABLE): Per quanto suoni
+       bene, la maggior parte delle macchine non hanno bisogno di questa
+       caratteristica, che in effetti può bloccare alcuni sistemi in fase
+       di avvio.
+     * Make CPU Idle calls when idle (CONFIG_APM_CPU_IDLE): Su alcune
+       macchine, questa opzione incrementa il risparmio di energia;
+       mentre su altre, provocherà il blocco del sistema all'avvio. Da
+       usare con cautela.
+     * Enable console blanking using APM (CONFIG_APM_DISPLAY_BLANK):
+       Anziché oscurare la console virtuale, in realtà spegne lo schermo.
+       Non funziona con X-Windows e in effetti può causare più problemi
+       di quanti non ne risolva.
+     * RTC stores time in GMT (CONFIG_APM_RTC_IS_GMT): Se si vuole
+       memorizzare il GMT (Greenwich Mean Time) nel proprio RTC (Real
+       Time Clock), si scelga sì.
+     * Allow interrupts during APM BIOS calls (CONFIG_APM_ALLOW_INTS): Si
+       tratta di un aggiustamento per alcuni Thinkpad IBM che si bloccano
+       anziché sospendere il sistema.
+     * Use real mode APM BIOS call to power off
+       (CONFIG_APM_REAL_MODE_POWER_OFF): È un aggiustamento per un certo
+       numero di BIOS guaste. Se il vostro computer va in crash anziché
+       spegnersi correttamente, abilitate questa funzione.
+
+   Per attivare APM in fase di avvio, lo si dovrà prelevare da
+   http://www.worldvisions.ca/~apenwarr/apmd/ e configurare gli script di
+   avvio del sistema:
+# Avvia il demone APM se esiste e se APM è abilitato nel kernel
+if [ -x /usr/sbin/apmd -a -d /proc/apm ]; then
+        if cat /proc/apm 1> /dev/null 2> /dev/null ; then
+                echo "Starting APM daemon:  /usr/sbin/apmd"
+                /usr/sbin/apmd
+        fi
+fi
+
+   Il demone APM è composto in effetti di tre programmi:
+
+     * apmd - si occupa dei compiti di gestione dell'energia
+     * apm - uno strumento a linea di comando per verificare lo stato
+       corrente della batteria o sospendere il computer
+     * xapm - un semplice contatore della batteria per X
+
+   Se state cercando un approccio semplice, "chiavi in mano", per la
+   gestione dell'energia del vostro Laptop, APM è indubbiamente quello
+   che fà per voi.
+
+   Un semplice script che vi avverta dell'autonomia rimanente della
+   batteria, può essere aggiunto al vostro file ~/.profile :
+if [ -f /proc/apm ]; then
+        DUMMY=`cat /proc/apm | cut -d" " -f 7`
+        # Don't display when fully charged
+        if [ "$DUMMY" != "99%" ]; then
+                LEVEL=`cat /proc/apm | sed -e "s/^.*% //"`
+                echo "Battery at $DUMMY ($LEVEL)"
+        fi
+fi
+     _________________________________________________________________
+
+1.2. Advanced Configuration and Power Interface (ACPI)
+
+   Advanced Configuration and Power Interface (ACPI) è il successore di
+   APM; sottrae la responsabilità della gestione dell'energia al BIOS per
+   affidarla al sistema operativo. L'ACPI di Linux è più recente dell'APM
+   di Linux, nonché più flessibile nella reazione di fronte a eventi
+   legati alla gestione dell'energia; ha visto un più intenso sviluppo
+   ultimamente, e come conseguenza soggiace di tanto in tanto alla sua
+   giusta porzione di bachi.
+
+   Se, in quanto sviluppatori, vivete sul filo del rasoio e non vi
+   spaventa compilare il kernel e applicare patch al codice sorgente,
+   ACPI merita la vostra considerazione.
+
+   Sotto Linux ACPI è composto di due parti: Il driver ACPI compilato nel
+   kernel, e il demone ACPI (ACPID). Nella sua incarnazione corrente,
+   ACPID è piuttosto semplice: controlla /proc/acpi/event e agisce di
+   conseguenza. Anche se il demone non viene attivato, ci si può comunque
+   giovare delle caratteristiche di ACPI incluse nel kernel, come il
+   supporto termico del processore.
+
+   È possibile conoscere quale versione del driver ACPI sia in uso,
+   insieme agli stati di sospensione supportati, lanciando:
+bash $ cat /proc/acpi/info
+version: 20030619
+states:  S0 S1 S3 S4 S4 S5
+
+   Lo sviluppo di ACPI procede a ritmo costante, per cui si potrebbe
+   prendere in considerazione l'applicazione di patch degli aggiornamenti
+   più recenti del codice ACPI kernel-level al proprio kernel. Una volta
+   scaricata la patch specifica per il proprio kernel, la si può
+   applicare in questo modo:
+bash$ gunzip acpi-[version-kernel].diff.gz
+bash# cd /usr/src/linux-[version]
+bash# patch -Np1 -i ../acpi-[version-kernel].diff
+
+   Dopo di ciò, si dovrà ovviamente ricompilare il kernel:
+      [*] ACPI Support
+      [ ] CPU Enumeration Only
+      <*>   AC Adapter
+      <*>   Battery
+      <*>   Button
+      <*>   Fan
+      <*>   Processor
+      <*>   Thermal Zone
+      < >   ASUS Laptop Extras
+      < >   Toshiba Laptop Extras
+      [*]   Debug Statements
+
+   Si potrà anche installare il demone ACPID da
+   http://sourceforge.net/project/showfiles.php?group_id=33140 e
+   configurare gli script di avvio del sistema, per attivarlo all'avvio:
+if [ -x /usr/sbin/acpid -a -d /proc/acpi ]; then
+        echo "Starting ACPID Daemon:  /usr/sbin/acpid"
+        /usr/sbin/acpid
+fi
+
+   Un po' di storia... Il primo venditore a implementare ACPI fu
+   Micrososft, il che comporta aspetti posistivi e altri negativi.
+   Positivi perché, quando si compra un sistema, ci si può avvalere della
+   garanzia cha abbia passato i test Microsoft di compatibilità hardware,
+   incluso il test della sua implementazione di ACPI. Tuttavia, tali test
+   risultano inadeguati in quanto non indicano tanto aderenza alle
+   specifiche ACPI, ma piuttosto alla particolare implementazione di ACPI
+   di Microsoft. Quando questa stessa macchina è usata con Linux, possono
+   saltare fuori alcune classi di errori, che non si manifestavano sotto
+   Windows. Per proteggere da tali problemi, il driver ACPI di Linux
+   conserva una lista nera di "BIOS guaste", cioè notoriamente non
+   aderenti alle specifiche ACPI, e come conseguenza si rifiuterà di
+   abilitare ACPI se il vostro sistema è compreso nella lista.
+
+   Molti costruttori certificano la compatibilità dei loro sistemi con
+   Linux. Tuttavia, essi usano le distribuzioni Linux più importanti, con
+   il loro kernel predefinito. Questo significa che è piuttosto difficile
+   far sì che gli OEM garantiscano che i loro sistemi funzionino con
+   Linux preparato per l'ACPI, finché le distribuzioni maggiori
+   distribuiranno dei kernel già con ACPI. Questo costituisce un piccolo
+   dilemma, in quanto le distribuzioni Linux vogliono distribuire kernel
+   che funzionino su quanti più sistemi possibile. Ultimamente, si sono
+   comunque visti cambiamenti positivi, in questo settore.
+
+   Per risparmiare energia mantenendosi comunque rapidamente
+   utilizzabili, i PC compatibili con ACPI possono entrare in vari stati
+   di riposo. Le specifiche ACPI definiscono cinque di tali stati, noti
+   come stati "S". A differenza degli stati di riposo del processore,
+   durante gli stati "S" il sistema non compie alcun lavoro. Ogni stato
+   introduce un sempre maggiore risparmio di energia ma richiede
+   proporzionalmente più tempo per riprendere l'attività. Essi si
+   ispirano agli stati di sistema dello standard APM, predecessore di
+   ACPI.
+
+   Dettagli completi sugli stati ACPI si trovano presso
+   http://acpi.sourceforge.net/documentation/sleep.html. Gli stati del
+   processore sono descritti su
+   http://acpi.sourceforge.net/documentation/processor.html.
+
+   Per informazioni più specifiche sui retroscena dello stesso ACPI, si
+   può visitare il sito web di ACPI a http://www.acpi.info
+     _________________________________________________________________
+
+1.3. APM vs. ACPI: Quale tra i due?
+
+   Correntemente, sono due gli standard che competono nella gestione
+   dell'energia: APM e ACPI. Non si possono usare contemporaneamente;
+   qual'è dunque il migliore per la propria situazione? Se avete un
+   kernel relativamente recente (>2.4.20) e non vi spaventa doverlo
+   ricompilare o applicare patch al codice sorgente, troverete molti
+   vantaggi nella flessibilità di ACPI. Se volete semplicemente una
+   gestione generica dell'energia, o state usando una macchina più
+   vecchia, scegliete APM. Nessuno dei due metodi spegne i dischi rigidi
+   inattivi; per questo scopo si usi invece hdparm. In ambo i casi, il
+   BIOS del vostro sistema dovrà supportare correttamente lo schema di
+   gestione dell'energia che vorrete usare; se il vostro sistema non
+   supporta pienamente né l'uno né l'altro, alcune delle opzioni di
+   gestione dell'energia potrebbero causare il crash del sistema e/o
+   provocare perdite di dati. Siete stati avvertiti!
+
+   Anche se non abilitate la gestione dell'energia sul vostro laptop x86,
+   Linux invierà comunque l'istruzione HLT al vostro processore ogni
+   volta che non ci sarà niente da fare [1]. Svariati programmi Microsoft
+   Windows per il raffreddamento della CPU usano questa tecnica. Questo
+   porta a abbassare il consumo di energia della vostra CPU. Si noti che
+   il sistema non si spegne quando riceve l'istruzione HLT: semplicemente
+   smette di eseguire le istruzioni finché non si verifica un interrupt.
+
+   Non c'è generalmente alcun vantaggio nell'abilitare uno o l'altro tipo
+   di gestione dell'energia su server o workstation che non ricadono
+   dentro queste categorie.
+     _________________________________________________________________
+
+1.4. SMP, Hyper-Threading, IA64 & NUMA
+
+   Alcuni costruttori di sistemi SMP possono avere omesso le tavole
+   pre-ACPI usate per le configurazioni SMP. In tal caso, ACPI è
+   necessario.
+
+   Se avete un sistema più recente che supporti l' Hyper-Threading,
+   dovrete abilitare ACPI (e, ovviamente, SMP). Senza di esso, il vostro
+   sistema Linux potrebbe non essere in grado di individuare e
+   inizializzare tutti i processori virtuali.
+
+   Anche le macchine IA64 richiedono ACPI. In aggiunta, i server NUMA
+   cominciano a richiederlo per una corretta inizializzazione.
+     _________________________________________________________________
+
+2. DPMS
+
+   Il DPMS (Display Power Management Signaling) è uno standard per
+   ridurre il consumo di energia nei monitor. Tipicamente, sia il monitor
+   che la scheda video devono supportare lo standard DPMS per trarne
+   beneficio. Il DPMS specifica quattro modalità operative (al fine di
+   incrementare il risparmio di energia): "Normal", "Standby", "Suspend"
+   e "Off". Due linee di segnalazione, "Horizontal Sync" e "Vertical
+   Sync" forniscono un metodo per segnalare questi quattro differenti
+   stati a un monitor DPMS.
+
+   Una valida risorsa tecnica sul DPMS è disponibile presso
+   http://webpages.charter.net/dperr/dpms.htm.
+     _________________________________________________________________
+
+2.1. Normal
+
+   Normal significa semplicemente che -- il monitor è a piena potenza e
+   attivo. I pannelli LCD dei laptop e gli schermi piatti LCD consumano
+   considerevolmente meno energia rispetto ai tradizionali monitor CRT.
+     _________________________________________________________________
+
+2.2. Standby
+
+   Standby è usato per descrivere un livello di risparmio sostanzialmente
+   limitato. Questa impostazione comprende l'oscuramento dello schermo
+   tramite lo spegnimento del cannone elettronico (RGB). Tuttavia, la
+   fornitura di energia prosegue, alimentando i filamenti del tubo. Non
+   appena si renderà necessario utilizzarlo di nuovo, il monitor
+   risponderà molto rapidamente. Questa opzione richiede il supporto DPMS
+   da parte del monitor e della scheda video, insieme all'abilitazione di
+   DPMS in XFree86. Ci si riferisce talvolta a Standby come hsync suspend
+   mode dal momento che il segnale di risoluzione orizzontale è
+   disattivato per segnalare questo stato di gestione dell'energia al
+   monitor DPMS.
+     _________________________________________________________________
+
+2.3. Suspend
+
+   Suspend serve a descrivere uno stato di drastica riduzione di energia.
+   Questa impostazione solitamente coinvolge la stessa limitazione di
+   energia di Standby, con in più l'interruzione dell'alimentazione al
+   monitor. Questa opzione richiede il supporto DPMS da parte del monitor
+   e della scheda video, insieme all'abilitazione di DPMS in XFree86. Ci
+   si riferisce talvolta a Suspend come vsync suspend mode dal momento
+   che il segnale di risoluzione verticale è disattivato per segnalare
+   questo stato di gestione dell'energia al monitor.
+     _________________________________________________________________
+
+2.4. Off
+
+   Off normalmente indica che -- il monitor del computer è spento.
+   Normalmente, un piccolo circuito ausiliario mantiene sul monitor i
+   segnali necessari al computer per riaccendere il monitor, quando si
+   rende di nuovo necessario visualizzare dei dati sullo schermo.
+   Ovviamente, questo mantiene il consumo di energia al minimo
+   indispensabile (se non a zero). Mentre il risparmio di energia è
+   concreto, la riattivazione del monitor può richiedere svariati
+   secondi. Questa opzione richiede il supporto DPMS da parte del monitor
+   e della scheda video, insieme all'abilitazione di DPMS in XFree86.
+   Entrambi i segnali di risoluzione orizzontale e di risoluzione
+   verticale sono disattivati per segnalare questo stato di gestione
+   dell'energia a un monitor DPMS.
+     _________________________________________________________________
+
+3. Metodi di gestione dell'energia
+
+   Lo scopo principale di ogni tecnica di gestione dell'energia è quello
+   di limitare l'usura dell'oggetto. Nel caso della gestione dell'energia
+   dei laptop, i nostri sforzi sono rivolti a ridurre lo sfruttamento
+   della CPU e del disco rigido. Semplificando un po', tutto ciò viene
+   suddiviso in tecniche ovvie, semi ovvie, e non ovvie, dando per
+   scontato che le vostre previsioni di utilizzo possano essere
+   differenti.
+     _________________________________________________________________
+
+3.1. swsusp(8)
+
+   Suspend to Disk (S2D) rimane un compito elusivo, sotto Linux. Il
+   progetto principale, al momento, è swsup, disponibile presso
+   http://sourceforge.net/projects/swsusp. È ancora piuttosto recente e
+   richiede che si intervenga sulla configurazione per abilitarlo.
+     _________________________________________________________________
+
+3.2. hdparm(8)
+
+   hdparm è un'utilità della shell di Linux che può essere usata per
+   "addormentare" e migliorare le prestazioni di vari dispositivi
+   ATA/IDE. Se non è incluso nel vostro sistema, è possibile prelevare i
+   sorgenti da
+   http://freshmeat.net/redir/hdparm/4062/url_homepage/hardware. Per
+   esempio, quanto segue fornisce supporto IO a 32 bit con sync (-c3),
+   supporto DMA (-d1), Advanced Power Management (-B128), scrittura su
+   cache (-W1), spegnimento del disco dopo cinque minuti (-S60). Mi
+   permette fantastiche prestazioni con l'aggiunta del risparmio di
+   energia. Tenete presente che le vostre esigenze di utilizzo potrebbero
+   differire, quindi vorrete forse adattare tale configurazione al vostro
+   specifico sistema per prevenire perdite di dati (specialmente le
+   opzioni -B e -m!).
+
+   Nell'esempio che segue, lanciamo un'analisi delle prestazioni di
+   lettura/scrittura del nostro disco rigido prima e dopo l'uso di
+   hdparm. Si noti che, mentre le nostre scritture su cache rimangono più
+   o meno le stesse, le nostre effettive letture fisiche dal disco
+   ottengono un incredibile incremento! Se vi piace vivere sul filo del
+   rasoio, potete destreggiarvi tra le opzioni -m, -c, -B, e -u con
+   cautela (si veda la pagina man).
+bash# hdparm -tT /dev/hda
+Timing buffer-cache reads:   588 MB in  2.01 seconds = 292.15 MB/sec
+Timing buffered disk reads:   14 MB in  3.46 seconds =   4.05 MB/sec
+
+bash# hdparm -k1 -K1 -c3 -d1 -W1 /dev/hda
+bash# hdparm -tT /dev/hda
+Timing buffer-cache reads:   596 MB in  2.01 seconds = 297.01 MB/sec
+Timing buffered disk reads:   72 MB in  3.05 seconds =  23.58 MB/sec
+     _________________________________________________________________
+
+3.3. sysklogd(8)
+
+   Esaminate il vostro file /etc/syslog.conf per individuare attività di
+   log non necessarie e per ottimizzarne le prestazioni. Se non vi
+   interessa effettuare il log delle attività di sistema, potreste
+   decidere di disabilitare interamente syslogd e klogd o, per lo meno,
+   minimizzare la quantità dei log eseguiti dal sistema. È anche
+   possibile far precedere ogni voce dal segno meno (-) per evitare il
+   syncing del file dopo ogni immissione di log [2]. Per esempio, quanto
+   segue effettuerà il log di tutto ciò con priorità di info o più alta,
+   ma inferiore a warning, su /var/log/messages o /var/log/mail senza la
+   necessità del sync del disco dopo ogni scrittura. Dal momento che
+   vogliamo conservare tutti i messaggi con priorità di warning, questi
+   verranno registrati su un file differente senza disabilitare il sync
+   del disco (per evitare perdite di dati nell'eventualità di un crash
+   del sistema).
+*.warning                       /var/log/syslog
+*.info;*.!warning;mail.none     -/var/log/messages
+mail.info;mail.!warning         -/var/log/mail
+
+   Un altro punto da considerare sono i messaggi -- MARK -- che
+   syslogd(8) scrive, il che avrà effetto sulle impostazioni di
+   inattività del vostro disco rigido. Si possono disabilitare
+   semplicemente lanciando syslogd(8) con:
+
+if [ -x /usr/sbin/syslogd -a -x /usr/sbin/klogd ]; then
+        # '-m 0' disabled 'MARK' messages
+        /usr/sbin/syslogd -m 0
+        sleep 1
+        # '-c 3' displays errors on console
+        # '-x' turns off broken EIP translation
+        /usr/sbin/klogd -c 3 -x
+fi
+     _________________________________________________________________
+
+3.4. XFree86
+
+   Ci sono essenzialmente due tipi di oscuramento dello schermo, che
+   possono essere eseguiti sotto XFree86: BlankTime e DPMS. Il primo è
+   essenzialmente un debole effetto di "oscuramento" che in realtà non
+   comporta alcun risparmio di energia. L'altro è riservato ai monitor
+   aderenti allo standard DPMS, e deve essere specificamente abilitato
+   per avere effetto. Si trova nel file XF86Config, normalmente collocato
+   in /etc/X11/XF86Config.
+
+   Se possedete un monitor rispondente allo standard DPMS, potete provare
+   a abilitarne il supporto sotto la sezione Monitor del vostro file
+   XF86Config:
+
+Section "Monitor"
+        Option  "DPMS"
+EndSection
+
+   Per manipolare le funzioni DPMS, potete creare o modificare le righe
+   seguenti nella sezione ServerLayout.
+
+Section "ServerLayout"
+        Option "BlankTime"      "10"    # Oscura lo schermo dopo 10 minuti
+        Option "StandbyTime"    "20"    # Spegne lo schermo dopo 20 minuti
+        Option "SuspendTime"    "30"    # Completa ibernazione dopo 30 minuti
+        Option "OffTime"        "40"    # Spegne il monitor DPMS
+EndSection
+
+   Vale la pena di notare che BlankTime non costituisce affatto un
+   livello di risparmio di energia. Allo schermo è indirizzato un
+   "debole" effetto di oscuramento, il cui intervallo prestabilito di
+   attivazione è di 10 minuti. In alternativa, può indicare l'intervallo
+   in minuti prima dell'attivazione del salvaschermo. Non ha comunque
+   niente a che vedere con DPMS.
+
+   Dopo aver attivato le proprie modifiche e aver riavviato X-Windows,
+   può essere preferibile esaminare i propri file di log, per verificare
+   se la propria scheda video abbia avuto qualche problema con i nuovi
+   cambiamenti:
+
+   bash$ egrep "^\(WW|EE\)" /var/log/XFree86.0.log
+
+   È possibile che ci siano opzioni aggiuntive, che si potrebbe voler
+   abilitare per lo specifico driver della propria scheda o chip video;
+   si veda il sito Web della Documentazione di XFree86 per ulteriori
+   precisazioni.
+
+   Certamente, tutto questo può essere attivato "al volo" usando xset(1).
+   Se non avete accesso al vostro file di sistema XF86Config , un buon
+   posto in cui inserire questi comandi potrebbe essere il vostro file
+   ~/.Xsession oppure ~/.xinitrc.
+
+bash$ xset -dpms                        # Disabilita DPMS
+bash$ xset +dpms                        # Abilita DPMS
+bash$ xset s off                        # Disabilita l'oscuramento dello scherm
+o
+bash$ xset s 150                        # Oscura lo schermo dopo 150 secondi
+bash$ xset dpms 300 600 900             # Imposta i tempi di standby, suspend,
+e off (in secondi)
+bash$ xset dpms force standby           # Introduce immediatamente il modo stan
+dby
+bash$ xset dpms force suspend           # Introduce immediatamente il modo susp
+end
+bash$ xset dpms force off               # Spegne immediatamente il monitor
+bash$ xset -q                           # Interroga le impostazioni attuali
+
+   Se state invece usando la console di Linux (senza X-Windows), potreste
+   usare setterm(1):
+
+bash$ setterm -blank 10                 # Oscura lo schermo dopo 10 minuti
+bash$ setterm -powersave on             # Mette il monitor nel modo VESA di ris
+parmio di energia
+bash$ setterm -powerdown 20             # Imposta a 20 minuti lo spegnimento VE
+SA
+     _________________________________________________________________
+
+3.5. KDE 3.1
+
+3.5.1. Display Power Control
+
+   Assumendo che abbiate configurato XFree86 per supportare DPMS,
+   lanciate semplicemente kcontrol e scegliete Power Control/Display
+   Power Control. Da qui, potete configurare le impostazioni di Standby,
+   Suspend, e Power off per il vostro monitor.
+     _________________________________________________________________
+
+3.5.2. Batteria del Laptop
+
+   Assumendo che abbiate configurato il vostro kernel per supportare APM
+   o ACPI, lanciate semplicemente kcontrol e scegliete Power
+   Control/Laptop Battery. Da qui, potete configurare le varie
+   impostazioni per il vostro sistema basate sul livello di carica
+   rimanente della batteria.
+
+   È degno di nota che alcuni utilizzatori di ACPI tendano a vedere
+   questo messaggio:
+Your computer seems to have a partial ACPI installation. ACPI was probably
+enabled, but some of the sub-options were not - you need to enable at least
+'AC Adaptor' and 'Control Method Battery' and then rebuild your kernel.
+
+Ossia:
+Sembra che sul vostro computer ci sia una installazione parziale di ACPI. ACPI
+è stato
+probabilmente abilitato, tralasciando però di abilitare alcune sotto-opzioni -
+dovete per lo meno
+abilitare 'AC Adaptor' e 'Control Method Battery' e quindi ricompilare il kerne
+l.
+
+   Se vedete questo, significa che ACPI non è installato o, più
+   probabilmente, KDE non riconosce il vostro particolare sottosistema
+   ACPI Linux. Se l'applicazione di una patch aggiornata di ACPI al
+   kernel non risolve il problema, sarà necessario o non usare questa
+   funzione di KDE o, in alternativa, riconvertirsi all'APM.
+     _________________________________________________________________
+
+3.6. Energy Star
+
+   Energy Star è un programma sostenuto dal governo degli Stati Uniti per
+   promuovere standard energetici efficienti. Di interesse:
+
+     * Un computer qualificato come ENERGY STAR, nel modo sleep, consuma
+       il 70% in meno di elettricità rispetto ai computer privi di
+       caratteristiche di gestione dell'energia.
+     * Un monitor qualificato come ENERGY STAR, nel modo sleep, consuma
+       il 90% in meno di elettricità rispetto ai monitor privi di
+       caratteristiche di gestione dell'energia.
+
+   Tipicamente, Energy Star ottiene tali risparmi grazie a impostazioni
+   esterne di gestione dell'energia e non costituisce, di per sé una
+   tecnica di gestione dell'energia.
+     _________________________________________________________________
+
+3.7. File di Swap
+
+   Prendete in considerazione l'opportunità di disabilitare il vostro
+   file di swap in /etc/fstab per ridurre gli accessi al disco rigido. Se
+   disponete di memoria in quantità, questo è certamente un metodo da
+   seguire. Un modo per capire se avete bisogno del file di swap consiste
+   nell'attivarlo, usare il vostro sistema per un periodo di tempo, e
+   quindi esaminare /proc/meminfo e /proc/swaps per determinare di quanta
+   memoria libera disponete mediamente, e se il vostro file di swap venga
+   mai utilizzato.
+
+   Per esempio, oggi ho compilato svariati programmi intensivi e ho fatto
+   funzionare il mio laptop per circa otto ore di fila. Un semplice esame
+   del mio sistema rivela:
+bash$ cat /proc/swaps
+Filename                                Type            Size    Used
+Priority
+/dev/hda3                                partition      136544  0       -1
+
+bash$ cat /proc/meminfo
+MemTotal:       513880 kB
+MemFree:        254820 kB
+Buffers:         42812 kB
+Cached:         142880 kB
+SwapCached:          0 kB
+Active:         159644 kB
+Inactive:        76888 kB
+HighTotal:           0 kB
+HighFree:            0 kB
+LowTotal:       513880 kB
+LowFree:        254820 kB
+SwapTotal:      136544 kB
+SwapFree:       136544 kB
+Dirty:               0 kB
+Writeback:           0 kB
+Mapped:          86148 kB
+Slab:            10748 kB
+Committed_AS:   203944 kB
+PageTables:       1140 kB
+VmallocTotal:   516076 kB
+VmallocUsed:      1468 kB
+VmallocChunk:   514604 kB
+HugePages_Total:     0
+HugePages_Free:      0
+Hugepagesize:     4096 kB
+
+   Al che, si potrebbe disabilitare il file di swap, se non c'è alcun
+   indicatore di un probabile uso futuro.
+     _________________________________________________________________
+
+3.8. tmpfs
+
+   Includendo nel kernel il supporto per il tmpfs (filesystem temporaneo)
+   e usandolo per montarvi la directory /tmp, si ottiene che nulla verrà
+   scritto sul disco rigido in corrispondenza di questo punto di mount,
+   il quale agirà come un disco RAM (per contro nulla verrà salvato). Il
+   vantaggio di tmpfs rispetto al più tradizionale ramfs è che il primo
+   risiede nella cache interna del kernel e cresce o si riduce per
+   adattarsi ai file che deve ospitare. Si veda il
+   Documentation/filesystems/tmpfs.txt del proprio kernel per completa
+   documentazione. Se non si specifica una dimensione massima, essa verrà
+   automaticamente limitata a metà della memoria totale disponibile. Un
+   file /etc/fstab di esempio, con un file ram temporaneo di 100MB
+   montato sotto /tmp, apparirebbe così:
+   tmpfs   /tmp    tmpfs   size=100m,mode=1777     0 0
+     _________________________________________________________________
+
+3.9. Affinamenti vari
+
+   La modifica di /proc/sys/vm/bdflush permette a un utente di precisare
+   in quali circostanze i buffer "sporchi" debbano essere trasferiti su
+   disco, quanti di tali buffer possano esistere, ecc. Per dettagli si
+   veda nell'albero_dei_sorgenti_di_linux/Documentation/sysctl/vm.txt
+   (grazie a Marc Liberatore per il riferimento).
+
+   Avviate il vostro sistema e elencate, con lsmod, i moduli
+   correntemente caricati. Tutto ciò che compare nell'elenco molto
+   probabilmente deve essere caricato regolarmente; compilandolo come
+   parte del kernel piuttosto che come modulo può servire a ridurre il
+   tempo necessario a caricarlo dal disco, e, in grado molto minore,
+   riduce gli accessi al disco richiesti per l'avvio del sistema.
+
+   Esaminate la vostra configurazione di crontab per vedere se qualcosa
+   venga avviato su base regolare. Commentate ogni voce non necessaria.
+   Non dimenticate di esaminare il crontab di ogni singolo utente,
+   incluso 'nobody'. Se non avete bisogno di registrare una qualsivoglia
+   attività di background, valutate se disabilitare crontab del tutto. Lo
+   stesso consiglio vale per atd.
+
+   Se avviate http per testare e/o sviluppare pagine web, provate a
+   impostare i valori di MinSpareServers e StartServers a 1. Non definite
+   alcun CustomLogging o almeno incrementate il valore di LogLevel a
+   warn. Se vi sentite veramente sicuri di voi stessi, potete cambiare la
+   direttiva ErrorLog perché punti a /dev/null.
+
+   Valutate se creare uno script di risparmio di energia che metta
+   immediatamente il vostro laptop nel modo di bassa potenza:
+
+#!/bin/sh
+if [ -x /usr/sbin/hdparm ]; then
+        hdparm -y /dev/hda
+fi
+
+if [ -x /usr/X11R6/bin/xset ]; then
+        xset dpms force off
+fi
+
+   In più, merita attenzione quanto rientra nelle aree seguenti:
+
+     * Regolate le impostazioni del BIOS del vostro sistema per ridurre o
+       spegnere la retroilluminazione del display.
+     * Regolate le impostazioni del BIOS del vostro sistema per ridurre
+       la velocità di clock della CPU durante il funzionamento a
+       batterie.
+     * Evitate di usare i dispositivi PCMCIA durante il funzionamento a
+       batterie. Meglio ancora, estraete le schede PCMCIA quando non sono
+       in uso.
+     * Evitate di collegare al computer dispositivi esterni durante il
+       funzionamento a batterie. Questo include stampanti, monitor
+       esterni, drive zip, e fotocamere portatili.
+     * Evitate l'uso dei dispositivi incorporati durante il funzionamento
+       a batterie. Questo include drive cdrom e floppy.
+     * Usate programmi semplici. Una applicazione multimediale caricherà
+       molto di più il sistema e creerà molta più attività su disco di un
+       semplice word processor
+     * Usate un window manager semplice. Gnome e KDE sono attraenti, ma
+       tutto il tempo in più necessario per lanciarli non vale la pena,
+       quando si usano le batterie. Un'idea elegante sarebbe usare uno
+       script xinitrc differente per lanciare un altro window manager,
+       più semplice in base all'utilizzo o meno delle batterie da parte
+       del sistema.
+     _________________________________________________________________
+
+3.10. Miti del risparmio di energia
+
+   Abitualmente risultava vantaggioso ricompilare i driver PCMCIA di
+   Linux per permettere agli slot di godere del supporto APM per
+   l'energia. Tuttavia, la maggior parte delle funzionalità di tali
+   driver sono ora incluse nel kernel stesso. Se vi interessano le
+   specifiche, la pagina del progetto PCMCIA è disponibile presso
+   http://sourceforge.net/projects/pcmcia-cs/.
+
+   Alcune persone credono che APM offra un migliore risparmio di energia
+   rispetto a ACPI, e viceversa. Per quanto differiscano in termini di
+   tecniche di gestione dell'energia, nei test reali di utilizzo delle
+   batterie, entrambi a quanto si dice garantiscono prestazioni
+   all'incirca equivalenti.
+
+   Contrariamente alla credenza popolare, le batterie a Ioni di Litio (si
+   veda sotto) soffrono di effetto memoria. Fortunatamente, l'effetto non
+   è pesante rispetto al periodo di vita di una batteria tipica (3-4
+   anni). Chiunque affermi il contrario sta cercando di vendervi
+   qualcosa.
+     _________________________________________________________________
+
+4. Tipi di batterie
+
+   Attualmente ci sono tre tipi di batterie normalmente usate per i
+   computer portatili: Nickel Cadmium, Nickel Metal Hydride, e Lithium
+   Ion.
+     _________________________________________________________________
+
+4.1. Nickel Cadmium (Ni-Cd)
+
+   Le batterie Nickel Cadmio (Ni-Cd) sono state l'unica scelta per anni,
+   ma ormai sono obsolete, e i nuovi modelli di laptop non le usano più,
+   perché pesanti e soggette all'"effetto memoria": cioè durante la
+   ricarica, se una batteria NiCD era solo parzialmente scarica, essa
+   "ricorda" il precedente livello di carica e si rifiuta di
+   oltrepassarlo. L'effetto memoria è provocato dalla cristallizzazione
+   degli elettroliti della batteria e può ridurne la durata in modo
+   permanente, fino a renderla inutilizzabile. Per evitare che ciò
+   accada, è necessario scaricarla del tutto e poi ricaricarla
+   completamente una volta ogni poche settimane. Dato che questa batteria
+   contiene cadmio, un materiale tossico, dovrebbe essere sempre
+   riciclata o smaltita correttamente.
+
+   Le batterie NiCad, e in un certo grado le batterie NiMH, soffrono di
+   ciò che viene chiamato l'effetto memoria. "Effetto memoria" significa
+   che se la batteria viene ripetutamente scaricata solo parzialmente
+   prima della ricarica, si dimenticherà che può scaricarsi
+   ulteriormente. Il sistema migliore per prevenire questa situazione
+   consiste nel caricare e scaricare la batteria su base regolare.
+     _________________________________________________________________
+
+4.2. Nickel Metal Hydride (Ni-MH)
+
+   Le batterie Nickel Metal Hydride (Ni-MH) costituiscono un rimpiazzo
+   privo di cadmio per le NiCad. Rispetto alle NiCd sono meno affette
+   dall'effetto memoria e richiedono quindi minore manutenzione e
+   condizionamento. Tuttavia, presentano problemi a temperature molto
+   basse o molto alte. E per quanto usino materiali meno nocivi (per es.,
+   non contengono metalli pesanti), non si possono ancora riciclare.
+   Un'altra importante differenza tra le NiCad e le NiMH è che le
+   batterie NiMH offrono una maggiore densità di energia rispetto alle
+   NiCad. In altri termini, la capacità di una NiMH è approssimativamente
+   doppia rispetto alla sua controparte al NiCad, il che garantisce una
+   maggiore autonomia della batteria senza aggravio di volume o di peso.
+     _________________________________________________________________
+
+4.3. Lithium Ion (Li-ion)
+
+   Le Lithium Ion (Li-ion) sono il nuovo standard per l'energia
+   portatile. Le batterie Li-ion producono la stessa energia di quelle al
+   NiMH ma pesano approssimativamente un 20%-35% in meno, e non soffrono
+   in maniera significativa dell'effetto memoria a differenza delle
+   controparti NiMH e Ni-Cd I loro componenti non sono assolutamente
+   nocivi. Poiché il litio si incendia molto facilmente, esse richiedono
+   un trattamento particolare. Sfortunatamente, solo pochi programmi di
+   riciclaggio per batterie a Li-ion sono stati finora stabiliti.
+     _________________________________________________________________
+
+4.4. Batterie smart
+
+   Le batterie smart non rappresentano realmente un tipo differente di
+   batterie, ma meritano una speciale menzione. Le batterie smart hanno
+   un circuito interno con chip che le mettono in grado di comunicare con
+   il laptop e monitorare le prestazioni della batteria, il voltaggio e
+   la temperatura. Le batterie smart durano generalmente un 15% in più
+   per via della loro migliore efficienza, e inoltre forniscono al
+   computer delle funzionalità di "indicazione del livello carburante"
+   molto più accurate, per stabilire quanta autonomia rimanga alla
+   batteria prima che sia necessaria una ricarica.
+     _________________________________________________________________
+
+4.5. Cura generale delle batterie
+
+   Anche se la forma delle batterie è la stessa, non è possibile passare
+   a un nuovo tipo di batterie, a meno che il laptop non sia stato
+   preconfigurato dal produttore per accettarne più di un tipo , dato che
+   il processo di ricarica è differente per ognuno dei tre tipi di
+   batterie.
+
+   Una batteria che non venga usata per molto tempo si scaricherà
+   lentamente. E anche se le usate ogni riguardo, la vostra batteria
+   dovrà essere sostituita dopo 500 - 1000 ricariche. Tuttavia non è
+   consigliabile tenere acceso un portatile senza batteria collegato
+   all'alimentazione di rete, perché la batteria serve sempre come
+   condensatore a elevata capacità, che protegge la macchina da
+   sovratensioni provenienti dalla rete elettrica.
+
+   Dal momento che i costruttori cambiano la forma delle loro batterie
+   ogni pochi mesi, potreste avere problemi a trovare una nuova batteria
+   per il vostro laptop da qui a pochi anni. La cosa può preoccupare solo
+   se si prevede di usare lo stesso laptop per svariati anni. Se avete
+   dubbi, comperate una batteria di riserva ora, prima che sparisca dagli
+   scaffali dei negozi.
+
+   Le nuove batterie vengono vendute scariche e devono essere caricate
+   completamente prima dell'uso. Si raccomanda di caricare e scaricare
+   completamente la nuova batteria da due a quattro volte, per
+   consentirle di raggiungere la capacità massima prevista. A questo
+   scopo, è generalmente raccomandabile che si effettui una carica
+   notturna (approssimativamente dodici ore). Si noti che è normale che
+   una batteria si scaldi durante le fasi di carica e di scarica. Quando
+   si carica la batteria per la prima volta, può capitare che il
+   dispositivo indichi che la carica sia completa già dopo 10 o 15
+   minuti. Questo è normale con le batterie ricaricabili. Le nuove
+   batterie sono dure da ricaricare; non sono mai state completamente
+   caricate e non sono rodate. Talvolta il dispositivo di ricarica
+   potrebbe interrompere il processo di ricarica di una nuova batteria
+   prima che essa sia completamente carica. Se questo succede, rimuovete
+   la batteria dal dispositivo e quindi reinseritela. Il ciclo di
+   ricarica dovrebbe ripartire. Questo può capitare svariate volte
+   durante il primo ciclo di carica. Non preoccupatevi; è perfettamente
+   normale. Mantenete la batteria in buono stato caricandola e
+   scaricandola completamente almeno una volta ogni due o tre settimane.
+   Si sottraggono a questa regola le batterie Li-Ion che non soffrono di
+   effetto memoria.
+
+   Le batterie dovrebbero essere messe da parte scariche, dato che
+   possono autoscaricarsi e diventare inattive dopo un lungo periodo di
+   inutilizzo. Non dovrebbero essere mantenute collegate al laptop
+   durante i periodi di inutilizzo. Elevata umidità e alte temperature
+   possono deteriorare la batteria, per cui dovrebbero essere evitate per
+   la sua conservazione.
+
+   Non rimuovete la batteria per trasportarla in tasca, nella borsa o in
+   altri contenitori nei quali oggetti metallici (come le chiavi
+   dell'auto e graffette) possano mandare in corto circuito i terminali
+   della batteria. Il conseguente, eccessivo flusso di corrente potrebbe
+   causare temperature elevate, con possibli danni alla batteria nonché
+   rischio di incendio o bruciature.
+     _________________________________________________________________
+
+5. Appendice
+
+   Questo documento venne amorevolmente vergato su un laptop Dell
+   Latitude C400 su cui girava Slackware Linux 9.0, nel caso qualcuno lo
+   chieda.
+
+   Questo documento non sarebbe stato possibile senza l'eccellente
+   materiale sviluppato inizialmente da Hanno Mueller <kontakt@hanno.de>.
+
+   Copyright (c) 2003 David Lechnyr. Redistribution and use, with or
+   without modification, are permitted provided that the copyright
+   notice, this list of conditions and the following disclaimer be
+   included.
+
+   THIS DOCUMENTATION IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS
+   IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+   TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+   PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR OR
+   CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+   EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+   PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+   PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+   LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+   NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+  Note
+
+   [1]
+
+   source/arch/i386/kernel/process.c
+   [2]
+
+   syslogd.c

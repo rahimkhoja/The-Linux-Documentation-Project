@@ -1,0 +1,2508 @@
+  DNS HOWTO
+  Nicolai Langfeldt (dns-howto(at)langfeldt.net), Jamie Norrish e altri.
+  V9.0, 20 Dicembre 2001
+
+  Come diventare un amministratore DNS da strapazzo.
+  Traduzione di Federico Cossu (federicocossu(at)libero.it).
+
+  1.  Preambolo
+
+  Parole chiave: DNS, BIND, BIND-4, BIND-8, BIND-9, named, dialup, PPP,
+  slip, ISDN, Internet, domain, name, hosts, resolution, caching.
+
+
+  Questo documento fa parte del Linux Documentation Project.
+
+
+  1.1.  Note legali
+
+  (C)opyright 1995-2001 Nicolai Langfeldt, Jamie Norrish & Co.  Do not
+  modify without amending copyright, distribute freely but retain
+  copyright message.
+
+
+  (C)opyright 1995-1999 Nicolai Langfeldt, Jamie Norrish & Co.  Non
+  modificare senza emendare il copyright, si può distribuire liberamente
+  ma includendo il messaggio di copyright.
+
+
+  1.2.  Crediti e richieste di aiuto
+
+  Voglio ringraziare tutte le persone che ho disturbato con la lettura
+  di questo HOWTO (voi sapete di chi parlo) e le numerose persone che mi
+  hanno mandato in email suggerimenti e note.
+
+
+  Questo non sarà mai un documento finito. Vi prego di mandarmi delle
+  email se avete incontrato problemi o successi, questo contribuirà a
+  migliorare l'HOWTO. Così vi prego di mandare commenti, domande o soldi
+  a janl(at)math.uio.no. Oppure comprate il mio libro sul DNS (è
+  intitolato "The Concise Guide to DNS and BIND" , nella bibliografia il
+  codice ISBN).  In caso mandiate delle email per le quali vi attendete
+  delle risposte, per favore assicuratevi che l'indirizzo cui inviare la
+  risposta sia corretto e operativo.  Inoltre, per favore leggete la
+  sezione ``Domande e risposte'' prima di scrivermi. Un'altra cosa:
+  comprendo solo il norvegese e l'inglese.
+
+
+  Questo è un HOWTO. L'ho mantenuto come parte del progetto LDP dal
+  1995.  Durante il 2000 ho scritto un libro sullo stesso soggetto. Mi
+  sento in dovere di dire che questo HOWTO, pur essendo molto simile al
+  libro, non è una brutta copia messa lì per lanciare il libro sul
+  mercato. I lettori di questo HOWTO mi hanno aiutato a capire quali
+  sono le parti del DNS più difficili da capire. E ciò ha aiutato la
+  stesura del libro, ma il libro ha aiutato a capire di cosa l'HOWTO
+  aveva bisogno. L'HOWTO integra il libro. Il libro integra la versione
+  3 di questo HOWTO. I miei sentiti ringraziamenti all'editore del
+  libro, Que, che ha creduto in me :-)
+
+
+  1.3.  Dediche
+
+  Questo HOWTO è dedicato a Anne Line Norheim Langfeldt. Anche se lei
+  non lo leggerà mai poiché non è quel tipo di ragazza.
+
+
+  1.4.  Versioni Aggiornate
+
+  Dovrebbe essere possibile trovare versioni aggiornate di questo HOWTO
+  all'indirizzo  <http://langfeldt.net/DNS-HOWTO/> e anche
+  <http://www.linuxdoc.org/>. Recatevi lì se la versione del documento
+  in vostro possesso è più vecchia di 9 mesi.
+
+
+  2.  Introduzione
+
+  Cos'è e cosa non è.
+
+
+  DNS è il Domain Name System. DNS converte i nomi delle macchine negli
+  indirizzi IP che queste macchine hanno nella rete. In pratica fa
+  corrispondere ("mappa", come dice lo jargon) i nomi agli indirizzi e
+  viceversa e in più fa qualche altra cosa. Questo HOWTO spiega come
+  definire questa corrispondenza, o mappatura, usando un sistema Unix,
+  con alcune cose specifiche per Linux.
+
+
+  Una corrispondenza è semplicemente un'associazione tra due cose, in
+  questo caso si tratta del nome di una macchina, come ftp.linux.org, e
+  del numero IP (o indirizzo) della stessa macchina 199.249.150.4. Il
+  DNS è in grado anche di mappare nell'altro senso, dal numero IP al
+  nome della macchina; questo è detto mappatura inversa ("reverse
+  mapping").
+
+
+  DNS è, per i non iniziati (voi ;-), una delle aree più opache
+  dell'amministrazione di rete. Fortunatamente non è così dura.  Questo
+  HOWTO cercherà di rendere più chiare alcune cose. Esso descrive come
+  impostare un semplice name server DNS. Partendo da un server cache
+  ("caching only") per poi passare all'impostazione di un server DNS
+  primario per un dominio. Per configurazioni più complesse date uno
+  sguardo alla sezione ``Domande e Risposte'' di questo documento. Se
+  non fosse descritto qui avrete bisogno di leggere la Vera
+  Documentazione.  Tornerò più tardi su in che cosa consista questa Vera
+  Documentazione nell'``ultimo capitolo''
+
+
+  Prima di cominciare dovrete configurare la vostra macchina in modo da
+  potervi connettere con telnet alla macchina e da essa verso l'esterno
+  e che possa connettersi con successo alla rete. In particolar modo
+  dovreste poter fare telnet 127.0.0.1 e ottenere la vostra stessa
+  macchina (provate subito!). Avrete anche bisogno di un buon
+  /etc/nsswitch.conf (oppure /etc/host.conf) e dei file /etc/resolv.conf
+  e /etc/hosts come punto di partenza, finché non spiegherò la loro
+  funzione. Se non avete già tutto questo impostato e funzionante il
+  Networking-HOWTO o il Networking-Overview-HOWTO spiegano come farlo.
+  Leggeteli.
+
+
+  Quando dico "la vostra macchina" intendo la macchina sulla quale state
+  cercando di impostare il DNS. Nessun'altra macchina che potreste avere
+  è coinvolta nel vostro lavoro.
+
+
+  Assumerò che non siate dietro un qualche tipo di firewall che blocca
+  le interrogazioni dei nomi. Se invece lo siete, avrete bisogno di una
+  speciale configurazione. Guardate la sezione ``Domande e Risposte''.
+
+
+  Il servizio di risoluzione dei nomi su Unix è svolto da un programma
+  chiamato named. Questo fa parte del pacchetto "BIND" che è coordinato
+  da Paul Vixie del Internet Software Consortium. Named è incluso in
+  molte distribuzioni Linux e di solito è installato come
+  /usr/sbin/named da un pacchetto chiamato BIND, maiuscolo o minuscolo a
+  seconda di chi ha creato il pacchetto.
+
+
+  Se avete named probabilmente potrete usarlo, se non l'avete potrete
+  prendere i binari da un qualunque sito ftp su Linux, altrimenti
+  prenderete i più recenti e grandiosi sorgenti da
+  <ftp://ftp.isc.org/isc/bind9/>.  Questo HOWTO si riferisce alla
+  versione 9 di BIND.  Le vecchie versioni dell'HOWTO, che fanno
+  riferimento a bind 4 e 8, sono ancora disponibili presso
+  <http://langfeldt.net/DNS-HOWTO/>.  Se la pagina di man di named fa
+  riferimento (per precisione alla fine, nella sezione FILES) a
+  named.conf avete bind 8, se fa riferimento a named.boot avete bind 4.
+  Se avete il 4 e siete coscienti del problema sicurezza dovreste
+  aggiornare alla versione 8. Adesso.
+
+
+  DNS è un database distribuito sulla rete. Fate attenzione a cosa ci
+  metterete dentro. Se ci metterete spazzatura, voi e gli altri ne
+  ricaverete solo quella. Mantenete il vostro DNS snello e coerente,
+  così otterrete un buon servizio da esso. Imparate ad usarlo, ad
+  amministrarlo, a risolverne eventuali problemi e diventerete un altro
+  buon amministratore che impedisce alla rete di cadere sulle ginocchia
+  a causa della cattiva manutenzione.
+
+
+  Suggerimento: Fate una copia di backup di tutti i file che vi chiederò
+  di modificare e che già avete, affinché possiate tornare presto
+  operativi in caso non funzioni.
+
+
+  2.1.  Altre implementazioni di Name Server.
+
+  Questa sezione è stata scritta da Joost van Baal.
+
+
+  Esistono diversi software per fare della vostra macchina un DNS
+  server.  C'è BIND ( <http://www.isc.org/products/BIND/>), che è
+  l'implementazione trattata da questo HOWTO. È il più popolare name
+  server in circolazione ed è usato nella stragrande maggioranza delle
+  macchine name server che ci sono su Internet. È stato sviluppato a
+  partire dagli anni '80.  È disponibile sotto licenza BSD. A causa del
+  fatto che è il più popolare esiste un sacco di documentazione su esso.
+  Comunque, ci sono stati problemi relativi alla sicurezza di BIND.
+
+
+  Poi c'è djbdns ( <http://djbdns.org/>), un pacchetto DNS relativamente
+  nuovo, scritto da Daniel J. Bernstein, l'autore di qmail.  È una suite
+  modulare: tanti piccoli programmi che si occupano di tutte quelle
+  funzioni che un name server deve saper svolgere. È stato progettato
+  tenendo bene in mente la sicurezza. Utilizza un formato di file di
+  zona particolarmente semplice ed è generalmente facile da configurare.
+  Però, a causa del fatto che è poco conosciuto, il vostro esperto
+  locale potrebbe non essere in grado di aiutarvi con esso.
+  Sfortunatamente, questo software non è Open Source.  L'annuncio
+  dell'autore è su  <http://cr.yp.to/djbdns/ad.html>.
+
+
+  Se tale software sia davvero un miglioramento rispetto alle
+  alternative più datate è soggetto di molte discussioni. Un dibattito
+  (o piuttosto una flame-war?) su BIND contro djbdns, cui hanno
+  partecipato quelli di ISC, si trova presso <http://www.isc.org/ml-
+  archives/bind-users/2000/08/msg01075.html>.
+
+
+  3.  Un name server cache
+
+  Un primo approccio alla configurazione del DNS, molto utile per gli
+  utenti con collegamento telefonico, cable modem, ADSL e simili
+
+
+  Sulla Red Hat e sulle distribuzioni da essa derivate potrete fare le
+  cose descritte in questa prima sezione dell'HOWTO installando i
+  pacchetti bind, bind-utils e caching-nameserver. Se siete utenti
+  Debian installerete semplicemente  bind (o bind9, pur non essendo BIND
+  9 supportato dall'attuale distribuzione stabile di Debian, potato) e
+  bind-doc.  Naturalmente il solo installare questi pacchetti non vi
+  insegnerà tanto quanto leggere l'HOWTO. Quindi installate pure i
+  pacchetti e poi verificate i file che essi hanno installato.
+
+
+  Un name server che fa solo da cache troverà le risposte alle
+  interrogazioni e ricorderà le risposte la prossima volta che ne avrete
+  bisogno. Questo abbrevierà significativamente il tempo di attesa per
+  le interrogazioni successive, specialmente se avete una connessione
+  lenta.
+
+
+  Prima di tutto vi occorre un file chiamato /etc/named.conf (Debian:
+  /etc/bind/named.conf).  Questo viene letto quando named parte. Per
+  adesso dovrebbe contenere semplicemente:
+
+
+
+  ______________________________________________________________________
+  // Config file for caching only name server
+  //
+  // The version of the HOWTO you read may contain leading spaces
+  // (spaces in front of the characters on these lines ) in this and
+  // other files.  You must remove them for things to work.
+  //
+  // Note that the filenames and directory names may differ, the
+  // ultimate contents of should be quite similar though.
+
+  options {
+          directory "/var/named";
+
+          // Uncommenting this might help if you have to go through a
+          // firewall and things are not working out.  But you probably
+          // need to talk to your firewall admin.
+
+          // query-source port 53;
+  };
+
+  controls {
+          inet 127.0.0.1 allow { localhost; } keys { rndc_key; };
+  };
+
+  key "rndc_key" {
+          algorithm hmac-md5;
+          secret "c3Ryb25nIGVub3VnaCBmb3IgYSBtYW4gYnV0IG1hZGUgZm9yIGEgd29tYW4K";
+  };
+
+  zone "." {
+          type hint;
+          file "root.hints";
+  };
+
+  zone "0.0.127.in-addr.arpa" {
+          type master;
+          file "pz/127.0.0";
+  };
+  ______________________________________________________________________
+
+
+
+  I pacchetti presenti nelle distribuzioni Linux potrebbero usare nomi
+  di file differenti da quelli menzionati; conterranno comunque le
+  stesse cose.
+
+
+  La riga "directory" dice a named dove andare a cercare i file.  Tutti
+  i file nominati in seguito saranno relativi a questa directory.
+  Perciò pz è una directory sotto /var/named, ovvero /var/named/pz.
+  /var/named è la giusta directory in accordo con il Linux File system
+  Standard.
+
+
+  Vi è citato il file chiamato /var/named/root.hints, che dovrebbe
+  contenere quanto segue:
+
+
+
+  ______________________________________________________________________
+  ;
+  ; There might be opening comments here if you already have this file.
+  ; If not don't worry.
+  ;
+  ; About any leading spaces in front of the lines here: remove them!
+  ; Lines should start in a ;, . or character, not blanks.
+  ;
+  .                       6D  IN      NS      A.ROOT-SERVERS.NET.
+  .                       6D  IN      NS      B.ROOT-SERVERS.NET.
+  .                       6D  IN      NS      C.ROOT-SERVERS.NET.
+  .                       6D  IN      NS      D.ROOT-SERVERS.NET.
+  .                       6D  IN      NS      E.ROOT-SERVERS.NET.
+  .                       6D  IN      NS      F.ROOT-SERVERS.NET.
+  .                       6D  IN      NS      G.ROOT-SERVERS.NET.
+  .                       6D  IN      NS      H.ROOT-SERVERS.NET.
+  .                       6D  IN      NS      I.ROOT-SERVERS.NET.
+  .                       6D  IN      NS      J.ROOT-SERVERS.NET.
+  .                       6D  IN      NS      K.ROOT-SERVERS.NET.
+  .                       6D  IN      NS      L.ROOT-SERVERS.NET.
+  .                       6D  IN      NS      M.ROOT-SERVERS.NET.
+  A.ROOT-SERVERS.NET.     6D  IN      A       198.41.0.4
+  B.ROOT-SERVERS.NET.     6D  IN      A       128.9.0.107
+  C.ROOT-SERVERS.NET.     6D  IN      A       192.33.4.12
+  D.ROOT-SERVERS.NET.     6D  IN      A       128.8.10.90
+  E.ROOT-SERVERS.NET.     6D  IN      A       192.203.230.10
+  F.ROOT-SERVERS.NET.     6D  IN      A       192.5.5.241
+  G.ROOT-SERVERS.NET.     6D  IN      A       192.112.36.4
+  H.ROOT-SERVERS.NET.     6D  IN      A       128.63.2.53
+  I.ROOT-SERVERS.NET.     6D  IN      A       192.36.148.17
+  J.ROOT-SERVERS.NET.     6D  IN      A       198.41.0.10
+  K.ROOT-SERVERS.NET.     6D  IN      A       193.0.14.129
+  L.ROOT-SERVERS.NET.     6D  IN      A       198.32.64.12
+  M.ROOT-SERVERS.NET.     6D  IN      A       202.12.27.33
+  ______________________________________________________________________
+
+
+
+  Questo file descrive i root name server nel mondo. Esso cambia col
+  tempo e deve essere aggiornato se necessario. Leggete la sezione
+  ``Manutenzione'' per sapere come fare.
+
+
+  La sezione successiva in named.conf è l'ultima zone.  Spiegherò il suo
+  utilizzo nell'ultimo capitolo, per adesso create solo un file chiamato
+  127.0.0 nella sottodirectory pz: (Nuovamente, se fate copia e incolla
+  rimuovete gli spazi iniziali)
+
+
+  ______________________________________________________________________
+  $TTL 3D
+  @               IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. (
+                                  1       ; Serial
+                                  8H      ; Refresh
+                                  2H      ; Retry
+                                  4W      ; Expire
+                                  1D)     ; Minimum TTL
+                          NS      ns.linux.bogus.
+  1                       PTR     localhost.
+  ______________________________________________________________________
+
+
+
+  Le sezioni chiamate key e controls insieme significano che il vostro
+  named potrà essere controllato in remoto da un programma chiamato rndc
+  se esso si connette dall'host locale e identifica se stesso con la
+  chiave segreta codificata. Questa chiave è come una password. Per far
+  sì che rndc funzioni avrete bisogno di un file /etc/rndc.conf come
+  questo :
+
+
+  ______________________________________________________________________
+  key rndc_key {
+      algorithm "hmac-md5";
+      secret "c3Ryb25nIGVub3VnaCBmb3IgYSBtYW4gYnV0IG1hZGUgZm9yIGEgd29tYW4K";
+  };
+
+  options {
+      default-server localhost;
+      default-key    rndc_key;
+  };
+  ______________________________________________________________________
+
+
+
+  Come potete vedere il segreto è identico a quello di named.conf.  Se
+  volete usare rndc da altre macchine esse devono avere tempi non più
+  distanti di 5 minuti una dall'altra.  Raccomando di usare il software
+  ntp (xntpd e ntpdate) per fare ciò.
+
+
+  Poi avrete bisogno di un /etc/resolv.conf che somigli vagamente a
+  questo: (togliete gli spazi!)
+
+
+  ______________________________________________________________________
+  search sottodominio.proprio-dominio.edu proprio-dominio.edu
+  nameserver 127.0.0.1
+  ______________________________________________________________________
+
+
+
+  La riga "search" specifica su quali domini deve avvenire la ricerca
+  per ogni nome di host al quale volete collegarvi. La riga nameserver
+  specifica l'indirizzo del vostro name server, in questo caso la vostra
+  stessa macchina, poiché è qui che named lavora (127.0.0.1 è corretto,
+  non importa se la macchina ha già un altro indirizzo). Se volete
+  inserire più name server mettete una riga "nameserver" per ognuno di
+  essi. (Nota: named non legge mai questo file, il risolutore che usa
+  named invece sì. Nota 2: in alcuni resolv.conf troverete una riga dove
+  è scritto "domain". È corretto, ma non usate insieme "search" e
+  "domain", funzionerà solo una delle due).
+
+
+  Vediamo cosa fa questo file: se un client cerca la macchina pippo,
+  allora il primo tentativo che verrà fatto sarà
+  pippo.sottodominio.vostro-dominio.edu, poi pippo.vostro-dominio.edu e
+  infine pippo. Se un client cerca sunsite.unc.edu, il primo tentativo
+  sarà sunsite.unc.edu.sottodominio.vostro-dominio.edu, poi
+  sunsite.unc.edu.vostro-dominio.edu e infine sunsite.unc.edu. Vi
+  potrebbe convenire non mettere troppi domini nella riga di ricerca, si
+  impiega del tempo a provarli tutti.
+
+
+  L'esempio assume che voi facciate parte del dominio
+  sottodominio.vostro-dominio.edu, quindi probabilmente la vostra
+  macchina sarà vostra-macchina.sottodominio.vostro-dominio.edu. La riga
+  di ricerca non dovrebbe contenere il vostro TLD (Top Level Domain,
+  "edu" in questo caso). Se avete spesso bisogno di collegarvi a host in
+  un altro dominio, potrete aggiungerlo in una riga di ricerca come
+  questa: (Ricordate di togliere gli spazi iniziali, se presenti)
+
+
+  ______________________________________________________________________
+  search sottodominio.vostro-dominio.edu vostro-dominio.edu altro-dominio.com
+  ______________________________________________________________________
+
+
+
+  e così via. Ovviamente dovrete metterci domini reali.  Notate
+  l'assenza del punto alla fine dei nomi di dominio.  Questo è
+  importante.
+
+
+  3.1.  Far partire named
+
+  Adesso è ora di far partire named. Se state usando una connessione
+  telefonica, per prima cosa collegatevi. Adesso fate partire named, o
+  lanciando lo script /etc/init.d/named start o named direttamente con
+  /usr/sbin/named. Se avete provato prima d'ora qualche versione di
+  named avrete usato ndc. In BIND 9 è stato rimpiazzato da rndc, che può
+  controllare il vostro named da remoto, ma non può far ripartire named
+  un'altra volta.  Se andate a leggere il file che contiene il log di
+  sistema (usualmente chiamato /var/log/messages, in Debian è
+  /var/log/daemon, controllate anche la directory /var/log e un altro
+  file da controllare in questa è syslog) quando named parte (fate tail
+  -f /var/log/messages) dovreste leggere qualcosa di simile a:
+
+
+  (le righe che terminano per "\" continuano sulla riga successiva)
+
+
+
+       Dec 23 02:21:12 lookfar named[11031]: starting BIND 9.1.3
+       Dec 23 02:21:12 lookfar named[11031]: using 1 CPU
+       Dec 23 02:21:12 lookfar named[11034]: loading configuration from \
+           '/etc/named.conf'
+       Dec 23 02:21:12 lookfar named[11034]: the default for the \
+           'auth-nxdomain' option is now 'no'
+       Dec 23 02:21:12 lookfar named[11034]: no IPv6 interfaces found
+       Dec 23 02:21:12 lookfar named[11034]: listening on IPv4 interface lo, \
+           127.0.0.1#53
+       Dec 23 02:21:12 lookfar named[11034]: listening on IPv4 interface eth0, \
+           10.0.0.129#53
+       Dec 23 02:21:12 lookfar named[11034]: command channel listening on \
+           127.0.0.1#953
+       Dec 23 02:21:13 lookfar named[11034]: running
+
+
+
+  Se ci sono messaggi d'errore significa che c'è un problema.  Named
+  dirà il nome del file in cui si cela. Tornate indietro per controllare
+  quel file e fate ripartire named una volta sistemato.
+
+
+  Adesso potete testare la vostra configurazione. Per fare ciò si usava
+  tradizionalmente un programma chiamato nslookup. Oggi si raccomanda di
+  usare dig:
+
+
+       $ dig -x 127.0.0.1
+       ;; Got answer:
+       ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 26669
+       ;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 1, ADDITIONAL: 0
+
+       ;; QUESTION SECTION:
+       ;1.0.0.127.in-addr.arpa.                IN      PTR
+
+       ;; ANSWER SECTION:
+       1.0.0.127.in-addr.arpa. 259200  IN      PTR     localhost.
+
+       ;; AUTHORITY SECTION:
+       0.0.127.in-addr.arpa.   259200  IN      NS      ns.linux.bogus.
+
+       ;; Query time: 3 msec
+       ;; SERVER: 127.0.0.1#53(127.0.0.1)
+       ;; WHEN: Sun Dec 23 02:26:17 2001
+       ;; MSG SIZE  rcvd: 91
+
+
+
+  Se corrisponde a quello che vedete significa che sta funzionando.  Lo
+  spero. Altrimenti tornate indietro e ricontrollate tutto. Ogni volta
+  che cambiate un file dovete far ripartire named con il comando rndc
+  reload.
+
+
+  Adesso potete immettere un'interrogazione ("query"). Cercate di fare
+  il lookup di macchine vicine a voi. pat.uio.no è vicina a me,
+  all'università di Oslo:
+
+
+
+       $ dig pat.uio.no
+       ; <<>> DiG 9.1.3 <<>> pat.uio.no
+       ;; global options:  printcmd
+       ;; Got answer:
+       ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 15574
+       ;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 3, ADDITIONAL: 0
+
+       ;; QUESTION SECTION:
+       ;pat.uio.no.                    IN      A
+
+       ;; ANSWER SECTION:
+       pat.uio.no.             86400   IN      A       129.240.130.16
+
+       ;; AUTHORITY SECTION:
+       uio.no.                 86400   IN      NS      nissen.uio.no.
+       uio.no.                 86400   IN      NS      nn.uninett.no.
+       uio.no.                 86400   IN      NS      ifi.uio.no.
+
+       ;; Query time: 651 msec
+       ;; SERVER: 127.0.0.1#53(127.0.0.1)
+       ;; WHEN: Sun Dec 23 02:28:35 2001
+       ;; MSG SIZE  rcvd: 108
+
+
+
+  dig adesso ha chiesto al vostro named di cercare la macchina
+  pat.uio.no. Poi contatta una delle macchine name server indicate nel
+  file root.hints e chiede loro la strada per arrivarci.  Potrebbe
+  essere necessario un po' di tempo prima che sia disponibile il
+  risultato, come potrebbe essere necessario cercare in tutti i domini
+  elencati in /etc/resolv.conf.
+
+
+
+  Se lo chiederete nuovamente, otterrete questo:
+
+
+
+       $ dig pat.uio.no
+
+       ; <<>> DiG 8.2 <<>> pat.uio.no
+       ;; res options: init recurs defnam dnsrch
+       ;; got answer:
+       ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 4
+       ;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 3, ADDITIONAL: 3
+       ;; QUERY SECTION:
+       ;;      pat.uio.no, type = A, class = IN
+
+       ;; ANSWER SECTION:
+       pat.uio.no.             23h59m58s IN A  129.240.130.16
+
+       ;; AUTHORITY SECTION:
+       UIO.NO.                 23h59m58s IN NS  nissen.UIO.NO.
+       UIO.NO.                 23h59m58s IN NS  ifi.UIO.NO.
+       UIO.NO.                 23h59m58s IN NS  nn.uninett.NO.
+
+       ;; ADDITIONAL SECTION:
+       nissen.UIO.NO.          23h59m58s IN A  129.240.2.3
+       ifi.UIO.NO.             1d23h59m58s IN A  129.240.64.2
+       nn.uninett.NO.          1d23h59m58s IN A  158.38.0.181
+
+       ;; Total query time: 4 msec
+       ;; FROM: lookfar to SERVER: default -- 127.0.0.1
+       ;; WHEN: Sat Dec 16 00:23:09 2000
+       ;; MSG SIZE  sent: 28  rcvd: 162
+
+
+
+  Come potete notare chiaramente questa volta è stato molto più veloce,
+  4 ms rispetto a più di mezzo secondo. La risposta era in cache. Con le
+  risposte in cache c'è la possibilità che siano scadute, ma i server di
+  origine possono controllare da quanto tempo quelle risposte stanno
+  nella cache e se possono essere considerate valide, così c'è un'alta
+  probabilità che la risposta ottenuta sia valida.
+
+
+  3.2.  Risolutori
+
+  Tutti i sistemi operativi che implementano lo standard C API hanno le
+  chiamate gethostbyname e gethostbyaddr. Queste possono prelevare
+  informazioni da diverse fonti. Le fonti da cui prelevare informazioni
+  sono configurate in /etc/nsswitch.conf su Linux (e anche su altri
+  Unix).  Questo è un lungo file che specifica da quali file o database
+  andare a prelevare diversi tipi di dati. Solitamente all'inizio è
+  ricco di utili indicazioni che è bene leggere. Dopo di ché cercate la
+  riga che comincia per "hosts:"; dovreste leggervi:
+
+
+
+  ______________________________________________________________________
+  hosts:      files dns
+  ______________________________________________________________________
+
+
+
+  (Vi ricordate degli spazi iniziali, vero? Non ve lo ricorderò mai
+  più.)
+
+
+  Se non ci fosse la riga "hosts:", mettetela in una di quelle sopra.
+  Essa significa che i programmi dovrebbero prima cercare nel file
+  /etc/hosts, poi andare a chiedere al DNS in accordo con resolv.conf.
+
+
+  3.3.  Congratulazioni
+
+  Adesso sapete come impostare una versione con cache di named.
+  Prendetevi una birra, del latte o qualunque cosa vi piaccia per
+  celebrare l'evento.
+
+
+  4.  Forwarding
+
+  Nelle reti grosse, ben organizzate, di istituzioni accademiche o ISP
+  (Internet Service Provider), scoprirete che a volte le persone che
+  lavorano sulla rete mettono a punto una gerarchia di impiego dei
+  server DNS, che aiuta ad alleggerire il carico sulla rete interna e
+  sui server esterni. Non è facile capire se vi trovate dentro o fuori
+  una rete.  Comunque non è importante e usando il server DNS del vostro
+  provider come "forwarder"  farete in modo che le risposte alle vostre
+  richieste siano più veloci e meno pesanti per la vostra rete. Questo
+  si ottiene facendo in modo che il vostro name server inoltri le
+  richieste al name server del vostro provider. Ogni volta che ciò
+  accade è come se voi andaste a prelevare direttamente dall'ampia cache
+  del name server del vostro provider, incrementando la velocità delle
+  richieste e alleggerendo il carico sul vostro name server. Se usate un
+  modem questa può essere una piccola vittoria. Tanto per fare un
+  esempio assumeremo che il vostro provider di rete interna  abbia due
+  name server, con numeri IP 10.0.0.1 e 10.1.0.1, e che voglia farveli
+  usare.  In questo caso nel vostro file named.conf, all'interno della
+  sezione d'apertura chiamata "options", inserite queste righe:
+
+
+  ______________________________________________________________________
+             forward first;
+             forwarders {
+                  10.0.0.1;
+                  10.1.0.1;
+              };
+  ______________________________________________________________________
+
+
+
+  C'è anche un trucco carino per le macchine con collegamento telefonico
+  che usano i forwarder, è descritto nella sezione ``Domande e
+  Risposte''.
+
+
+  Fate ripartire il vostro name server e testatelo con nslookup.
+  Dovrebbe funzionare bene.
+
+
+
+  5.  Un semplice  dominio
+
+  Come impostare il vostro dominio
+
+
+  5.1.  Ma prima un po' di teoria
+
+  Prima di tutto: avete letto tutto fin qui? Dovete farlo.
+
+
+  Prima di iniziare veramente questa sezione vi proporrò un po' di
+  teoria e un esempio su come il DNS lavora. Dovrete leggerlo perché vi
+  sarà utile. Se non ne avete voglia dovrete almeno dargli uno sguardo
+  veloce. Fate invece attenzione alle parti che dovrebbero andare nel
+  vostro file named.conf.
+
+
+  DNS è un sistema gerarchico, strutturato ad albero. L'apice è indicato
+  come "." e si pronuncia "root". Al di sotto di . c'è un gran numero di
+  Top Level Domains (TLD), i più noti sono ORG, COM, EDU and NET, ma ce
+  ne sono molti altri. Proprio come un albero, esso ha una radice da cui
+  si dirama. Se avete qualche conoscenza d'informatica riconoscerete nel
+  DNS un albero di ricerca e scoprirete nodi, nodi foglia e rami.
+
+
+  Quando comincia la ricerca di una macchina, l'interrogazione procede
+  ricorsivamente nella gerarchia. Se volete trovare l'indirizzo numerico
+  di prep.ai.mit.edu il vostro name server dovrà cominciare a chiedere
+  da qualche parte. Prima esso guarda nella sua cache. Se conosce la
+  risposta, avendola precedentemente memorizzata, risponderà
+  correttamente nella maniera che abbiamo appena visto nell'ultima
+  sezione. Se non la conosce cerca allora nella sua cache qualche
+  informazione che corrisponda almeno in parte alla richiesta e ne fa
+  uso.  Nel caso peggiore non c'è nessuna informazione nella cache che
+  corrisponda alla richiesta che è stata fatta, ma c'è il "." (root)
+  alla fine del nome, quindi i root name server dovranno essere
+  consultati. Esso rimuoverà le parti più a sinistra del nome una alla
+  volta, controllando se sa qualcosa a proposito di ai.mit.edu., poi di
+  mit.edu., infine di edu. e se niente risultasse dove per forza
+  conoscere qualcosa a proposito di ., poichè è descritto nel file
+  root.hints. Allora il vostro name server andrà ad interrogare uno dei
+  root name server circa prep.ai.mit.edu. Il root name server non
+  conoscerà la risposta, ma aiuterà il vostro name server, dandogli un
+  riferimento e dicendogli dove andare a cercare.  Questi riferimenti
+  condurranno il vostro name server a un name server che conosce la
+  risposta. Ora illustrerò questo punto. +norec significa che dig sta
+  facendo delle richieste non ricorsive, in modo che saremo noi a dover
+  fare la ricorsione. Le altre opzioni sono per ridurre l'output di dig,
+  così da non prendere troppe pagine:
+
+
+
+  $ ;; Got answer:
+  ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 980
+  ;; flags: qr ra; QUERY: 1, ANSWER: 0, AUTHORITY: 13, ADDITIONAL: 0
+
+  ;; AUTHORITY SECTION:
+  .                       518400  IN      NS      J.ROOT-SERVERS.NET.
+  .                       518400  IN      NS      K.ROOT-SERVERS.NET.
+  .                       518400  IN      NS      L.ROOT-SERVERS.NET.
+  .                       518400  IN      NS      M.ROOT-SERVERS.NET.
+  .                       518400  IN      NS      A.ROOT-SERVERS.NET.
+  .                       518400  IN      NS      B.ROOT-SERVERS.NET.
+  .                       518400  IN      NS      C.ROOT-SERVERS.NET.
+  .                       518400  IN      NS      D.ROOT-SERVERS.NET.
+  .                       518400  IN      NS      E.ROOT-SERVERS.NET.
+  .                       518400  IN      NS      F.ROOT-SERVERS.NET.
+  .                       518400  IN      NS      G.ROOT-SERVERS.NET.
+  .                       518400  IN      NS      H.ROOT-SERVERS.NET.
+  .                       518400  IN      NS      I.ROOT-SERVERS.NET.
+
+
+
+  Questo è un riferimento. Ci fornisce solo una "Authority section", non
+  una "Answer section". Il nostro name server farà riferimento ad
+  un'altro.  Prendiamone uno a caso:
+
+
+
+       $ dig +norec +noques +nostats +nocmd prep.ai.mit.edu. @D.ROOT-SERVERS.NET.
+       ;; Got answer:
+       ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 58260
+       ;; flags: qr; QUERY: 1, ANSWER: 0, AUTHORITY: 3, ADDITIONAL: 3
+
+       ;; AUTHORITY SECTION:
+       mit.edu.                172800  IN      NS      BITSY.mit.edu.
+       mit.edu.                172800  IN      NS      STRAWB.mit.edu.
+       mit.edu.                172800  IN      NS      W20NS.mit.edu.
+
+       ;; ADDITIONAL SECTION:
+       BITSY.mit.edu.          172800  IN      A       18.72.0.3
+       STRAWB.mit.edu.         172800  IN      A       18.71.0.151
+       W20NS.mit.edu.          172800  IN      A       18.70.0.160
+
+
+
+  Ci indirizza verso uno dei server MIT.EDU. Sempre uno a caso:
+
+
+
+  $ dig +norec +noques +nostats +nocmd prep.ai.mit.edu. @BITSY.mit.edu.
+  ;; Got answer:
+  ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 29227
+  ;; flags: qr ra; QUERY: 1, ANSWER: 1, AUTHORITY: 4, ADDITIONAL: 4
+
+  ;; ANSWER SECTION:
+  prep.ai.mit.edu.        10562   IN      A       198.186.203.77
+
+  ;; AUTHORITY SECTION:
+  ai.mit.edu.             21600   IN      NS      FEDEX.ai.mit.edu.
+  ai.mit.edu.             21600   IN      NS      LIFE.ai.mit.edu.
+  ai.mit.edu.             21600   IN      NS      ALPHA-BITS.ai.mit.edu.
+  ai.mit.edu.             21600   IN      NS      BEET-CHEX.ai.mit.edu.
+
+  ;; ADDITIONAL SECTION:
+  FEDEX.ai.mit.edu.       21600   IN      A       192.148.252.43
+  LIFE.ai.mit.edu.        21600   IN      A       128.52.32.80
+  ALPHA-BITS.ai.mit.edu.  21600   IN      A       128.52.32.5
+  BEET-CHEX.ai.mit.edu.   21600   IN      A       128.52.32.22
+
+
+
+  Questa volta abbiamo ottenuto una "ANSWER SECTION" e una risposta alla
+  nostra interrogazione. La "AUTHORITY SECTION" contiene informazioni
+  tipo a quali server fare richieste sul dominio ai.mit.edu, in modo che
+  la prossima volta potrete rivolgere direttamente loro interrogazioni
+  sui nomi di ai.mit.edu. Named ha anche raccolto informazioni su
+  mit.edu, in modo da rispondere più celermente se venisse richiesto
+  www.mit.edu.
+
+
+  Così partendo da . abbiamo scoperto i name server successivi per ogni
+  livello nel nome di dominio. Se aveste usato il vostro server DNS
+  invece di tutti questi altri, il vostro named avrebbe naturalmente
+  messo nella propria cache tutte le informazioni trovate durante la
+  ricerca e per un bel pezzo non le avrebbe più richieste.
+
+
+  Secondo l'analogia dell'albero, ogni "." del nome rappresenta un punto
+  di diramazione. Le parti che stanno tra i "." sono i nomi di singoli
+  rami dell'albero.
+
+
+  Abbiamo scalato l'albero scegliendo un nome a piacere
+  (prep.ai.mit.edu), prima abbiamo scoperto la radice (.) e poi siamo
+  andati alla ricerca del prossimo ramo da scalare, nel nostro caso edu.
+  Una volta trovato questo, l'abbiamo scalato passando per il server che
+  conosceva questa parte di nome. Dopo abbiamo ricercato il ramo mit
+  sopra il ramo edu (per avere mit.edu) e abbiamo scalato anch'esso
+  sfruttando il server che conosceva mit.edu.  Ancora, abbiamo cercato
+  ai.mit.edu come prossimo ramo e per scalarlo abbiamo sfruttato il
+  server che lo conosceva. Adesso siamo arrivati al giusto server, al
+  giusto punto di diramazione. L'ultimo passo da fare è scoprire
+  prep.ai.mit.edu, ma è molto semplice.
+
+
+  Un dominio importante ma poco discusso in precedenza è in-addr.arpa.
+  Anch'esso è annidato come i domini "normali". in-addr.arpa ci permette
+  di ricavare il nome dell'host quando abbiamo il suo indirizzo.  Una
+  cosa importante da notare è che gli indirizzi IP sono scritti in
+  ordine inverso nel dominio in-addr.arpa. Se avete un indirizzo di una
+  macchina, p.e. 198.186.203.77, named procede cercando
+  77.203.186.198.in-addr.arpa/ proprio come ha fatto con
+  prep.ai.mit.edu.  Esempio: Se non ha trovato niente nella cache,
+  chiede ad un root server, m.root-servers.net vi riporta ad altri root
+  server.  b.root-servers.net vi riporta direttamente a bitsy.mit.edu/.
+  Dovreste essere in grado di prendere da qui il nome.
+
+
+
+  5.2.  Il nostro dominio
+
+  Adesso definiremo il nostro dominio. Stiamo per creare il dominio
+  linux.bogus e per definire le macchine in esso. Utilizzerò nomi di
+  dominio completamente fasulli per essere sicuro di non disturbare
+  nessuno là fuori ("bogus" significa appunto fasullo NdT).
+
+
+  Un'ultima cosa prima di iniziare: non tutti i caratteri sono permessi
+  nei nomi degli host. Siamo limitati ai caratteri dell'alfabeto
+  inglese, da "a" a "z", alle cifre da 0 a 9 e al carattere "-"
+  (trattino). Ricordatevelo.  Maiuscole e minuscole hanno lo stesso
+  valore per il DNS, così pat.uio.no è identico a Pat.UiO.No.
+
+
+
+  Abbiamo già iniziato questa parte con questa riga in named.conf:
+
+
+  ______________________________________________________________________
+  zone "0.0.127.in-addr.arpa" {
+          type master;
+          file "pz/127.0.0";
+  };
+  ______________________________________________________________________
+
+
+
+  Per favore notate in questo file l'assenza del "." alla fine dei nomi
+  del dominio. Questo significa che ora definiremo la zona 0.0.127.in-
+  addr.arpa, che siamo il server primario ("master server") per essa e
+  che è descritta nel file chiamato pz/127.0.0.  Abbiamo già impostato
+  questo file:
+
+
+  ______________________________________________________________________
+  $TTL 3D
+  @               IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. (
+                                  1       ; Serial
+                                  8H      ; Refresh
+                                  2H      ; Retry
+                                  4W      ; Expire
+                                  1D)     ; Minimum TTL
+                          NS      ns.linux.bogus.
+  1                       PTR     localhost.
+  ______________________________________________________________________
+
+
+
+  Per favore notate in questo file il "." alla fine di tutti i nomi di
+  dominio completi, in contrasto col file named.conf di prima. Alcune
+  persone hanno l'abitudine di iniziare ogni file relativo a una zona
+  con una direttiva $ORIGIN, ma questo è superfluo.  L'origine (che
+  appartiene alla gerarchia del DNS) di un file zona è specificata nella
+  sezione delle zone nel file named.conf, in questo caso è 0.0.127.in-
+  addr.arpa.
+  Questo file di zona contiene 3 record di risorse (RR): un RR SOA, un
+  RR NS e un RR PTR. SOA è l'acronimo di "Start Of Authority".  La "@" è
+  una notazione speciale che indica l'origine, poiché la colonna
+  "domain" di questo file riporta 0.0.127.in-addr.arpa, la prima riga in
+  realtà significa:
+
+
+
+       0.0.127.in-addr.arpa.   IN      SOA ...
+
+
+
+  NS è il RR Name Server. Non c'è una "@" all'inizio di questa riga: è
+  implicita perché la riga precedente comincia con "@". Questo fa
+  risparmiare un po' di battute sulla tastiera. In questo modo la riga
+  NS può essere scritta anche come:
+
+
+
+       0.0.127.in-addr.arpa.   IN      NS      ns.linux.bogus
+
+
+
+  Essa dice al DNS quale macchina è il name server per il dominio
+  0.0.127.in-addr.arpa: è appunto ns.linux.bogus. È consuetudine
+  associare a "ns" la parola name server, analogamente a quanto succede
+  ai web server, di solito associati a www.qualcosa.  Il nome potrebbe
+  essere uno qualsiasi.
+
+  Infine il record PTR ("Domain Name Pointer") dice che l'host
+  all'indirizzo 1 nella sottorete tt/0.0.127.in-addr.arpa/, ovvero
+  127.0.0.1, è chiamato localhost.
+
+
+  Il record SOA è il preambolo di tutti i file di zona, deve esisterne
+  uno ed uno solo in ogni file di zona, al principio (ma dopo la
+  direttiva $TTL). Questo record descrive la zona, da dove esso viene
+  (una macchina chiamata ns.linux.bogus), chi è responsabile per i suoi
+  contenuti (hostmaster@linux.bogus, dovrete inserire il vostro
+  indirizzo email qui), quale è la versione del file di zona (serial: 1)
+  e altre cose che riguardano il server DNS secondario o quello che fa
+  da cache. Per il resto dei campi (refresh, retry, expire e minimum)
+  usate pure i valori indicati in questo HOWTO e sarete a posto. Prima
+  della riga col recors SOA c'è una riga obbligatoria, la riga $TTL 3D.
+  Mettetela in tutti i vostri file di zona.
+
+
+  Adesso fate ripartire named (il comando è rndc stop;named) e usate dig
+  per esaminare cosa avete fatto. -x serve per le interrogazioni
+  inverse:
+
+
+
+  $ dig -x 127.0.0.1
+  ;; Got answer:
+  ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 30944
+  ;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 1, ADDITIONAL: 0
+
+  ;; QUESTION SECTION:
+  ;1.0.0.127.in-addr.arpa.                IN      PTR
+
+  ;; ANSWER SECTION:
+  1.0.0.127.in-addr.arpa. 259200  IN      PTR     localhost.
+
+  ;; AUTHORITY SECTION:
+  0.0.127.in-addr.arpa.   259200  IN      NS      ns.linux.bogus.
+
+  ;; Query time: 3 msec
+  ;; SERVER: 127.0.0.1#53(127.0.0.1)
+  ;; WHEN: Sun Dec 23 03:02:39 2001
+  ;; MSG SIZE  rcvd: 91
+
+
+
+  si ottiene localhost da 127.0.0.1, bene. Ora per il nostro scopo
+  principale, il dominio linux.bogus, inserite una nuova sezione "zone"
+  in named.conf:
+
+
+  ______________________________________________________________________
+  zone "linux.bogus" {
+          type master;
+          notify no;
+          file "pz/linux.bogus";
+  };
+  ______________________________________________________________________
+
+
+
+  Notate ancora l'assenza del "." finale nel nome del dominio nel file
+  named.conf.
+
+
+  Nel file di zona linux.bogus metteremo dei dati completamente fasulli:
+
+
+
+  ______________________________________________________________________
+  ;
+  ; Zone file for linux.bogus
+  ;
+  ; The full zone file
+  ;
+  $TTL 3D
+  @       IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. (
+                          199802151       ; serial, todays date + todays serial #
+                          8H              ; refresh, seconds
+                          2H              ; retry, seconds
+                          4W              ; expire, seconds
+                          1D )            ; minimum, seconds
+  ;
+                  NS      ns              ; Inet Address of name server
+                  MX      10 mail.linux.bogus     ; Primary Mail Exchanger
+                  MX      20 mail.friend.bogus.   ; Secondary Mail Exchanger
+  ;
+  localhost       A       127.0.0.1
+  ns              A       192.168.196.2
+  mail            A       192.168.196.4
+  ______________________________________________________________________
+
+
+
+  Bisogna notare due cose a proposito del record SOA. ns.linux.bogus
+  deve essere una macchina effettiva con un record A. Non è legale avere
+  un record CNAME per la macchina indicata nel record SOA. Il suo nome
+  non deve essere per forza "ns", può essere un qualsiasi nome legale di
+  host. La seconda cosa, hostmaster.linux.bogus deve essere interpretato
+  come hostmaster@linux.bogus, questo dovrà essere un alias per un
+  indirizzo email vero, o una mailbox, purché i manutentori del DNS
+  leggano la posta frequentemente.  Ogni email che riguarda il dominio
+  sarà spedita all'indirizzo indicato in questo record. Il nome non deve
+  essere per forza "hostmaster", potrà essere un normale indirizzo
+  email, di solito ci si aspetta che "hostmaster" funzioni a dovere
+  (cioè che la posta indirizzata ad esso arrivi da qualche parte).
+
+
+  C'è un nuovo tipo di RR in questo file, MX o RR "Mail eXchanger".
+  Esso indica ai sistemi adibiti allo smistamento della posta dove
+  mandarla quando è ad esempio indirizzata a qualcuno@linux.bogus; nel
+  nostro caso si tratta di mail.linux.bogus o mail.friend.bogus.  Il
+  numero che precede ogni nome di macchina indica la priorità del RR MX.
+  Il RR con il numero più basso (10) è quello che indica il mail server
+  al quale, se possibile, deve essere mandata la posta per primo.  Ove
+  non funzionasse la posta potrà essere spedita a un server con un
+  numero più alto, un server di posta secondario, ovvero
+  mail.friend.bogus che appunto ha priorità 20 nel nostro caso.
+
+
+  Fate ripartire named con rndc reload. Esaminate i risultati con dig:
+
+
+
+  $ dig any linux.bogus
+  ; <<>> DiG 9.1.3 <<>> any linux.bogus
+  ;; global options:  printcmd
+  ;; Got answer:
+  ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 55239
+  ;; flags: qr aa rd ra; QUERY: 1, ANSWER: 4, AUTHORITY: 1, ADDITIONAL: 1
+
+  ;; QUESTION SECTION:
+  ;linux.bogus.               IN      ANY
+
+  ;; ANSWER SECTION:
+  linux.bogus.        259200  IN      SOA     ns.linux.bogus. \
+        hostmaster.linux.bogus. 199802151 28800 7200 2419200 86400
+  linux.bogus.        259200  IN      NS      ns.linux.bogus.
+  linux.bogus.        259200  IN      MX      20 mail.friend.bogus.
+  linux.bogus.        259200  IN      MX      10 mail.linux.bogus.linux.bogus.
+
+  ;; AUTHORITY SECTION:
+  linux.bogus.        259200  IN      NS      ns.linux.bogus.
+
+  ;; ADDITIONAL SECTION:
+  ns.linux.bogus.     259200  IN      A       192.168.196.2
+
+  ;; Query time: 4 msec
+  ;; SERVER: 127.0.0.1#53(127.0.0.1)
+  ;; WHEN: Sun Dec 23 03:06:45 2001
+  ;; MSG SIZE  rcvd: 184
+
+
+
+  Con un accurato esame scoprirete un errore. La riga
+
+
+
+       linux.bogus.        259200  IN MX        10 mail.linux.bogus.linux.bogus.
+
+
+
+  è sbagliata. Dovrebbe essere:
+
+
+
+       linux.bogus.        259200  IN MX        10 mail.linux.bogus.
+
+
+
+  Ho deliberatamente fatto quest'errore in modo che impariate da esso
+  :-). Cercando nel file di zona scopriremo che alla riga
+
+
+
+                       MX      10 mail.linux.bogus     ; Primary Mail Exchanger
+
+
+
+  manca un punto. Oppure che ha un "linux.bogus" di troppo. Se un nome
+  di macchina non finisce con il punto nel file di zona, l'origine viene
+  aggiunta alla sua fine causando il doppione linux.bogus.linux.bogus.
+  Dunque sia:
+  ______________________________________________________________________
+                  MX      10 mail.linux.bogus.    ; Mail Exchanger Primario
+  ______________________________________________________________________
+
+
+
+  oppure
+
+
+  ______________________________________________________________________
+                  MX      10 mail                 ; Mail Exchanger Primario
+  ______________________________________________________________________
+
+
+
+  è corretto. Io preferisco il secondo modo perché è più breve da
+  scrivere. Ci sono alcuni esperti di BIND che non approvano, altri
+  invece sì. Quindi in un file di zona il dominio dovrebbe essere
+  scritto per intero e fatto terminare da un "." o dovrebbe essere
+  escluso del tutto, in questo caso verrà sostituito dall'origine.
+
+
+  Devo stressarvi ripetendovi che nel file named.conf non ci devono
+  essere "." alla fine dei nomi di dominio. Non avete idea di quante
+  volte un "." di troppo (o la sua assenza) abbia ingarbugliato le cose
+  e confuso a morte chi ha avuto a che farci.
+
+
+
+  Dunque ecco qua il nuovo file di zona, con qualche informazione extra
+  messa nel modo giusto:
+
+
+
+  ______________________________________________________________________
+  ;
+  ; Zone file for linux.bogus
+  ;
+  ; The full zone file
+  ;
+  $TTL 3D
+  @       IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. (
+                          199802151       ; serial, todays date + todays serial #
+                          8H              ; refresh, seconds
+                          2H              ; retry, seconds
+                          4W              ; expire, seconds
+                          1D )            ; minimum, seconds
+  ;
+                  TXT     "Linux.Bogus, your DNS consultants"
+                  NS      ns              ; Inet Address of name server
+                  NS      ns.friend.bogus.
+                  MX      10 mail         ; Primary Mail Exchanger
+                  MX      20 mail.friend.bogus. ; Secondary Mail Exchanger
+
+  localhost       A       127.0.0.1
+
+  gw              A       192.168.196.1
+                  TXT     "The router"
+
+  ns              A       192.168.196.2
+                  MX      10 mail
+                  MX      20 mail.friend.bogus.
+  www             CNAME   ns
+
+  donald          A       192.168.196.3
+                  MX      10 mail
+                  MX      20 mail.friend.bogus.
+                  TXT     "DEK"
+
+  mail            A       192.168.196.4
+                  MX      10 mail
+                  MX      20 mail.friend.bogus.
+
+  ftp             A       192.168.196.5
+                  MX      10 mail
+                  MX      20 mail.friend.bogus.
+  ______________________________________________________________________
+
+
+
+  CNAME ("Canonical NAME") è un modo per assegnare a ogni macchina nomi
+  diversi. Così "www" è un alias per "ns". L'utilizzo del record CNAME è
+  un po' controverso, ma è bene seguire la regola per cui un record MX,
+  CNAME o SOA non dovrebbero mai riferirsi a un record CNAME, dovrebbero
+  far rifimento soltanto a qualcosa che abbia un record A, cioè non è
+  auspicabile avere
+
+
+  ______________________________________________________________________
+  foobar          CNAME   www                     ; NO!
+  ______________________________________________________________________
+
+
+
+  ma è corretto avere
+
+
+
+  ______________________________________________________________________
+  foobar          CNAME   ns                      ; SÌ!
+  ______________________________________________________________________
+
+
+
+  Caricate il nuovo database facendo rndc reload, questo imporrà a named
+  di rileggere i suoi file.
+
+
+
+       $ dig linux.bogus axfr
+
+       ; <<>> DiG 9.1.3 <<>> linux.bogus axfr
+       ;; global options:  printcmd
+       linux.bogus.            259200  IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. 199802151 28800 7200 2419200 86400
+       linux.bogus.            259200  IN      NS      ns.linux.bogus.
+       linux.bogus.            259200  IN      MX      10 mail.linux.bogus.
+       linux.bogus.            259200  IN      MX      20 mail.friend.bogus.
+       donald.linux.bogus.     259200  IN      A       192.168.196.3
+       donald.linux.bogus.     259200  IN      MX      10 mail.linux.bogus.
+       donald.linux.bogus.     259200  IN      MX      20 mail.friend.bogus.
+       donald.linux.bogus.     259200  IN      TXT     "DEK"
+       ftp.linux.bogus.        259200  IN      A       192.168.196.5
+       ftp.linux.bogus.        259200  IN      MX      10 mail.linux.bogus.
+       ftp.linux.bogus.        259200  IN      MX      20 mail.friend.bogus.
+       gw.linux.bogus.         259200  IN      A       192.168.196.1
+       gw.linux.bogus.         259200  IN      TXT     "The router"
+       localhost.linux.bogus.  259200  IN      A       127.0.0.1
+       mail.linux.bogus.       259200  IN      A       192.168.196.4
+       mail.linux.bogus.       259200  IN      MX      10 mail.linux.bogus.
+       mail.linux.bogus.       259200  IN      MX      20 mail.friend.bogus.
+       ns.linux.bogus.         259200  IN      MX      10 mail.linux.bogus.
+       ns.linux.bogus.         259200  IN      MX      20 mail.friend.bogus.
+       ns.linux.bogus.         259200  IN      A       192.168.196.2
+       www.linux.bogus.        259200  IN      CNAME   ns.linux.bogus.
+       linux.bogus.            259200  IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. 199802151 28800 7200 2419200 86400
+       ;; Query time: 41 msec
+       ;; SERVER: 127.0.0.1#53(127.0.0.1)
+       ;; WHEN: Sun Dec 23 03:12:31 2001
+       ;; XFR size: 23 records
+
+
+
+  È buono. Come potete vedere somiglia un sacco allo stesso file di
+  zona. Vediamo cosa dice per www da solo:
+
+
+
+       > set q=any
+       > www.linux.bogus.
+       Server:  localhost
+       Address:  127.0.0.1
+
+       www.linux.bogus canonical name = ns.linux.bogus
+       linux.bogus     nameserver = ns.linux.bogus
+       linux.bogus     nameserver = ns.friend.bogus
+       ns.linux.bogus  internet address = 192.168.196.2
+
+
+
+  In altre parole, il vero nome diwww.linux.bogus è ns.linux.bogus e vi
+  da qualche informazione a proposito di ns, abbastanza per connettervi
+  ad esso se voi foste un programma.
+
+
+  Ora siamo a metà strada.
+
+
+  5.3.  La zona inversa ("reverse zone")
+
+  Adesso i programmi possono convertire i nomi di linux.bogus negli
+  indirizzi a cui vorrebbero connettersi. Ma c'è bisogno anche della
+  zona inversa, un DNS tale da poter convertire un indirizzo in un nome.
+  Questo nome è utile a un sacco di server di diversi tipi (FTP, IRC,
+  WWW e altri) per decidere se colloquiare con voi e l'eventuale
+  priorità.  Per un pieno accesso a tutti i servizi su Internet è
+  richiesta una zona inversa.
+
+
+  Mettete questo in named.conf:
+
+
+  ______________________________________________________________________
+  zone "196.168.192.in-addr.arpa" {
+          type master;
+          notify no;
+          file "pz/192.168.196";
+  };
+  ______________________________________________________________________
+
+
+
+  È esattamente come per 0.0.127.in-addr.arpa e i contenuti sono simili:
+
+
+  ______________________________________________________________________
+  $TTL 3D
+  @       IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. (
+                          199802151 ; Serial, todays date + todays serial
+                          8H      ; Refresh
+                          2H      ; Retry
+                          4W      ; Expire
+                          1D)     ; Minimum TTL
+                  NS      ns.linux.bogus.
+
+  1               PTR     gw.linux.bogus.
+  2               PTR     ns.linux.bogus.
+  3               PTR     donald.linux.bogus.
+  4               PTR     mail.linux.bogus.
+  5               PTR     ftp.linux.bogus.
+  ______________________________________________________________________
+
+
+
+  Adesso fate ripartire named (rndc reload) e esaminate ancora il lavoro
+  con dig :
+
+
+
+  ______________________________________________________________________
+  $ dig -x 192.168.196.4
+  ;; Got answer:
+  ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 58451
+  ;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 1, ADDITIONAL: 1
+
+  ;; QUESTION SECTION:
+  ;4.196.168.192.in-addr.arpa.    IN      PTR
+
+  ;; ANSWER SECTION:
+  4.196.168.192.in-addr.arpa. 259200 IN   PTR     mail.linux.bogus.
+
+  ;; AUTHORITY SECTION:
+  196.168.192.in-addr.arpa. 259200 IN     NS      ns.linux.bogus.
+
+  ;; ADDITIONAL SECTION:
+  ns.linux.bogus.         259200  IN      A       192.168.196.2
+
+  ;; Query time: 4 msec
+  ;; SERVER: 127.0.0.1#53(127.0.0.1)
+  ;; WHEN: Sun Dec 23 03:16:05 2001
+  ;; MSG SIZE  rcvd: 107
+  ______________________________________________________________________
+
+
+
+  pare OK, elencate tutto per fare un esame accurato:
+
+
+  ______________________________________________________________________
+  $ dig 196.168.192.in-addr.arpa. AXFR
+
+  ; <<>> DiG 9.1.3 <<>> 196.168.192.in-addr.arpa. AXFR
+  ;; global options:  printcmd
+  196.168.192.in-addr.arpa. 259200 IN     SOA     ns.linux.bogus. \
+          hostmaster.linux.bogus. 199802151 28800 7200 2419200 86400
+  196.168.192.in-addr.arpa. 259200 IN     NS      ns.linux.bogus.
+  1.196.168.192.in-addr.arpa. 259200 IN   PTR     gw.linux.bogus.
+  2.196.168.192.in-addr.arpa. 259200 IN   PTR     ns.linux.bogus.
+  3.196.168.192.in-addr.arpa. 259200 IN   PTR     donald.linux.bogus.
+  4.196.168.192.in-addr.arpa. 259200 IN   PTR     mail.linux.bogus.
+  5.196.168.192.in-addr.arpa. 259200 IN   PTR     ftp.linux.bogus.
+  196.168.192.in-addr.arpa. 259200 IN     SOA     ns.linux.bogus. \
+          hostmaster.linux.bogus. 199802151 28800 7200 2419200 86400
+  ;; Query time: 6 msec
+  ;; SERVER: 127.0.0.1#53(127.0.0.1)
+  ;; WHEN: Sun Dec 23 03:16:58 2001
+  ;; XFR size: 9 records
+  ______________________________________________________________________
+
+
+
+  Sembra buono! Se ottenete output un po' diversi guardate i messaggi
+  d'errore nel vostro syslog. Ho spiegato come farlo all'inizio del
+  primo capitolo : ``Far partire named''
+
+
+  5.4.  Qualche parola di avvertimento
+
+  Ci sono delle cose che a questo punto vorrei aggiungere. I numeri IP
+  usati negli esempi sono stati presi dai blocchi delle reti private,
+  cioè non è permesso usarli esplicitamente su Internet. Per questo sono
+  comodi da usare in un HOWTO. La seconda cosa riguarda la riga notify
+  no;. Dice a named che non deve notificare al suo server secondario
+  ("slave") quando riceve un aggiornamento di uno dei suoi file di zona.
+  In BIND 8 e successivi named può notificare agli altri server quando
+  riceve un aggiornamento dei file di zona. Questo è utile nell'uso
+  comune, ma per gli esperimenti privati con le zone questa possibilità
+  deve essere esclusa, non vogliamo che i nostri esperimenti inquinino
+  Internet vero??
+
+
+  Naturalmente questo dominio è veramente fasullo e così tutti gli
+  indirizzi in esso. Per un vero esempio tratto dalla vita reale leggete
+  il prossimo capitolo.
+
+
+  5.5.  Perché non funziona il lookup inverso ("reverse lookup")
+
+  Ci sono un paio di grattacapi che possono essere normalmente evitati
+  quando si fa il lookup sempre degli stessi nomi (o dei nomi per cui lo
+  si fa più spesso) quando si imposta la zona inversa. Prima di andare
+  avanti c'è bisogno che il lookup inverso funzioni bene sul vostro name
+  server. Se così non fosse, tornate indietro e mettetelo a posto prima
+  di continuare.
+
+
+  Discuterò due problematiche del lookup inverso viste dall'esterno
+  della vostra rete:
+
+
+  5.5.1.  La zona inversa non è delegata
+
+  Quando chiedete a un provider di servizi un dominio e un intervallo di
+  indirizzi di rete, il dominio è normalmente delegato di conseguenza.
+  Una delega è quel record NS che tiene assieme il tutto, che vi
+  permette di passare da un name server all'altro come è stato spiegato
+  nella sezione teorica di sopra. L'avete letta vero? Se la zona inversa
+  non funziona tornate indietro e leggetela. Ora.
+
+
+  Anche la zona inversa deve essere delegata. Se avete ottenuto la rete
+  192.168.196 con il dominio linux.bogus dal vostro provider, esso dovrà
+  mettere un record NS nella vostra zona inversa così come per la vostra
+  zona di forward.  Se seguirete la catena partendo da in-addr.arpa fino
+  alla vostra rete, probabilmente troverete un'interruzione nella
+  catena.  Molto probabilmente a livello del vostro provider.  Una volta
+  scoperta l'interruzione contattate il provider e chiedetegli di
+  correggere l'errore.
+
+
+  5.5.2.  Vi hanno dato una sottorete classless
+
+  Questo sarebbe un argomento un po' avanzato, ma le sottoreti classless
+  (senza classe) ormai sono molto comuni e probabilmente ne avete una a
+  meno che non siate un'azienda di media grandezza.
+
+
+  Una sottorete classless è ciò che oggi manda avanti Internet.  Qualche
+  anno fa si è fatto molto rumore a causa della scarsità di numeri IP.
+  Le menti brillanti che lavorano al IETF (l'Internet Engineering Task
+  Force, sono loro che mantengono la funzionalità di Internet) unirono
+  le loro menti e risolsero il problema. Ma bisogna pagare un prezzo. Il
+  prezzo è che avrete meno che una sottorete di classe "C" e che
+  qualcosa potrebbe non funzionare. Leggete per favore Ask Mr. DNS
+  <http://www.acmebw.com/askmrdns/00007.htm> per una buona spiegazione e
+  per saper come trattare il problema.
+
+
+  L'avete letto? Non l'andrò a spiegare, quindi leggetelo.
+
+
+  La prima parte del problema è costituita dal fatto che il vostro ISP
+  deve capire la tecnica descritta da Mr. DNS. Non tutti i piccoli ISP
+  ne hanno una chiara visione. Se sarà il caso dovrete spiegar loro come
+  fare ed essere insistenti. Ma anche voi assicuratevi di aver capito
+  bene prima ;-). A questo punto loro imposteranno una buona zona
+  inversa sui loro server e voi potrete esaminarla correttamente con
+  dig.
+
+
+  La seconda e ultima parte del problema è costituita dal fatto che voi
+  dovete comprendere la tecnica. Se non siete sicuri rileggetela ancora.
+  Dopo potrete impostare le zone inverse della vostra sottorete
+  classless come descritto da Mr. DNS.
+
+
+  Nei dintorni c'è un'altra trappola in agguato. I vecchi risolutori non
+  sono abilitati a sfruttare il trucco del CNAME nella catena della
+  risoluzione e falliranno nel tentativo di risoluzione inversa sulla
+  vostra macchina. Questo problema può portare ad assegnare al servizio
+  una classe di accesso scorretta , all'accesso negato o a qualcosa del
+  genere.  Ove inciampaste in un servizio di questo tipo, l'unica
+  soluzione (che io conosco) è che il vostro ISP inserisca direttamente
+  nel suo file di zona truccato (il file relativo alla vostra zona
+  classless) il vostro record PTR anziché il record CNAME truccato (è un
+  modo per ingannare il DNS e per fargli accettare qualcosa per cui non
+  è preparato).
+
+
+  Altri ISP offriranno diversi modi per risolvere questo problema, come
+  dei form che permettono di inserire via web i vostri dati sulla zona
+  inversa, oppure con altri sistemi "automagici".
+
+
+  5.6.  Server secondari ("slave server")
+
+  Dopo aver impostato correttamente le zone sul server primario, avrete
+  bisogno di impostare almeno un server secondario. I server secondari
+  sono necessari per garantire robustezza. Se il server primario
+  smettesse di funzionare per qualche motivo, gli esterni avrebbero modo
+  di ottenere informazioni sul vostro dominio dal server secondario. I
+  server primario e secondario dovrebbero condividere il minor numero di
+  queste poche cose: sorgente energetica, LAN, ISP, città e nazione. Se
+  tutte queste cose sono differenti per il primario e il secondario
+  allora avrete configurato un ottimo server secondario.
+
+
+  Un server secondario è semplicemente un name server che copia i file
+  di zona dal server primario. Si imposta così:
+
+
+  ______________________________________________________________________
+  zone "linux.bogus" {
+          type slave;
+          file "sz/linux.bogus";
+          masters { 192.168.196.2; };
+  };
+  ______________________________________________________________________
+
+
+
+  Per copiare i dati si usa un meccanismo chiamato trasferimento di zona
+  ("zone-transfer"). Il trasferimento di zona è controllato dal vostro
+  record SOA:
+
+
+  ______________________________________________________________________
+  @       IN      SOA     ns.linux.bogus. hostmaster.linux.bogus. (
+                          199802151       ; serial, todays date + todays serial #
+                          8H              ; refresh, seconds
+                          2H              ; retry, seconds
+                          4W              ; expire, seconds
+                          1D )            ; minimum, seconds
+  ______________________________________________________________________
+
+
+
+  Una zona è trasferita solo se il numero di serie sul server primario è
+  maggiore di quello nel secondario. Ad ogni intervallo specificato in
+  refresh il secondario controllerà se il primario è stato aggiornato o
+  meno. Se il controllo fallisce (perchè il primario è indisponibile)
+  esso cercherà di rifare il controllo secondo l'intervallo specificato
+  in retry. Se (il master) continuasse a fallire per un tempo maggiore a
+  quello dell'intervallo specificato in expire, il server secondario
+  rimuoverà la zona dal suo file system e non sarà più tale per esso,
+  cioè non sarà più un server secondario per quel server primario.
+
+
+  6.  Opzioni di sicurezza di base
+
+  Di Jamie Norrish
+
+
+  Impostare le opzioni di configurazione in modo da ridurre i possibili
+  problemi.
+
+
+  Ci sono pochi semplici passaggi che vi permetteranno di ridurre
+  contemporaneamente problemi e carico sul vostro server. Il materiale
+  qui presente non è molto più che un punto di partenza; se siete
+  particolarmente interessati agli aspetti relativi alla sicurezza (e
+  dovreste esserlo), consultate altre risorse in Internet (vedi
+  ``l'ultimo capitolo'').
+
+
+  Le seguenti direttive di configurazione appaiono in named.conf.  Se
+  una direttiva appare nella sezione options del file, si applica a
+  tutte le zone elencate nel file. Se invece appare all'interno di una
+  voce di zone, si applica solo a quella zona. Una voce di zone esclude
+  automaticamente quella nella sezione options.
+
+
+  6.1.  Restringere i trasferimenti di zona
+
+  Per fare in modo che un vostro server secondario possa rispondere alle
+  richieste sul vostro dominio, esso dovrà essere in grado di trasferire
+  le informazioni di zona dal vostro server primario. Pochissimi altri
+  devono poterlo fare. Quindi è necessario usare l'opzione allow-
+  transfer per restringere solo agli autorizzati i trasferimenti di
+  zona, assumiamo ad esempio che 192.168.1.4 sia l'indirizzo IP di
+  ns.friend.bogus e aggiungete voi stessi questa opzione a solo scopo di
+  debug:
+
+
+
+  ______________________________________________________________________
+  zone "linux.bogus" {
+        allow-transfer { 192.168.1.4; localhost; };
+  };
+  ______________________________________________________________________
+
+
+
+  Restringendo così i trasferimenti di zona vi assicurerete che agli
+  esterni saranno disponibili solo le informazioni necessarie a
+  identificare il vostro dominio e nulla di più; nessuno potrà avere
+  ulteriori informazioni sulla vostra configurazione.
+
+
+  6.2.  Proteggersi contro lo spoofing
+
+  Prima di tutto, disabilitate le interrogazioni dai domini che non sono
+  vostri, lasciando questa possibilità solo alle macchine della vostra
+  rete locale.  Questo non solo previene un uso malizioso del DNS
+  server, ma riduce anche l'uso non necessario del vostro server.
+
+
+  ______________________________________________________________________
+  options {
+        allow-query { 192.168.196.0/24; localhost; };
+  };
+
+  zone "linux.bogus" {
+        allow-query { any; };
+  };
+
+  zone "196.168.192.in-addr.arpa" {
+        allow-query { any; };
+  };
+  ______________________________________________________________________
+
+
+
+  Inoltre, disabilitate le interrogazioni ricorsive, eccetto che dalle
+  macchine locali. Questo riduce la possibilità di attacchi di "cache
+  poisoning", con cui vengono inviati dati falsi al vostro server.
+
+
+  ______________________________________________________________________
+  options {
+          allow-recursion { 192.168.196.0/24; localhost; };
+  };
+  ______________________________________________________________________
+
+
+
+  6.3.  Far partire named con utente non-root
+
+  Sarebbe una buona idea far partire named con un utente diverso da
+  root, così un eventuale attacco riuscito potrebbe fare danni molto
+  limitati. Prima dovrete creare un utente sotto cui far girare named,
+  poi modificare tutti gli script che usate per farlo partire di
+  conseguenza. Passate i nuovi nomi di utente e gruppo a named usando i
+  flag -u e -g .
+
+
+  Ad esempio, nella Debian GNU/Linux 2.2 modificherete lo script
+  /etc/init.d/bind in modo da avere la seguente riga (quando l'utente
+  named è stato creato):
+
+
+  ______________________________________________________________________
+  start-stop-daemon --start --quiet --exec /usr/sbin/named -- -u named
+  ______________________________________________________________________
+
+
+
+  La stessa cosa può essere fatta con Red Hat e altre distribuzioni.
+
+
+  Dave Lugo ha descritto una configurazione sicura "dual chroot"
+  <http://www.etherboy.com/dns/chrootdns.html> che potreste trovare
+  interessante, rende il vostro named ancora più sicuro.
+
+
+  7.  Esempio di un vero dominio
+
+  Dove si elencano alcuni veri file di zona
+
+
+  Gli utenti mi hanno suggerito di includere un esempio reale di un
+  dominio funzionante come tutorial.
+
+
+  Utilizzo questo esempio col permesso concessomi da David Bullock di
+  LAND-5. Questi file risalgono al 24 Settembre 1996, successivamente
+  vennero da me modificati perché si adattassero alle restrizioni di
+  bind 8 e perché comprendessero delle estensioni. Questo implica che
+  quello che leggerete qui differisce un po' da quello che otterreste
+  facendo un'interrogazione sul name server di LAND-5.
+
+
+  7.1.  /etc/named.conf (o /var/named/named.conf)
+
+  Qui troveremo le sezioni relative alle due zone inverse richieste: la
+  rete 127.0.0, e la sottorete LAND-5 206.6.177. Poi c'è la riga
+  relativa alla zona di forward per land-5, land-5.com. Si noti come i
+  file siano stati sistemati nella directory chiamata zone anziché in pz
+  come ho fatto in questo HOWTO.
+
+
+
+  ______________________________________________________________________
+  // Boot file for LAND-5 name server
+
+  options {
+          directory "/var/named";
+  };
+
+  controls {
+          inet 127.0.0.1 allow { localhost; } keys { rndc_key; };
+  };
+
+  key "rndc_key" {
+          algorithm hmac-md5;
+          secret "c3Ryb25nIGVub3VnaCBmb3IgYSBtYW4gYnV0IG1hZGUgZm9yIGEgd29tYW4K";
+  };
+
+  zone "." {
+          type hint;
+          file "root.hints";
+  };
+
+  zone "0.0.127.in-addr.arpa" {
+          type master;
+          file "zone/127.0.0";
+  };
+
+  zone "land-5.com" {
+          type master;
+          file "zone/land-5.com";
+  };
+
+  zone "177.6.206.in-addr.arpa" {
+          type master;
+          file "zone/206.6.177";
+  };
+  ______________________________________________________________________
+
+
+
+  Se aveste intenzione di usare queste righe nel vostro named.conf (ma
+  solo per gioco) PER FAVORE mettete "notify no;" nelle sezioni relative
+  alle due zone land-5 così da evitare incidenti.
+
+
+  7.2.  /var/named/root.hints
+
+  Tenete a mente che questo è un file dinamico, quello che trovate qui è
+  sorpassato. È meglio che ve ne procuriate uno recente, con dig, come
+  verrà presto spiegato.
+
+
+
+  ______________________________________________________________________
+  ; <<>> DiG 8.1 <<>> @A.ROOT-SERVERS.NET.
+  ; (1 server found)
+  ;; res options: init recurs defnam dnsrch
+  ;; got answer:
+  ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 10
+  ;; flags: qr aa rd; QUERY: 1, ANSWER: 13, AUTHORITY: 0, ADDITIONAL: 13
+  ;; QUERY SECTION:
+  ;;      ., type = NS, class = IN
+
+  ;; ANSWER SECTION:
+  .                     6D IN NS        G.ROOT-SERVERS.NET.
+  .                     6D IN NS        J.ROOT-SERVERS.NET.
+  .                     6D IN NS        K.ROOT-SERVERS.NET.
+  .                     6D IN NS        L.ROOT-SERVERS.NET.
+  .                     6D IN NS        M.ROOT-SERVERS.NET.
+  .                     6D IN NS        A.ROOT-SERVERS.NET.
+  .                     6D IN NS        H.ROOT-SERVERS.NET.
+  .                     6D IN NS        B.ROOT-SERVERS.NET.
+  .                     6D IN NS        C.ROOT-SERVERS.NET.
+  .                     6D IN NS        D.ROOT-SERVERS.NET.
+  .                     6D IN NS        E.ROOT-SERVERS.NET.
+  .                     6D IN NS        I.ROOT-SERVERS.NET.
+  .                     6D IN NS        F.ROOT-SERVERS.NET.
+
+  ;; ADDITIONAL SECTION:
+  G.ROOT-SERVERS.NET.     5w6d16h IN A    192.112.36.4
+  J.ROOT-SERVERS.NET.     5w6d16h IN A    198.41.0.10
+  K.ROOT-SERVERS.NET.     5w6d16h IN A    193.0.14.129
+  L.ROOT-SERVERS.NET.     5w6d16h IN A    198.32.64.12
+  M.ROOT-SERVERS.NET.     5w6d16h IN A    202.12.27.33
+  A.ROOT-SERVERS.NET.     5w6d16h IN A    198.41.0.4
+  H.ROOT-SERVERS.NET.     5w6d16h IN A    128.63.2.53
+  B.ROOT-SERVERS.NET.     5w6d16h IN A    128.9.0.107
+  C.ROOT-SERVERS.NET.     5w6d16h IN A    192.33.4.12
+  D.ROOT-SERVERS.NET.     5w6d16h IN A    128.8.10.90
+  E.ROOT-SERVERS.NET.     5w6d16h IN A    192.203.230.10
+  I.ROOT-SERVERS.NET.     5w6d16h IN A    192.36.148.17
+  F.ROOT-SERVERS.NET.     5w6d16h IN A    192.5.5.241
+
+  ;; Total query time: 215 msec
+  ;; FROM: roke.uio.no to SERVER: A.ROOT-SERVERS.NET.  198.41.0.4
+  ;; WHEN: Sun Feb 15 01:22:51 1998
+  ;; MSG SIZE  sent: 17  rcvd: 436
+  ______________________________________________________________________
+
+
+
+  7.3.  /var/named/zone/127.0.0
+
+  Solo lo stretto necessario, il record obbligatorio SOA e un record che
+  mette in corrispondenza 127.0.0.1 con localhost. Entrambi sono
+  richiesti. Non deve esserci nient'altro in questo file. Probabilmente
+  non ci sarà mai bisogno di aggiornare questo file, a meno che non
+  cambino gli indirizzi del name server o del responsabile.
+
+
+
+  ______________________________________________________________________
+  @               IN      SOA     land-5.com. root.land-5.com. (
+                                  199609203       ; Serial
+                                  28800   ; Refresh
+                                  7200    ; Retry
+                                  604800  ; Expire
+                                  86400)  ; Minimum TTL
+                          NS      land-5.com.
+
+  1                       PTR     localhost.
+  ______________________________________________________________________
+
+
+
+  Se date uno sguardo a diverse installazioni di BIND noterete che la
+  riga $TTL è assente a volte, come in questo caso. Prima non veniva
+  utilizzata, solo dalla versione 8.2 BIND ha iniziato ad emettere un
+  avviso in caso di sua assenza. BIND 9 richiede la riga $TTL.
+
+
+  7.4.  /var/named/zone/land-5.com
+
+  Qui possiamo vedere il record obbligatorio SOA e i record NS
+  richiesti. Si può vedere che è presente un name server secondario in
+  ns2.psi.net. Questo è come dovrebbe essere, è bene avere sempre un
+  server secondario fuori dalla vostra rete che faccia da backup. Si può
+  notare anche la presenza di un host principale chiamato land-5 che si
+  prende cura della maggior parte dei servizi Internet, questo è fatto
+  tramite i record CNAME (alternativamente si possono usare i record A).
+
+
+  Come si può vedere dal record SOA, il file di zona comincia con
+  land-5.com, la persona da contattare è root@land-5.com.  Anche
+  hostmaster è spesso utilizzato per il responsabile di zona.  Il numero
+  di serie è nel formato standard aaaammgg con il numero di versione
+  giornaliera a seguire, perciò si tratta forse della sesta versione del
+  file di zona del 20 settembre 1996.  Ricordate che il numero di serie
+  deve essere incrementato in maniera monotonica, qui viene usata una
+  sola cifra per il numero di versione giornaliera, così dopo 9 volte
+  che si è modificato il file bisogna aspettare il giorno successivo
+  prima di poterlo modificare di nuovo. Comunque considerate che si
+  possono usare 2 cifre.
+
+
+
+  ______________________________________________________________________
+  $TTL 3D
+  @       IN      SOA     land-5.com. root.land-5.com. (
+                          199609206       ; serial, todays date + todays serial #
+                          8H              ; refresh, seconds
+                          2H              ; retry, seconds
+                          1W              ; expire, seconds
+                          1D )            ; minimum, seconds
+                  NS      land-5.com.
+                  NS      ns2.psi.net.
+                  MX      10 land-5.com.  ; Primary Mail Exchanger
+                  TXT     "LAND-5 Corporation"
+
+  localhost       A       127.0.0.1
+
+  router          A       206.6.177.1
+
+  land-5.com.     A       206.6.177.2
+  ns              A       206.6.177.3
+  www             A       207.159.141.192
+
+  ftp             CNAME   land-5.com.
+  mail            CNAME   land-5.com.
+  news            CNAME   land-5.com.
+
+  funn            A       206.6.177.2
+
+  ;
+  ;       Workstations
+  ;
+  ws-177200       A       206.6.177.200
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177201       A       206.6.177.201
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177202       A       206.6.177.202
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177203       A       206.6.177.203
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177204       A       206.6.177.204
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177205       A       206.6.177.205
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ; {Many repetitive definitions deleted - SNIP}
+  ws-177250       A       206.6.177.250
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177251       A       206.6.177.251
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177252       A       206.6.177.252
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177253       A       206.6.177.253
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ws-177254       A       206.6.177.254
+                  MX      10 land-5.com.   ; Primary Mail Host
+  ______________________________________________________________________
+
+
+
+  Esaminando i name server di land-5 scoprirete che gli host hanno un
+  nome del tipo ws_numero. Con le ultime versioni di bind-4 named ha
+  iniziato a porre delle restrizioni sui caratteri che potevano essere
+  usati nei nomi di host. In questo HOWTO io ho sostituito "-"
+  (trattino) con "_" (trattino basso) in modo da uniformarmi alle regole
+  di bind-8 per i nomi di host. Ma, come ho detto prima, BIND 9 non
+  obbliga più a questa restrizione.
+
+  Un'altra cosa da notare è che le workstation non hanno nomi
+  individuali, ma un prefisso seguito dalle ultime due parti del numero
+  IP. Usare delle convenzioni simili può semplificare significativamente
+  la manutenzione, ma può risultare impersonale e in effetti potrebbe
+  anche irritare i vostri clienti.
+
+
+  Vediamo anche che funn.land-5.com è un alias per land-5.com, ma ciò è
+  fatto tramite un record A, non con un record CNAME.
+
+
+  7.5.  /var/named/zone/206.6.177
+
+  Commenterò questo file più sotto.
+
+
+  ______________________________________________________________________
+  $TTL 3D
+  @               IN      SOA     land-5.com. root.land-5.com. (
+                                  199609206       ; Serial
+                                  28800   ; Refresh
+                                  7200    ; Retry
+                                  604800  ; Expire
+                                  86400)  ; Minimum TTL
+                          NS      land-5.com.
+                          NS      ns2.psi.net.
+  ;
+  ;       Servers
+  ;
+  1       PTR     router.land-5.com.
+  2       PTR     land-5.com.
+  2       PTR     funn.land-5.com.
+  ;
+  ;       Workstations
+  ;
+  200     PTR     ws-177200.land-5.com.
+  201     PTR     ws-177201.land-5.com.
+  202     PTR     ws-177202.land-5.com.
+  203     PTR     ws-177203.land-5.com.
+  204     PTR     ws-177204.land-5.com.
+  205     PTR     ws-177205.land-5.com.
+  ; {Many repetitive definitions deleted - SNIP}
+  250     PTR     ws-177250.land-5.com.
+  251     PTR     ws-177251.land-5.com.
+  252     PTR     ws-177252.land-5.com.
+  253     PTR     ws-177253.land-5.com.
+  254     PTR     ws-177254.land-5.com.
+  ______________________________________________________________________
+
+
+
+  La zona inversa costituisce la fase della configurazione che causa più
+  grane. Essa serve a ricavare il nome di un host dall'indirizzo IP di
+  una macchina. Esempio: voi siete un server IRC e accettate connessioni
+  dai client IRC. Inoltre siete un server IRC norvegese a volete che
+  queste connessioni provengano da client norvegesi o da altre nazioni
+  scandinave. Quando ricevete una richiesta di connessione da un client
+  la libreria C è in grado di dirvi il numero IP della macchina che sta
+  tentando la connessione, poiché il numero IP del client è contenuto in
+  ogni pacchetto che attraversa la rete. A questo punto potrete chiamare
+  una funzione chiamata gethostbyaddr che ricava il nome di un host a
+  partire dal suo indirizzo IP. Gethostbyaddr interrogherà un server
+  DNS, il quale attraverserà il DNS in cerca della macchina. Supponiamo
+  che il client si connetta da ws-177200.land-5.com. La libreria C
+  presente nel server ricava il numero IP del client che tenta la
+  connessione, in questo caso è 206.6.177.200. Per scoprire il nome di
+  questa macchina bisogna prima scoprire 200.177.6.206.in-addr.arpa. Il
+  server DNS troverà prima i server arpa., poi troverà i server in-
+  addr.arpa., seguendo il percorso inverso passando per 206, poi per 6 e
+  alla fine troverà il server responsabile per la zona 177.6.206.in-
+  addr.arpa presso LAND-5.  Da questo finalmente si potrà ricavare che
+  in 200.177.6.206.in-addr.arpa c'è un record "PTR
+  ws-177200.land-5.com", questo significa che il nome associato a
+  206.6.177.200 è ws-177200.land-5.com.
+
+
+  Il server FTP accetta connessioni solo da paesi scandinavi, ovvero
+  *.no, *.se, *.dk il nome ws-177200.land-5.com non corrisponde a
+  nessuno di questi ovviamente e il server metterà tale connessione in
+  una classe di connessioni con meno banda e meno connessioni
+  disponibili. Se non ci fosse la corrispondenza inversa di
+  206.2.177.200 tramite la zona in-addr.arpa il server sarebbe incapace
+  di scoprire il nome e avrebbe dovuto comparare 206.2.177.200 con *.no,
+  *.se e *.dk, senza trovare nessuna corrispondenza, esso può anche
+  negare la connessione completamente per assenza di classificazione.
+
+
+  Alcune persone vi diranno che la mappatura della risoluzione inversa è
+  importante solo per i server, o per nulla importante. Non è così:
+  molti server ftp, news, IRC e anche qualche server http (WEB) non
+  accetteranno connessioni da macchine per le quali non riescono a
+  trovare il nome. Quindi la mappatura inversa diventa di fatto
+  obbligatoria.
+
+
+  8.  Manutenzione
+
+  Mantenerlo operativo
+
+
+  C'è un altro compito di manutenzione che dovete fare sui named, oltre
+  a quello di tenerli operativi. Consiste nel mantenere aggiornato il
+  file root.hints. Il modo più semplice è usare dig, fate partire dig
+  senza argomenti, otterrete root.hints in accordo col quello che c'è
+  sul vostro server. Poi fate una richiesta a uno dei root server
+  elencati con dig @rootserver. Vedrete che l'output somiglierà
+  terribilmente al file root.hints. Salvatelo in un file (dig @e.root-
+  servers.net . ns >root.hints.new) e rimpiazzate il vecchio root.hints
+  con questo.
+
+
+  Ricordate di rilanciare named dopo aver rimpiazzato il file cache.
+
+
+  Questo script mi è stato mandato da Al Longyear, può essere fatto
+  partire automaticamente per aggiornare root.hints, impostate una riga
+  nel crontab che lo faccia partire una volta al mese e dimenticatelo.
+  Lo script assume che il vostro sistema di posta funzioni e che l'alias
+  di posta "hostmaster" sia definito. Dovrete modificarlo affinché si
+  conformi alle vostre esigenze.
+
+
+
+  ______________________________________________________________________
+  #!/bin/sh
+  #
+  # Update the nameserver cache information file once per month.
+  # This is run automatically by a cron entry.
+  #
+  # Original by Al Longyear
+  # Updated for BIND 8 by Nicolai Langfeldt
+  # Miscelanious error-conditions reported by David A. Ranch
+  # Ping test suggested by Martin Foster
+  # named up-test suggested by Erik Bryer.
+  #
+  (
+   echo "To: hostmaster <hostmaster>"
+   echo "From: system <root>"
+
+   # Is named up? Check the status of named.
+   case `rndc status 2>&1` in
+      *refused*)
+          echo "named is DOWN. root.hints was NOT updated"
+          echo
+          exit 0
+          ;;
+   esac
+
+   PATH=/sbin:/usr/sbin:/bin:/usr/bin:
+   export PATH
+   # NOTE: /var/named must be writable only by trusted users or this script
+   # will cause root compromise/denial of service opportunities.
+   cd /var/named 2>/dev/null || {
+      echo "Subject: Cannot cd to /var/named, error $?"
+      echo
+      echo "The subject says it all"
+      exit 1
+   }
+
+   # Are we online?  Ping a server at your ISP
+   case `ping -qnc 1 some.machine.net 2>&1` in
+     *'100% packet loss'*)
+          echo "Subject: root.hints NOT updated.  The network is DOWN."
+          echo
+          echo "The subject says it all"
+          exit 1
+          ;;
+   esac
+
+   dig @e.root-servers.net . ns >root.hints.new 2> errors
+
+   case `cat root.hints.new` in
+     *NOERROR*)
+          # It worked
+          :;;
+     *)
+          echo "Subject: The root.hints file update has FAILED."
+          echo
+          echo "The root.hints update has failed"
+          echo "This is the dig output reported:"
+          echo
+          cat root.hints.new errors
+          exit 1
+          ;;
+   esac
+
+   echo "Subject: The root.hints file has been updated"
+   echo
+   echo "The root.hints file has been updated to contain the following
+  information:"
+   echo
+   cat root.hints.new
+
+   chown root.root root.hints.new
+   chmod 444 root.hints.new
+   rm -f root.hints.old errors
+   mv root.hints root.hints.old
+   mv root.hints.new root.hints
+   rndc restart
+   echo
+   echo "The nameserver has been restarted to ensure that the update is complete."
+   echo "The previous root.hints file is now called
+  /var/named/root.hints.old."
+  ) 2>&1 | /usr/lib/sendmail -t
+  exit 0
+  ______________________________________________________________________
+
+
+
+  Qualcuno di voi potrebbe aver notato che il file root.hints è
+  disponibile anche in ftp da Internic. Per favore, non usate ftp per
+  aggiornare root.hints, il metodo sopra descritto è molto più
+  amichevole verso la rete e Internic.
+
+
+  9.  Migrare a BIND 9
+
+  La documentazione allegata ai pacchetti di BIND 9 e alla sua
+  distribuzione contiene un documento chiamato migration che contiene
+  note su come migrare da BIND 8 a BIND 9. Questo documento è davvero
+  prioritario. Se avete installato i binari dai pacchetti esso si
+  troverà in /usr/share/doc/bind* o /usr/doc/bind* qualcosa.
+
+
+  Se invece state ancora usando BIND 4, troverete un documento chiamato
+  migration-4to9 nello stesso posto.
+
+
+
+  10.  Domande e risposte
+
+  Per favore leggete questa sezione prima di scrivermi in email.
+
+
+  1. Il mio named vuole il file named.boot
+
+
+     State leggendo l'HOWTO sbagliato. Leggete per favore la vecchia
+     versione di questo HOWTO, che tratta bind 4, presso
+     <http://langfeldt.net/DNS-HOWTO/>
+
+
+
+  2. Come si usa il DNS da dietro un firewall?
+
+
+
+     Un indizio: forward only; probabilmente avrete bisogno anche della
+     riga
+
+
+
+     ___________________________________________________________________
+       query-source port 53;
+
+     ___________________________________________________________________
+
+
+
+  all'interno della parte "options" del file named.conf come suggerito
+  nella sezione-esempio ``caching''
+
+
+
+  3. Come fare in modo che il DNS distribuisca un servizio attraverso
+     gli indirizzi disponibili, tipo www.sito.occupato per ottenere un
+     effetto di bilanciamento del carico, o simile??
+
+
+
+     Create numerosi record A per www.sito.occupato e usate bind 4.9.3 o
+     successivo. Poi sarà bind a far ruotare le risposte. Non funziona
+     con le precedenti versioni di BIND.
+
+
+  4. Voglio impostare il DNS su una intranet (chiusa). Cosa devo fare?
+
+
+     Cancellerete il file root.hints e creerete solo i file di zona.
+     Questo significa anche che non dovrete aggiornare i file di hint
+     tutte le volte.
+
+
+  5. Come si imposta un name server secondario?
+
+
+     Se il server primario ha indirizzo 127.0.0.1 mettete una riga come
+     questa nel file named.conf del vostro secondario:
+
+
+
+     ___________________________________________________________________
+       zone "linux.bogus" {
+             type slave;
+             file "sz/linux.bogus";
+             masters { 127.0.0.1; };
+       };
+
+     ___________________________________________________________________
+
+
+
+  Potrete elencare numerosi server primari alternativi, la zona può
+  essere copiata dalla lista masters, separata da ';'.
+
+
+  6. Vorrei BIND in esecuzione quando mi disconnetto dalla rete.
+
+
+     Ci sono quattro articoli che riguardano la questione:
+
+
+     ·  Specifico per BIND 8/9, Adam L. Rice mi ha mandato questa email,
+        su come far funzionare tranquillamente il DNS su una macchina
+        con connessione telefonica:
+
+
+
+     Ho scoperto che con le ultime versioni di BIND non è più necessario
+     [<em/incasinare i file, -ed/]. C'è una direttiva "forward" oltre a
+     quella "forwarders" che controlla come queste vengono
+     usate. L'impostazione di default è "forward first", la quale prima
+     chiede a ognuno dei forwarder poi, se il tentativo fallisce, prova
+     da sola a fare il lavoro seguendo un approccio standard. Questo
+     implica un normale comportamento di gethostbyname() e impiega una
+     quantità spropositata di tempo quando il link non è attivo. Ma se
+     "forward only" è l'impostazione scelta, allora BIND si blocca quando
+     non riesce a ottenere una risposta dai forwarder e gethostbyname()
+     si ferma immediatamente. Quindi in questo caso non c'è bisogno di
+     smanettare con i file di /etc e di far ripartire il server.
+
+     Per quanto mi riguarda, ho solo aggiunto le righe
+
+     forward only;
+     forwarders { 193.133.58.5; };
+
+     nella sezione "options" { } del mio file named.conf. Funziona
+     veramente bene. L'unico svantaggio è che questo riduce un software
+     incredibilmente complicato ad una stupida cache.
+     In un certo senso, io vorrei solo far fuzionare una stupida cache al
+     posto del DNS, ma non sembra esserci un simile software disponibile per
+     Linux.
+
+
+
+     ·  Ho ricevuto questa mail da Ian Clark <ic@deakin.edu.au> dove
+        egli spiega come affronta il problema:
+
+
+
+          Faccio partire named sulla mia macchina che fa servizio di masquerading.
+          Ho due file root.hints, uno chiamato root.hints.real, che
+          contiene i veri nomi dei root server, e l'altro chiamato root.hints.fake
+          che contiene...
+
+          ----
+          ; root.hints.fake
+          ; this file contains no information
+          ----
+
+          Quando mi sconnetto copio il file root.hints.fake su root.hints e
+          faccio ripartire named.
+
+          Quando mi connetto copio root.hints.real su root.hints e faccio
+          ripartire named.
+
+          Tutto ciò viene eseguito da ip-down e ip-up rispettivamente.
+
+          La prima volta che faccio una interrogazione da sconnesso, named non
+          avendo dettagli su di essa lascia una riga simile a questo messaggio...
+
+          Jan 28 20:10:11 hazchem named[10147]: No root nameserver for class IN
+
+          con la quale posso convivere.
+
+          Questo per me funziona certamente. Posso usare il name server per le
+          macchine locali quando sono sconnesso senza il ritardo del
+          timeout per i nomi di dominio esterni e mentre sono collegato alla rete
+          le interrogazioni per domini esterni funzionano normalmente.
+
+
+     Perte Denison pensa che Ian non andrà molto lontanto. Egli scrive:
+
+
+
+          Quando connesso)  fornisce immediatamente tutte le voci presenti in cache e
+                            quelle relative alla rete locale
+                            per le voci non presenti in cache, fa il forward al
+                            name server del mio ISP.
+          Quando sconnesso  risponde alle interrogazioni relative alla rete locale
+                              nega tutte le altre **immediatamente**
+
+          La combinazione di cambiare il cache file root e di inoltrare le
+          richieste non funziona.
+
+          Così, ho impostato (dopo un sacco di discussioni al LUG locale) due
+          named come segue:
+
+          named-online:     inoltra al name server del mio provider
+                            primario per la zona locale
+                            primario per la zona locale inversa (1.168.192.in-addr.arpa)
+                            primario per 0.0.127.in-addr.arpa
+                            ascolta sulla porta 60053
+
+          named-offline:    (niente forward)
+                            file cache root "falso"
+                            secondario per 3 zone locali (il primario è 127.0.0.1:60053)
+                            ascolta sulla porta 61053
+
+          Combinando tutto questo con il port-forwarding , cioè reindirizzando
+          la porta 53 sulla 61053 quando sconnesso e sulla 60053 quando connesso.
+          (Io uso il vecchio pacchetto netfilter con kernel 2.3.18, ma dovrebbe
+          funzionare anche con il vecchio ipchains).
+
+          Notate che questo potrebbe non funzionare al di fuori della mia macchina,
+          poichè c'è un bug in BIND 8.2, che ho segnalato agli sviluppatori, che
+          impedisce a un server secondario di avere come primario lo stesso IP (anche
+          se  su porte differenti). C'è una patch provvisoria che dovrebbe funzionare.
+
+
+             <item>Ho ricevuto anche informazioni su come bind interagisce con NFS e
+             con il portmapper su una macchina che in genere rimane sconnessa da Karl-Max
+             Wanger:
+
+          <tscreen><verb>
+          Sono abituato a eseguire il mio named su tutte le mie macchine che
+          solo occasionalmente sono connesse a Internet via modem. Solo il
+          name server fa da cache, esso non ha un'area di autorità e chiede
+          qualunque cosa ai name server del file root.cache. Come è prassi comune
+          con Slackware, viene fatto partire prima di nfsd e mountd.
+
+          Con una delle mie macchine (un notebook Libretto 30), avevo il problema
+          che qualche volta avrei voluto fare il mount di essa da un altro sistema
+          connesso alla mia rete locale, ma la maggior parte delle volte non
+          funzionava. Avevo lo stesso effetto usando indistintamente PLIP, una
+          scheda ethernet PCMCIA o il PPP su una interfaccia seriale.
+
+          Dopo qualche supposizione ed esperimento scoprii che apparentemente
+          named incasinava il processo di registrazione con portmapper che nfsd
+          e mountd devono fare all'avvio (faccio partire questi demoni all'avvio
+          come al solito). Eseguire named dopo nfsd e mountd elimina completamente
+          questo problema.
+
+          Anche se non ci sono svantaggi da attendersi da una sequenza di boot così
+          modificata, vorrei consigliare a tutti di farla in questo modo per prevenire
+          potenziali problemi.
+
+  7. Il caching name server memorizza la sua cache? C'è un modo per
+     controllare la dimensione della cache?
+
+
+     La cache è completamente immagazzinata in memoria, non verrà mai
+     scritta sul disco in nessuna occasione. Ogni volta che si uccide
+     named (con il comando "kill") la cache è persa. La cache non è
+     controllabile in alcun modo. Named la gestisce in accordo a qualche
+     semplice regola e basta. Non potete controllare la cache o la sua
+     dimensione in nessun modo per nessuna ragione. Se questo non vi
+     andasse bene potrete sempre cercare di modificare named andando ad
+     agire sul suo codice sorgente. Non è comunque un'operazione
+     raccomandabile.
+
+
+  8. Named salva la cache fra un riavvio e l'altro? Posso fare in modo
+     che la salvi?
+
+
+     No, named non salva la cache quando si ferma. Questo significa che
+     la cache deve essere ricostituita ogni volta che fermate e fate
+     ripartire named. Non c'è modo di salvare la cache in un file.  Se
+     questo non vi andasse bene potrete sempre cercare di modificare
+     named andando ad agire sul codice sorgente. Non è comunque
+     un'operazione raccomandabile.
+
+
+  9. Come si ottiene un dominio? Io vorrei impostare il mio dominio
+     chiamato (ad esempio) linux-rules.net. Come posso avere il dominio
+     che vorrei mi fosse assegnato?
+
+
+     Contattate per favore il vostro provider. Loro sapranno aiutarvi in
+     questo. Sappiate che in molte parti del mondo ci sarà bisogno di
+     pagare per avere un dominio.
+
+
+
+  11.  Come diventare un grande amministratore DNS
+
+  Documentazione e strumenti
+
+
+  Esiste della vera documentazione. Sia in Internet che su carta
+  stampata.  La lettura di buona parte di essa è necessaria per fare il
+  passo dall'amministratore DNS a tempo perso a quello a tempo pieno.
+
+
+  Io ho scritto The Concise Guide to DNS and BIND (di Nicolai Langfeldt,
+  che sarei io), pubblicata da Que (ISBN 0-7897-2273-9). Il libro è
+  molto simile a questo HOWTO, solo con maggiori dettagli e molto più di
+  tutto.È stato tradotto in Polacco e pubblicato come DNS i BIND by
+  Helion ( <http://helion.pl/ksiazki/dnsbin.htm>, ISBN 83-7197-446-9).
+  Ora nella quarta edizione è DNS and BIND di Cricket Liu e P. Albitz da
+  O'Reilly & Associates (ISBN 0-937175-82-X, affettuosamente noto come
+  "il libro del Cricket"). Un'altro libro è Linux DNS Server
+  Administration di Craig Hunt, pubblicato da Sybex (ISBN 0782127363),
+  non l'ho ancora letto. Un altro must per la Buona Amministrazione DNS
+  (e buono per qualsiasi altra cosa) è Zen and the Art of Motorcycle
+  Maintenance di Robert M. Pirsig [in italiano Lo Zen e l'arte della
+  manutenzione della motocicletta per Adelphi NdT].
+
+
+  In rete troverete il mio libro, insieme a tonnellate di altri libri,
+  disponibili elettronicamente con sottoscrizione a pagamento presso
+  <http://safari.informit.com/>. Troverete della roba presso
+  <http://www.dns.net/dnsrd/> (DNS Resources Directory),
+  <http://www.isc.org/bind.html>; una FAQ, un manuale di riferimento
+  (l'ARM dovrebbe essere incluso nella distribuzione di BIND) oltre che
+  documenti, definizioni di protocolli e trucchi (hacks) sul DNS (di
+  questi, la maggior parte, se non tutti, e alcune delle RFC elencate
+  sotto, sono anche contenuti nella distribuzione di bind). Io non ho
+  letto tutto. Il newsgroup  <news:comp.protocols.tcp-ip.domains> si
+  occupa anche delle problematiche del DNS.  Inoltre come aggiunta a
+  tutto questo ci sono numerose RFC sul DNS, le più importanti sono
+  probabilmente quelle riportate sotto. Quelle contrassegnate con numeri
+  BCP (Best Current Practice) sono altamente raccomandate.
+
+
+
+     RFC 2671
+        P. Vixie, Extension Mechanisms for DNS (EDNS0) August 1999.
+
+
+     RFC 2317
+        BCP 20, H. Eidnes et. al. Classless IN-ADDR.ARPA delegation,
+        March 1998. This is about CIDR, or classless subnet reverse
+        lookups.
+
+
+     RFC 2308
+        M. Andrews, Negative Caching of DNS Queries, March 1998.  About
+        negative caching and the $TTL zone file directive.
+
+
+     RFC 2219
+        BCP 17, M. Hamilton and R. Wright, Use of DNS Aliases for
+        Network Services, October 1997.  About CNAME usage.
+
+
+     RFC 2182
+        BCP 16, R. Elz et. al., Selection and Operation of Secondary DNS
+        Servers, July 1997.
+
+
+     RFC 2052
+        A. Gulbrandsen, P. Vixie, A DNS RR for specifying the location
+        of services (DNS SRV), October 1996
+
+
+     RFC 1918
+        Y. Rekhter, R. Moskowitz, D. Karrenberg, G. de Groot, E. Lear,
+        Address Allocation for Private Internets, 02/29/1996.
+
+
+     RFC 1912
+        D. Barr, Common DNS Operational and Configuration Errors,
+        02/28/1996.
+
+
+     RFC 1912 Errors
+        B. Barr Errors in RFC 1912.  Only available at
+        <http://www.cis.ohio-state.edu/~barr/rfc1912-errors.html>
+
+
+     RFC 1713
+        A. Romao, Tools for DNS debugging, 11/03/1994.
+
+
+     RFC 1712
+        C. Farrell, M. Schulze, S. Pleitner, D. Baldoni, DNS Encoding of
+        Geographical Location, 11/01/1994.
+
+
+     RFC 1183
+        R. Ullmann, P. Mockapetris, L. Mamakos, C. Everhart, New DNS RR
+        Definitions, 10/08/1990.
+
+
+     RFC 1035
+        P. Mockapetris, Domain names - implementation and specification,
+        11/01/1987.
+
+
+     RFC 1034
+        P. Mockapetris, Domain names - concepts and facilities,
+        11/01/1987.
+
+
+     RFC 1033
+        M. Lottor, Domain administrators operations guide, 11/01/1987.
+
+
+     RFC 1032
+        M. Stahl, Domain administrators guide, 11/01/1987.
+
+
+     RFC 974
+        C. Partridge, Mail routing and the domain system, 01/01/1986.
+
+
+

@@ -1,0 +1,735 @@
+<!DOCTYPE LINUXDOC SYSTEM>
+
+<article>
+
+<title>The Loopback Root Filesystem HOWTO
+<author>par Andrew M. Bishop, <tt><htmlurl url="mailto:amb@gedanken.demon.co.uk" 
+name="amb@gedanken.demon.co.uk"></tt><newline>
+traduction par Eric Cano <tt/<htmlurl url="mailto:Eric.Cano@cern.ch" name="Eric.Cano@cern.ch">/
+<date>v1.0.0, 12 juin 1998, traduction octobre 1998
+
+<abstract>
+Ce HOWTO explique comment utiliser le périphérique loopback pour faire une 
+installation sur un système de fichier Linux natif, qui peut résider dans une
+partition DOS sans repartitionnement. D'autres utilisations de cette technique
+sont aussi présentées. 
+</abstract>
+
+<toc>
+
+
+<sect>Principes des périphériques "loopback" et des disques virtuels
+
+<p>
+Je vais d'abord décrire quelques-uns des principes généraux utilisés pour 
+la mise en place d'un système de fichier en loopback comme racine.
+
+
+<sect1>Périphérique loopback
+
+<p>
+Sous Linux, un <bf/périphérique loopback/ est un périphérique virtuel, qui peut
+être utilisé comme tout autre périphérique.
+
+<p>
+Des exemples de périphériques normaux sont les partitions de disques durs comme
+<tt>/dev/hda1</tt>, <tt>/dev/hda2</tt>, <tt>/dev/sda1</tt>, ou des disques 
+entiers comme les disquettes <tt>/dev/fd0</tt>, etc... Ce sont tous des périphériques
+qui peuvent contenir une structure de fichiers et de répertoires. Ils peuvent être
+formatés avec le système de fichier voulu (ext2fs, msdos, ntfs, etc...) puis montés.
+
+
+<p>
+Le périphérique loopback associe un fichier à un périphérique complet.
+Ce fichier peut appartenir à un autre système de fichiers.
+
+Il peut alors être monté comme tout autre périphérique cité plus haut. 
+Pour cela le périphérique appelé <tt>/dev/loop0</tt> ou <tt>/dev/loop1</tt>
+ou etc... est associé au fichier, puis ce nouveau périphérique virtuel est monté.
+
+
+<sect1>Les disques virtuels 
+
+<p>
+Sous Linux, il est aussi possible d'avoir un autre type de périphérique virtuel
+monté en tant que système de fichiers, c'est le <bf/disque virtuel/ (<em/ramdisk/).
+
+<p>
+Dans ce cas, le périphérique ne se réfère pas à un élément du matériel, mais à 
+une portion de la mémoire qui est mise de côté dans ce but. La mémoire allouée 
+ainsi n'est jamais swapée sur le disque, mais reste dans le cache disque.
+
+<p>
+Un disque virtuel peut être créé à tout moment en écrivant dans le périphérique
+correspondant <tt>/dev/ram0</tt> ou <tt>/dev/ram1</tt>, etc... Il peut alors être
+formaté et monté de la même façon que le périphérique loopback.
+
+<p>
+Quand un disque virtuel est utilisé pour l'amorçage (comme c'est souvent le cas 
+avec les disquettes d'installation de Linux et les disquettes d'urgence), 
+l'image du disque (le contenu complet du disque sous forme d'un seul fichier)
+peut être stocké sur la disquette de démarrage sous une forme compressée.
+L'image est automatiquement détectée par le noyau quand celui-ci démarre 
+et décompressée dans le disque virtuel avant d'être montée.
+
+<sect1>Le disque virtuel initial
+
+<p>
+Le <bf>disque virtuel initial</bf> est, sous Linux, un autre mécanisme
+important dont nous aurons besoin pour utiliser le périphérique 
+loopback comme système de fichier racine.
+
+<p> Quand le disque virtuel initial est utilisé, l'image du système de fichiers est copiée dans la mémoire et montée
+pour que les fichiers soient accessibles. Un programme sur ce disque virtuel (appelé
+<tt/linuxrc/) est lancé.
+Une fois terminé un nouveau périphérique est monté comme système de fichiers racine. Le disque virtuel précédent existe toujours,
+il est monté sur le répertoire <tt>/initrd</tt> si celui-ci est présent,
+ou accessible à travers le périphérique <tt>/dev/initrd</tt>. 
+
+<p>
+C'est un comportement peu habituel, puisque la séquence de démarrage normale
+se lance depuis la partition racine choisie et continue à tourner ainsi. Avec 
+l'option de disque virtuel initial, la partition racine a la possibilité de
+changer avant que ne commence la séquence de démarrage principale.
+
+
+<sect1>Le système de fichiers racine
+
+<p>
+Le système de fichiers racine est le périphérique qui est monté en premier, et
+qui apparaît donc dans le répertoire appelé  <tt>/</tt> après le démarrage.
+
+
+<p>
+Il y a un certain nombre de complications a propos du système de fichiers 
+racine, qui sont dues au fait qu'il contient tous les fichiers. Au boot, les 
+scripts  <tt>rc</tt> sont lancés ; ce sont soit les fichiers dans <tt>/etc/rc.d</tt>
+ou <tt>/etc/rc?.d</tt>, suivant la version du programme <tt>/etc/init</tt>.
+
+<p>
+Quand le système a démarré, il n'est plus possible de démonter la partition racine
+ou d'en changer car tout les programmes l'utiliseront plus ou moins. C'est pourquoi
+le disque virtuel initial est si utile, puisqu'il peut être utilisé de façon
+telle que la partition racine finale n'est pas la même que celle qui est chargée 
+au moment de l'amorçage.
+
+
+<sect1>La séquence d'amorçage de Linux
+
+<p>
+Pour montrer comment le disque virtuel initial opère pendant la séquence de 
+démarrage, l'ordre des événements est présenté ci dessous.
+
+<p>
+<enum>
+<item>Le noyau est chargé en mémoire, ceci est effectué par <tt>LILO</tt>
+ou <tt>LOADLIN</tt>. Vous pouvez voir le message <tt>Loading...</tt> pendant 
+que ceci arrive.
+
+<item>L'image du disque virtuel est chargée en mémoire, à nouveau ceci est réalisé 
+par <tt>LILO</tt> ou <tt>LOADLIN</tt>. Vous pouvez voir le message <tt>Loading...</tt>
+à nouveau quand ceci arrive.
+
+<item>Le noyau est initialisé, y compris la lecture des options de ligne
+de commande et le montage du disque virtuel en tant que racine.
+
+<item>Le programme <tt>/linuxrc</tt> est lancé sur le disque virtuel initial.
+
+<item>Le périphérique racine est changé pour celui spécifié dans les
+paramètres du noyau.
+
+<item>Le programme <tt>/etc/init</tt> est lancé, et va exécuter la 
+séquence de démarrage paramétrable par l'utilisateur.
+</enum>
+
+Ceci est juste une version simplifiée de ce qui arrive, mais c'est suffisant pour 
+expliquer comment le noyau démarre et où le disque virtuel est utilisé.
+
+
+<sect>Comment créer un périphérique loopback.
+
+<p>
+Maintenant que les principes généraux ont été présentés, la méthode pour 
+créer le périphérique loopback peut être expliquée.
+
+
+<sect1>Pré-requis
+
+<p>
+La création du périphérique loopback va nécessiter un certain nombre de choses.
+
+<p>
+<itemize>
+<item>Un système Linux installé.
+<item>Un moyen pour copier des gros fichiers sur la partition DOS de destination.
+</itemize>
+
+Le point le plus important est l'accès à un système Linux déjà installé. Ce point
+est nécessaire car le périphérique loop ne peut être créé que sous Linux. Cela signifie
+qu'il ne sera pas possible d'installer un système à partir de rien. Le système Linux
+que vous utilisez devra être capable de compiler un noyau.
+
+<p>
+Une fois le périphérique loopback créé, il représentera un gros fichier. J'ai utilisé
+un fichier de 80 Mo, mais si c'était suffisant pour un terminal X, ça ne sera sans doute 
+pas suffisant pour une utilisation plus importante. Ce fichier doit être copié sur la
+partition DOS, donc un réseau ou beaucoup de disquettes seront mis a contribution.
+
+<p>
+Vous aurez besoin des logiciels suivants :
+
+<itemize>
+<item><tt>LOADLIN</tt> version 1.6 ou supérieure
+<item>Une version de <tt>mount</tt> qui supporte les périphériques loopback
+<item>Une version du noyau qui inclut les options requises.
+</itemize>
+
+Tout ceci devrait être disponible en standard sur des installations récentes de Linux.
+
+
+<sect1>Création du noyau Linux
+
+<p>
+J'ai créé le périphérique loopback avec le noyau Linux version 2.0.31, 
+d'autres versions devraient faire l'affaire, mais elles devront avoir 
+au moins les options listées ci-dessous configurées.
+
+<p>
+Les options du noyau que vous devrez sélectionner sont les suivantes :
+
+<itemize>
+<item>RAM disk support (<tt>CONFIG_BLK_DEV_RAM</tt>).
+<item>Initial RAM disk (initrd) support (<tt>CONFIG_BLK_DEV_INITRD</tt>).
+<item>Loop device support (<tt>CONFIG_BLK_DEV_LOOP</tt>).
+<item>fat fs support (<tt>CONFIG_FAT_FS</tt>).
+<item>msdos fs support (<tt>CONFIG_MSDOS_FS</tt>).
+</itemize>
+
+Les deux premières sont le disque virtuel lui-même et le disque 
+virtuel initial. La suivante est le support pour les périphériques loopback.
+Les deux dernières sont le support pour les systèmes de fichiers msdos, 
+qui est requis pour monter des partitions DOS.
+
+<p>
+La compilation d'un noyau sans modules est la plus simple, mais si vous 
+voulez utiliser les modules ça devrait être possible, bien que je ne 
+l'aie pas essayé. Si vous utilisez des modules, vous devez configurer les
+options précédentes dans le noyau, et non comme des modules.
+
+<p>
+Le code source du noyau lui-même devra être modifié d'une façon très simple.
+La version 2.0.34 du noyau telle que fournie ne permet pas au périphérique
+loopback d'être utilisé comme racine. Une très petite modification du noyau 
+peut rendre ceci possible.
+
+<p>
+Le fichier <tt>/init/main.c</tt> a juste besoin qu'on lui ajoute une seule 
+ligne comme montré dans la version modifiée ci-dessous. La ligne qui dit 
+<tt>"loop", 0x0700</tt> est celle qui a été ajoutée.
+
+<p>
+<tscreen><verb>
+static void parse_root_dev(char * line)
+{
+	int base = 0;
+	static struct dev_name_struct {
+		const char *name;
+		const int num;
+	} devices[] = {
+		{ "nfs",     0x00ff },
+		{ "loop",    0x0700 },
+		{ "hda",     0x0300 },
+
+...
+
+		{ "sonycd",  0x1800 },
+		{ NULL, 0 }
+	};
+
+...
+
+}
+</verb></tscreen>
+
+Une fois le noyau configuré, il devra être compilé pour produire une fichier
+<tt>zImage</tt> (<tt>make zImage</tt>). Ce fichier devrait être <tt>arch/i386/boot/zImage</tt>
+une fois compilé.
+
+
+<sect1>Création du périphérique disque virtuel initial
+
+<p>
+Le disque virtuel initial est simplement crée comme un périphérique loopback 
+au départ. Vous devrez faire ceci en tant que root. Les commandes que vous devez 
+exécuter sont listées ci dessous, elles supposent être lancées depuis le répertoire
+principal de root (<tt>/root</tt>).
+
+<p>
+<tscreen><verb>
+mkdir /root/initrd
+dd if=/dev/zero of=initrd.img bs=1k count=1024
+mke2fs -i 1024 -b 1024 -m 5 -F -v initrd.img
+mount initrd.img /root/initrd -t ext2 -o loop
+cd initrd
+[créez les fichiers]
+cd ..
+umount /root/initrd
+gzip -c -9 initrd.img &gt; initrdgz.img
+</verb></tscreen>
+
+Il y a un certain nombre d'étapes, mais on peut les décrire comme ceci.
+
+<enum>
+<item>Créez un point de montage pour le disque virtuel initial (un répertoire vide).
+
+<item>Créez un fichier vide de la taille requise. Ici j'ai utilisé 1024ko, vous 
+pourriez avoir besoin de plus ou de moins suivant le contenu. (la taille est le 
+dernier paramètre).
+
+<item>Créez un système de fichiers ext2 dans le fichier vide.
+
+<item>Montez le ficher au point de montage, ceci utilise le périphérique loopback. 
+
+<item>Changez le répertoire courant pour le périphérique loopback.
+
+<item>Créez les fichiers requis (voir plus bas pour les détails).
+
+<item>Sortez du périphérique loopback monté.
+
+<item>Démontez le périphérique.
+
+<item>Créez une version compressée pour l'utiliser plus tard.
+</enum>
+
+<bf/Contenu du disque virtuel initial/
+
+Les fichiers dont vous avez besoin sur le disque virtuel représentent le minimum
+nécessaire pour pouvoir d'exécuter une commande.
+
+<itemize>
+<item><tt>/linuxrc</tt> Le fichier qui est lancé pour monter le système de 
+fichiers msdos (voir plus bas).
+<item><tt>/lib/*</tt> L'éditeur de liens dynamiques et les librairies dont les
+programmes ont besoin.
+<item><tt>/etc/*</tt> Le cache utilisé par l'éditeur de liens dynamiques
+(pas strictement requis, mais ça l'empêche de se plaindre).
+<item><tt>/bin/*</tt> Un interpréteur de commandes (<tt>ash</tt> car il est 
+plus petit que  <tt>bash</tt>). Les programmes <tt>mount</tt> et <tt>losetup</tt>
+pour manipuler le disque DOS et configurer les périphériques loopback.
+<item><tt>/dev/*</tt> Les périphériques qui seront utilisés. Vous avez besoin
+de <tt>/dev/zero</tt> pour <tt>ld-linux.so</tt>, <tt>/dev/hda*</tt> pour monter 
+le disque msdos et <tt>/dev/loop*</tt> pour les périphériques loopback.
+<item><tt>/mnt</tt> Un répertoire vide pour y monter le disque msdos.
+</itemize>
+
+Le contenu du disque virtuel initial que j'ai utilisé est énuméré ci-dessous.
+Ces fichiers représentent environ 800ko, une fois pris en compte l'espace perdu
+par les structures du système de fichiers.
+
+<p>
+<tscreen><verb>
+total 18
+drwxr-xr-x   2 root     root         1024 Jun  2 13:57 bin
+drwxr-xr-x   2 root     root         1024 Jun  2 13:47 dev
+drwxr-xr-x   2 root     root         1024 May 20 07:43 etc
+drwxr-xr-x   2 root     root         1024 May 27 07:57 lib
+-rwxr-xr-x   1 root     root          964 Jun  3 08:47 linuxrc
+drwxr-xr-x   2 root     root        12288 May 27 08:08 lost+found
+drwxr-xr-x   2 root     root         1024 Jun  2 14:16 mnt
+
+./bin:
+total 168
+-rwxr-xr-x   1 root     root        60880 May 27 07:56 ash
+-rwxr-xr-x   1 root     root         5484 May 27 07:56 losetup
+-rwsr-xr-x   1 root     root        28216 May 27 07:56 mount
+lrwxrwxrwx   1 root     root            3 May 27 08:08 sh -&gt; ash
+
+./dev:
+total 0
+brw-r--r--   1 root     root       3,   0 May 20 07:43 hda
+brw-r--r--   1 root     root       3,   1 May 20 07:43 hda1
+brw-r--r--   1 root     root       3,   2 Jun  2 13:46 hda2
+brw-r--r--   1 root     root       3,   3 Jun  2 13:46 hda3
+brw-r--r--   1 root     root       7,   0 May 20 07:43 loop0
+brw-r--r--   1 root     root       7,   1 Jun  2 13:47 loop1
+crw-r--r--   1 root     root       1,   3 May 20 07:42 null
+crw-r--r--   1 root     root       5,   0 May 20 07:43 tty
+crw-r--r--   1 root     root       4,   1 May 20 07:43 tty1
+crw-r--r--   1 root     root       1,   5 May 20 07:42 zero
+
+./etc:
+total 3
+-rw-r--r--   1 root     root         2539 May 20 07:43 ld.so.cache
+
+./lib:
+total 649
+lrwxrwxrwx   1 root     root           18 May 27 08:08 ld-linux.so.1 -&gt; ld-linux.so.1.7.14
+-rwxr-xr-x   1 root     root        21367 May 20 07:44 ld-linux.so.1.7.14
+lrwxrwxrwx   1 root     root           14 May 27 08:08 libc.so.5 -&gt; libc.so.5.3.12
+-rwxr-xr-x   1 root     root       583795 May 20 07:44 libc.so.5.3.12
+
+./lost+found:
+total 0
+
+./mnt:
+total 0
+</verb></tscreen>
+
+
+
+La seule étape complexe est la création des périphériques dans <tt>dev</tt>.
+Utilisez le programme <tt>mknod</tt> pour les créer, et servez vous des 
+périphériques dans <tt>/dev</tt> comme modèles pour les paramètres requis.
+
+
+<bf>Le fichier /linuxrc</bf>
+
+Le fichier <tt>/linuxrc</tt> sur le disque virtuel initial est nécessaire pour 
+mettre en place le périphérique loopback, avant de l'utiliser comme racine.
+
+<p>
+L'exemple suivant essaye de monter <tt>/dev/hda1</tt> comme une partition msdos
+et en cas de réussite assigne les fichiers <tt>/linux/linuxdsk.img</tt> et 
+<tt>/linux/linuxswp.img</tt> respectivement aux périphériques <tt>/dev/loop0</tt>
+et <tt>/dev/loop1</tt>.
+
+
+<p>
+<tscreen><verb>
+#!/bin/sh
+
+echo INITRD: Essaye de monter /dev/hda1 comme partition msdos
+
+if /bin/mount -n -t msdos /dev/hda1 /mnt; then
+
+   echo INITRD: Montage réussi
+   /bin/losetup /dev/loop0 /mnt/linux/linuxdsk.img
+   /bin/losetup /dev/loop1 /mnt/linux/linuxswp.img
+   exit 0
+
+else
+
+   echo INITRD: Echec du montage
+   exit 1
+
+fi
+</verb></tscreen>
+
+Le premier périphérique, <tt>/dev/loop0</tt> deviendra la racine et le second,
+<tt>/dev/loop1</tt> deviendra la mémoire virtuelle.
+
+<p>
+Si vous voulez pouvoir écrire sur la partition racine en tant qu'utilisateur normal
+quand vous aurez fini, alors vous devriez plutôt utiliser <tt>mount -n -t msdos 
+/dev/hda1 /mnt -o uid=0,gid=0,umask=000</tt>.
+Ceci associera tous les accès à la partition
+DOS à l'utilisateur root et placera les permissions en conséquences.
+
+<sect1>Création du périphérique racine
+
+<p>
+Le périphérique racine que vous utiliserez est le fichier <tt>linuxdsk.img</tt>.
+Vous devrez le créer de la même façon que le disque virtuel initial, en plus grand.
+Vous pouvez y mettre l'installation de Linux de votre choix.
+
+<p>
+La méthode la plus simple est de copier une installation Linux existante sur 
+ce disque. une alternative est d'y installer une distribution de Linux.
+
+<p>
+En supposant que ceci est fait, vous avez encore des modifications mineures
+à apporter.
+
+<p>
+Le fichier <tt>/etc/fstab</tt> doit référencer les partitions racine et 
+swap en utilisant les deux périphériques loopback qui sont mis en place 
+par le disque virtuel initial.
+
+
+<p>
+<tscreen><verb>
+/dev/loop0     /      ext2   defaults 1 1
+/dev/loop1     swap   swap   defaults 1 1
+</verb></tscreen>
+
+
+Ceci permettra de s'assurer que quand le périphérique racine sera utilisé,
+le noyau ne sera pas induit en erreur sur son emplacement.
+L'espace de swap pourra ainsi être ajouté de la même façon qu'une partition de swap
+normale. Vous devez aussi retirer toute autre référence vers un disque racine
+ou swap.
+
+<p>
+
+Si vous voulez être capable d'accéder à la partition DOS après le démarrage de
+Linux, vous devrez faire quelques petites modifications.
+
+<p>
+Créez un répertoire appelé <tt>/initrd</tt>, qui sera le point de montage
+du disque virtuel initial une fois que le système de fichier racine sera monté 
+en loopback.
+<p>
+Créez un lien symbolique appelé <tt>/DOS</tt> qui pointe sur <tt>/initrd/mnt</tt>
+où la partition DOS sera montée.
+<p>
+Ajoutez un ligne dans le fichier rc qui monte les disques. Il devra lancer la
+commande <tt>mount -f -t msdos /dev/hda1 /initrd/mnt</tt> ; ceci créera un
+montage "fictif" de la partition DOS pour que tous les autres programmes (comme
+<tt/df/) sachent que la partition DOS est montée et où la trouver.
+Si vous avez utilisé des options différentes dans <tt>/linuxrc</tt>, vous devrez 
+évidemment utiliser les mêmes ici.
+
+<p>
+Il n'y a plus de raison d'avoir le noyau Linux sur le périphérique racine
+puisqu'il a été chargé plus tôt. Toutefois, si vous utilisez les modules,
+vous devrez les inclure normalement sur ce périphérique.
+
+
+<sect1>Création du périphérique de mémoire virtuelle.
+
+<p>
+Le périphérique que vous utiliserez sera le fichier <tt>linuxswap.img</tt>.
+Le périphérique de mémoire virtuelle <em/(swap)/ est très simple à fabriquer. 
+Créez un fichier vide de la même façon que pour le disque virtuel initial, 
+puis exécutez  <tt>mkswap linuxswap.img</tt> pour l'initialiser.
+
+<p>
+La taille de la mémoire virtuelle dépendra de ce que vous comptez faire 
+avec le système installé, mais je recommanderais entre 8 Mo et la quantité de 
+RAM que vous avez.
+
+
+<sect1>Création du répertoire MSDOS
+
+<p>
+Les fichiers qui seront utilisés devront être déplacés sur la partition DOS.
+
+<p>
+Les fichiers qui devront être dans le répertoire DOS appelé <tt>C:\LINUX</tt>
+sont les suivants :
+
+<itemize>
+<item><tt>LINUXDSK.IMG</tt> L'image de la partition qui deviendra le périphérique 
+racine.
+<item><tt>LINUXSWP.IMG</tt> L'espace de mémoire virtuelle.
+</itemize>
+
+<sect1>Création de la disquette de démarrage.
+
+<p>
+La disquette de démarrage qui est utilisée est juste une disquette amorçable
+au format DOS.
+
+<p>
+On la crée en utilisant <tt>format a: /s</tt> sous DOS.
+
+<p>
+Sur ce disque vous devrez créer un fichier <tt>AUTOEXEC.BAT</tt> (comme 
+ci-dessous) et copier le noyau, le disque virtuel initial sous forme 
+compressée et l'exécutable <tt/LOADLIN/.
+
+<itemize>
+<item><tt>AUTOEXEC.BAT</tt> Le fichier de commandes exécuté automatiquement 
+par le DOS.
+<item><tt>LOADLIN.EXE</tt> L'exécutable du programme <tt>LOADLIN</tt>.
+<item><tt>ZIMAGE</tt> Le noyau Linux.
+<item><tt>INITRDGZ.IMG</tt> L'image compressée du disque virtuel initial.
+</itemize>
+
+Le fichier <tt>AUTOEXEC.BAT</tt> devrait contenir une seule ligne comme 
+ci-dessous.
+
+<tscreen><verb>
+\loadlin \zImage initrd=\initrdgz.img root=/dev/loop0 ro
+</verb></tscreen>
+
+Ceci spécifie l'image du noyau à utiliser, l'image du disque virtuel initial,
+et le périphérique racine après que le disque virtuel ait fait son office,
+avec la partition racine montée en lecture seule.
+
+
+<sect>Démarrage du système
+
+<p>
+Pour démarrer depuis le nouveau périphérique racine, il suffit de faire 
+démarrer le PC sur la disquette préparée plus haut.
+
+<p>
+Vous verrez les événement suivants se succéder :
+<enum>
+<item>Chargement du DOS.
+<item>Démarrage AUTOEXEC.BAT 
+<item>Lancement de LOADLIN
+<item>Copie du noyau Linux dans la mémoire
+<item>Le disque virtuel initial est copié en mémoire
+<item>Le noyau Linux démarre
+<item>Le fichier <tt>/linuxrc</tt> sur le disque virtuel initial est exécuté
+<item>La partition DOS est montée, ainsi que les périphériques racine et de swap
+<item>La séquence de démarrage continue depuis le périphérique loopback
+</enum>
+
+Une fois ceci accompli, vous pouvez retirer la disquette et utiliser le système
+Linux.
+
+<sect1>Problèmes possibles et leurs solutions
+
+<p>
+Il y a un certain nombre d'étapes de ce processus qui peuvent échouer. Je vais
+essayer d'expliquer lesquelles, et ce qu'il faut vérifier.
+
+
+<p>
+Le démarrage du DOS est facile à reconnaître grâce au message qu'il affiche
+à l'écran : <tt>Démarrage de MS-DOS...</tt> . Si ceci n'est pas visible, 
+soit la disquette n'est pas amorçable, soit le PC ne démarre pas sur le lecteur 
+de disquettes.
+
+<p>
+Quand le fichier <tt>AUTOEXEC.BAT</tt> est exécuté, les commandes qu'il contient
+devraient être affichées sur l'écran par défaut. Dans le cas présent, il 
+n'y a d'une seule ligne dans le fichier, qui lance <tt>LOADLIN</tt>.
+
+<p>
+Quand <tt>LOADLIN</tt> se lancera, il exécutera deux actions facile à distinguer : 
+premièrement il chargera le noyau en mémoire, ensuite il copiera le disque virtuel
+en mémoire. Chacune de ces actions est indiquée par un message <tt>Loading...</tt> .
+
+<p>
+Le noyau commence par se décompresser, ceci peut engendrer des erreur <bf>crc</bf>
+si l'image du noyau est corrompue. Ensuite, il lancera la séquence d'initialisation
+qui est très prolixe en messages de diagnostic. Le chargement du 
+périphérique disque virtuel sera aussi visible durant cette phase.
+
+<p>
+Quand le fichier <tt>/linuxrc</tt> est lancé, il n'y a pas de message de 
+diagnostic, mais vous pouvez les ajouter pour vous aider à debugger.
+Si cette étape échoue dans le montage du périphérique loopback en tant 
+que périphérique racine, vous verrez un message avertissant qu'il n'y
+a pas de périphérique racine, et le noyau interrompra son exécution.
+
+<p>
+La séquence de démarrage normale du nouveau système de fichiers racine va
+maintenant continuer, et cette partie est à nouveau généreuse en messages.
+Il pourrait y avoir des problèmes dûs au fait que le système de fichiers
+racine est monté en lecture-écriture, mais l'option de ligne de commande
+'<tt>ro</tt>' pour <tt>LOADLIN</tt> devrait arranger ça. Un autre problème
+qui peut apparaître est la confusion de la séquence de démarrage à propos
+de l'emplacement du système de fichiers racine ; ceci sera probablement dû à
+un problème avec <tt>/etc/fstab</tt>.
+
+<p>
+Quand la séquence de démarrage est réalisée, le problème qui reste est que les
+programmes ne savent pas si la partition DOS est montée ou non. C'est pourquoi
+c'est une bonne idée d'utiliser une fausse commande mount décrite plus tôt. 
+Ceci rend la vie nettement plus simple si vous voulez accéder au fichiers sur 
+le périphérique DOS.
+
+
+<sect1>Documents de référence
+
+<p>
+Les document que j'ai utilisés pour créer mon premier périphérique racine
+en loopback sont :
+
+<p>
+<itemize>
+<item>Les sources du noyau Linux, en particulier <tt>init/main.c</tt>
+<item>La documentation du noyau Linux, en particulier
+<tt>Documentation/initrd.txt</tt> et <tt>Documentation/ramdisk.txt</tt>.
+<item>La documentation de <tt>LILO</tt>.
+<item>La documentation de <tt>LOADLIN</tt>.
+</itemize>
+
+
+<sect>Autres possibilités de périphériques racine en loopback
+
+<p>
+Une fois que le principe de démarrer sur un système de fichiers dans une partition
+DOS est acquis, il y a de nombreuses autres choses que l'on peut faire.
+
+<sect1>Installation "tout sur un disque DOS"
+
+<p>
+S'il est possible de charger Linux depuis un fichier sur un disque dur DOS en 
+utilisant une disquette de démarrage, alors il est clair qu'on peut faire la
+même chose en utilisant le disque dur lui-même.
+
+<p>
+Un menu de choix de configuration au démarrage peut être utilisé pour donner
+l'option de lancer <tt>LOADLIN</tt> depuis l'<tt>AUTOEXEC.BAT</tt>. Ceci 
+donnera une séquence de démarrage plus rapide, mais c'est la seule
+différence.
+
+<sect1>Installation démarrée avec LILO 
+
+<p>
+Utiliser <tt>LOADLIN</tt> n'est qu'une des options possibles pour charger un 
+noyau Linux. Il y a aussi <tt>LILO</tt> qui fait pratiquement la même chose,
+mais sans nécessiter DOS.
+
+<p>
+Dans ce cas, la disquette au format DOS peut être remplacée par une disquette
+au format ext2fs. A part cela, les détails restent très similaires, le noyau
+et le disque virtuel initial étant encore des fichiers sur cette disquette.
+
+<p>
+La raison pour laquelle j'ai choisi la méthode avec <tt>LOADLIN</tt> est que 
+les arguments qui doivent être données à <tt>LILO</tt> sont légèrement plus 
+complexes. Le contenu de la disquette est aussi plus clair pour un observateur
+lambda, puisqu'on peut la lire sous DOS.
+
+<sect1>Installation VFAT / NTFS 
+
+<p>
+J'ai essayé la méthode NTFS, et je n'ai pas eu de problème avec. Le support
+du système de fichier NTFS n'est pas une option standard du noyau, mais vous
+devez appliquer le patch de Martin von L&ouml;wis, qui est disponible sur
+sa page web. 
+<htmlurl url="http://www.informatik.hu-berlin.de/~loewis/ntfs/"
+name="http://www.informatik.hu-berlin.de/~loewis/ntfs/">.
+Ce logiciel est en version alpha et requiert un patch qui n'est pas totalement
+trivial à appliquer au noyau, mais pas trop difficile non plus.
+
+<p>
+Les seuls changements pour les options VFAT ou NTFS sont sur le disque virtuel
+initial, le fichier <tt>/linuxrc</tt> doit monter un système de fichiers
+de type vfat ou ntfs plutôt que msdos.
+<p>
+Je ne connais pas de raison pour laquelle ceci ne marcherait pas aussi 
+sur une partition VFAT.
+
+<sect1>Installer Linux sans repartitionner
+
+<p>
+Le processus d'installation de Linux sur un PC avec une distribution
+standard requiert de démarrer sur une disquette et de repartitionner le
+disque dur. Cette étape pourrait être remplacée par une disquette de 
+démarrage qui crée un périphérique loopback vide et un fichier de swap.
+Ceci permettrait à l'installation de procéder normalement, sur le périphérique
+loopback plutôt que sur une partition.
+
+<p>
+Ceci pourrait être une alternative à une installation <tt>UMSDOS</tt>, et serait
+plus efficace pour l'utilisation du disque, puisque l'unité d'allocation minimale 
+sur un système de fichiers ext2 est de 1ko contre 32ko sur une partition DOS. On peut
+aussi l'utiliser sur des disques VFAT et NTFS qui sinon posent un problème.
+
+
+<sect1>Démarrer depuis un périphérique non amorçable
+
+<p>
+Cette méthode peut aussi être utilisée pour démarrer un système Linux depuis 
+un périphérique qui n'est pas normalement amorçable. 
+
+<p>
+<itemize>
+<item>CD-Rom
+<item>Disques Zip
+<item>Lecteurs de disques sur port parallèle
+</itemize>
+
+Evidemment, de nombreux autres périphériques pourraient être utilisés, 
+les partitions racines en NFS sont déjà incluses dans le noyau comme une option,
+mais la méthode présentée ici pourrait être utilisée à la place.
+
+</article>

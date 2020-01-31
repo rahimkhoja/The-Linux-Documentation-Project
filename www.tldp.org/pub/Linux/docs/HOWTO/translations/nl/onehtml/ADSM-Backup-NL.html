@@ -1,0 +1,164 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+<HEAD>
+ <META NAME="GENERATOR" CONTENT="SGML-Tools 1.0.9">
+ <TITLE>Linux ADSM Mini-Howto</TITLE>
+
+
+</HEAD>
+<BODY>
+<H1>Linux ADSM Mini-Howto</H1>
+
+<H2>Thomas K&ouml;nig,
+<CODE>Thomas.Koenig@ciw.uni-karlsruhe.de</CODE><BR>
+Vertaald door: Ellen Bokhorst, <CODE>bokkie@nl.linux.org</CODE></H2>v, 15 jan 1997
+<P><HR>
+<EM> In dit document wordt beschreven hoe een client te installeren
+en gebruiken voor het commerci&euml;le ADSM backupsysteem onder Linux/i386.</EM>
+<HR>
+<H2><A NAME="s1">1. Introductie</A></H2>
+
+<P>ADSM is een op het netwerk gebaseerd backupsysteem, het wordt verkocht door IBM,
+en is door veel organisaties in gebruik. Er zijn clients voor een grote
+diversiteit aan systemen (verschillende UNIX merken, Windows, Novell, Mac,
+Windows NT). Helaas is er tijdens dit schrijven geen versie voor Linux.
+<P>Je zal gebruik moeten maken van de SCO binary, en de
+iBCS2-emulator moeten installeren voor het draaien van ADSM.
+Deze beschrijving is voor ADSM v2r1.
+<P>Tijdens dit schrijven, ben ik me alleen bewust van een versie die met
+de i386 versie van Linux werkt.
+<H2><A NAME="s2">2. Installeren van de iBCS module</A></H2>
+
+<P>De iBCS2 module is beschikbaar vanaf
+<A HREF="ftp://tsx-11.mit.edu/pub/linux/BETA/ibcs2">ftp://tsx-11.mit.edu/pub/linux/BETA/ibcs2</A>. 
+Gebruik voor kernelversie 1.2.13 <CODE>ibcs-1.2-950721.tar.gz</CODE>, pak het uit 
+en pas de patches <CODE>ibcs-1.2-950808.patch1</CODE> en 
+<CODE>ibcs-1.2-950828.patch2</CODE> toe.
+Je kunt dan &quot;<CODE>make</CODE>&quot; intikken en de iBCS modules
+installeren met &quot;<CODE>insmod</CODE>&quot;.
+Haal voor een 2.0 kernelversie <CODE>ibcs-2.0-960610.tar.gz</CODE> op, pak
+het uit naar een geschikte plaats, chdir naar die directory, en pas de
+volgende patch toe:
+<PRE>
+
+--- iBCSemul/ipc.c.orig Wed Jan 15 21:32:15 1997
++++ iBCSemul/ipc.c      Wed Jan 15 21:32:31 1997
+@@ -212,7 +212,7 @@
+        switch (command) {
+                case U_SEMCTL:
+                        cmd = ibcs_sem_trans(arg3);
+-                       arg4 = (union semun *)get_syscall_parameter (regs, 4);
++                       arg4 = (union semun *)(((unsigned long *) regs->esp) + (5));
+                        is_p = (struct ibcs_semid_ds *)get_fs_long(arg4->buf);
+ #ifdef IBCS_TRACE
+                        if ((ibcs_trace &amp; TRACE_API) || ibcs_func_p->trace)
+</PRE>
+
+Kopieer vervolgens <CODE>CONFIG.i386</CODE> naar <CODE>CONFIG</CODE>, en typ <CODE>make</CODE>.
+Maak de benodigde apparaatbestanden aan als je die nog niet hebt door het
+uitvoeren van
+<PRE>
+# cd /dev
+# ln -s null XOR
+# ln -s null X0R
+# mknod socksys c 30 0
+# mknod spx c 30 1
+</PRE>
+<H2><A NAME="s3">3. Installeren van de ADSM client</A></H2>
+
+<P>De SCO-binary wordt in drie tar-bestanden, of op disks geleverd. Ga naar
+de root-directory, stel je umask in overeenkomstig je beleid, en pak
+ze vanuit daar (als root) uit.
+In de Directory /tmp, vind je een installatie-script; voer dat uit.
+<P>Je zal met de hand <CODE>/usr/adsm/dsm.sys</CODE> en
+<CODE>/usr/adsm/dsm.opt</CODE> moeten wijzigen.
+In <CODE>dsm.sys</CODE>, zijn de van belang zijnde op te geven regels:
+<P>
+<DL>
+<DT><B>Servername</B><DD><P>De naam van de server
+</DL>
+<P>
+<DL>
+<DT><B>TCPServeraddress</B><DD><P>De fully qualified hostnaam van de server
+</DL>
+<P>
+<DL>
+<DT><B>NODename</B><DD><P>Je eigen hostnaam
+</DL>
+<P>In <CODE>dsm.opt</CODE>, moet je opgeven
+<P>
+<DL>
+<DT><B>Server</B><DD><P>Als hiervoor
+</DL>
+<P>
+<DL>
+<DT><B>Followsymbolic</B><DD><P>Of je wel of niet symbolische links wilt volgen (in het algemeen niet 
+verstandig)
+</DL>
+<P>
+<DL>
+<DT><B>SUbdir</B><DD><P>Of je een backup wilt maken van subdirectory's 
+(meestal wil je dat wel)
+</DL>
+<P>
+<DL>
+<DT><B>domain</B><DD><P>De bestandssystemen waarvan je een backup wilt
+</DL>
+<P>Je zal dan een SCO-compatibel <CODE>/etc/mnttab</CODE> aan moeten maken vanuit
+je <CODE>/etc/fstab</CODE>. Je kunt hiervoor het volgende Perl-script
+<CODE>fstab2mnttab</CODE> gebruiken.
+<BLOCKQUOTE><CODE>
+<HR>
+<PRE>
+#!/usr/bin/perl
+
+$mnttab_struct = "a32 a32 I L";
+
+open(MTAB, "/etc/mtab") || die "Kan /etc/mtab niet openen: $!\n";
+open(MNTTAB, ">/etc/mnttab") || die "Kan /etc/mnttab niet openen: $!\n";
+
+while(&lt;MTAB>) {
+    next if /pid/;
+    chop;
+    /^(\S*)\s(\S*)\s(\S*)\s.*$/;
+    $device = $1;
+    $mountpt = $2;
+    $fstype = $3;
+    if($fstype ne "nfs" &amp;&amp; $fstype ne "proc") {
+        $mnttab_rec =
+            pack($mnttab_struct, $device, $mountpt, 0x9d2f, time());
+        syswrite(MNTTAB, $mnttab_rec, 72);
+        print "Entry gemaakt voor: $device $mountpt $fstype\n";
+    }
+}
+
+close(MNTTAB);
+exit 0;
+</PRE>
+<HR>
+</CODE></BLOCKQUOTE>
+
+Je hoeft voor deze clients geen shared library's te installeren, alles is
+statisch gelinkt.
+<H2><A NAME="s4">4. Uitvoeren van de client</A></H2>
+
+<P>Er zijn twee clients, <CODE>dsm</CODE>, een X11-interface, en
+<CODE>dsmc</CODE>, een opdrachtregel interface. De werknemers in het 
+computercentrum zullen je aangeven hoe het te activeren.
+Waarschijnlijk zal een opstartscript dat tijdens het booten wordt uitgevoerd
+nodig zijn:
+<P>
+<PRE>
+dsmc schedule -quiet 2>&amp;1 >/dev/null &amp;
+</PRE>
+<H2><A NAME="s5">5. Bekende problemen</A></H2>
+
+<P>Helaas kan SCO alleen omgaan met hostnamen die uit niet meer dan acht
+tekens bestaan. Als je hostnaam langer is, of fully qualified, dan kan
+het zijn dat je de hostnaam in de <CODE>NODename</CODE> regel in
+<CODE>/usr/adsm/dsm.sys</CODE> op moet geven.
+<P>Als je gebruik maakt van de variabele DISPLAY , zan zal je de qualified
+hostnaam aan moeten leveren (d.w.z. <CODE>DISPLAY=host.full.do.main:0</CODE> 
+in plaats van <CODE>DISPLAY=host:0</CODE>).
+</BODY>
+</HTML>

@@ -1,0 +1,1036 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+<HEAD>
+ <META NAME="GENERATOR" CONTENT="SGML-Tools 1.0.9">
+ <TITLE>Linux 2.4 Packet Filter HOWTO (NL)</TITLE>
+
+
+</HEAD>
+<BODY>
+<H1>Linux 2.4 Packet Filter HOWTO (NL)</H1>
+
+<H2>Rusty Russell, mailing list <CODE>netfilter@lists.samba.org</CODE>, vertaald door Sjoerd Langkemper, <CODE>sjoerd@linuxonly.nl</CODE></H2>$Revision: 1.2 $ $Date: 2003/02/08 20:41:49 $ $ Translation 2001/05/20 22:31:47 Version 0.04 $
+<P><HR>
+<EM>Deze HOWTO beschrijft hoe je pakketjes op een netwerk kan filteren
+onder een Linux 2.4 kernel.</EM>
+<HR>
+<H2><A NAME="intro"></A> <A NAME="s1">1. Inleiding</A></H2>
+
+<P>Voor deze HOWTO is enige basiskennis vereist; je behoort te weten wat 
+ip adressen, netmasks, routing en DNS zijn. Is dit niet het geval, dan
+raad ik je aan de Network Concepts HOWTO te lezen.
+<P>Toen ik (Sjoerd) deze HOWTO aan het vertalen was, liep ik tegen een paar 
+problemen en het kan zijn dat je sommige dingen raar vertaald vindt. Is
+dat het geval, waarschuw me dan. Hier zijn wat dingen waar ik twijfelde:
+<P>
+<UL>
+<LI>packet filter is vertaald met pakket filter. Hiermee wordt bedoeld een
+stukje software wat pakketjes kan tegenhouden en doorlaten.</LI>
+<LI>rule chain is een serie filter regels, en is vertaald met reeks.</LI>
+<LI>interface is vertaald met interface en is een netwerkkaart of modem,
+ofwel iets waarmee een netwerk benaderd kan worden.</LI>
+<LI>connection tracking is vertaald met connectie tracking. Connectie
+tracking is dat netfilter bijhoud bij welke connectie pakketjes horen.</LI>
+<LI>user-defined chains is vertaald met gebruikersreeks. Dit is een reeks
+die niet ingebouwd is, en die door de gebruiker samengesteld is.</LI>
+<LI>queue en queue-handler zijn niet vertaald, want dit is zo een specifiek
+onderwerp dat als je hier wat mee gaat doen, dat je echt wel weet wat dit
+betekent.</LI>
+<LI>Pakketjes die `geDROPt' worden, worden `tegengehouden'. Dat wil zeggen
+dat ze in /dev/null komen om voor altijd te verdwijnen.</LI>
+</UL>
+<P>Deze HOWTO gaat onder andere in op hoe het pakket filter werkt, hoe NAT werkt,
+en hoe je de oude ipchains en ipfwadm regels kan gebruiken. Na het lezen 
+van deze HOWTO en het toepassen van alle dingen erin is je netwerk niet
+gegarandeerd <B>veilig</B>. Er is niet zoiets als veilig. Je kan niet alle
+pakketjes tegenhouden en verwachten dat het ook nog werkt.
+<P>Gelukkig kan je met iptables precies bepalen welke pakketjes je tegen wilt
+houden, dus je kan zelf bepalen hoe veel risico je neemt en hoeveel
+gebruiksvriendelijkheid je inlevert.
+<P>(C) 2000 Paul `Rusty' Russell.  Licenced under the GNU GPL.
+<P>Vertaald door Sjoerd Langkemper, sjoerd@linuxonly.nl
+<H2><A NAME="s2">2. Waar kan ik meer informatie vinden?</A></H2>
+
+<P>Er zijn drie officiele websites:
+<UL>
+<LI>Met dank aan 
+<A HREF="http://netfilter.filewatcher.org">Filewatcher</A>.</LI>
+<LI>Met dank aan 
+<A HREF="http://www.samba.org/netfilter">Het Samba Team en SGI</A>.</LI>
+<LI>Met dank aan 
+<A HREF="http://netfilter.kernelnotes.org">Jim Pick</A>.</LI>
+</UL>
+<P>Die laatste site was offline de laatste keer dat ik (Sjoerd) keek.
+<P>De officiele mailinglist kan je vinden op
+<A HREF="http://lists.samba.org">Samba's Listserver</A>.
+<H2><A NAME="s3">3. Wat is een pakket filter?</A></H2>
+
+<P>Een pakket filter is een stukje software wat naar de <EM>header</EM> van
+pakketjes kijkt terwijl ze langskomen. In de header staat informatie over
+het pakketje en dat wordt onder andere gebruikt om het lot van het
+pakketje te bepalen. Meestal is dat ofwel doorlaten (accept), ofwel tegenhouden
+(drop). 
+<P>Onder Linux zit het pakket filter in de kernel ingebouwd en dat biedt wat meer
+mogelijkheden voor wat er met de pakketjes kan gebeuren. Natuurlijk is het
+idee nog steeds hetzelfde: aan de hand van informatie over het pakketje
+wordt besloten wat ermee gebeurt.
+<H2>3.1 Waarom zou ik een pakket filter willen?</H2>
+
+<P>
+<DL>
+<DT><B>Gezag:</B><DD><P>Als je je Linux computer gebruikt om je interne netwerk aan
+het internet of een ander netwerk te hangen, krijg je de mogelijkheid om
+bepaalde pakketjes wel door te laten, en andere niet. Wil je niet dat je
+werknemers naar www.playboy.com gaan, dan kan dat met een pakket filter.
+<DT><B>Veiligheid:</B><DD><P>Als je Linux computer de grens is tussen het chaotische
+internet vol met crackers, hackers en scriptkiddies en je eigen veilige
+netwerkje, dan is het fijn om te weten dat je al dit slechts buiten kan
+sluiten met een pakket filter. Aangezien de meeste mensen alleen de
+connecties naar buiten willen maken en voorkomen dat er een connectie naar
+binnen wordt gemaakt, kan een pakket filter in veel situaties veiligheid
+bieden.
+<DT><B>Controle:</B><DD><P>Als er iets vreemds gebeurt op je netwerk, zoals een machine
+die opeens allemaal pakketjes begint te versturen zonder reden, wil je er
+vast vanaf weten. Als je weet wat er gebeurt op je netwerk, kan je ingrijpen
+als het nodig is.
+</DL>
+<H2><A NAME="filter-linux"></A> 3.2 Hoe kan je het pakket filter instellen onder Linux?</H2>
+
+<P>Linux had al een pakket filter sinds de 1.1 kernels. Deze eerste filters
+kwamen oorspronkelijk uit BSD en werden door Alan Cox in Linux ingevoerd.
+Toen kernel 2.0 uit kwam was er een nieuwe tool, door Jos Vos: ipfwadm was
+nu het programma om de filter regels mee in te stellen. In kernel 2.2
+werd weer een nieuw programma ontwikkeld, namelijk ipchains. Nu is het zover
+dat de 2.4 kernels er zijn en nogmaals een nieuwe pakket filter hebben:
+iptables. Iptables brengt ook echt nieuwe opties met zich mee, die ipchains
+en ipfwadm niet hadden. Zo kan je nu ook regels maken op basis van de gebruiker
+die het pakketje verstuurt, of op basis van hoeveel connecties er al zijn.
+<P>Om het pakket filter te kunnen gebruiken moet je je kernel wel compileren met
+netfilter. Netfilter is het deel van de kernel wat iptables gebruikt om zijn
+regels te realiseren. Je hebt minimaal kernel 2.3.15 nodig, en je moet de optie
+CONFIG_NETFILTER aanschakelen.
+<H3> iptables</H3>
+
+<P>Het programma iptables geeft aan de kernel door welke regels in werking
+moeten treden, en de kernel zorgt dat elk pakketje gecontroleerd wordt.
+Dit betekent echter wel dat als je de computer opnieuw opstart, de regels
+weer verloren gaan. Er zijn wel manieren om dit tegen te gaan, zie hiervoor
+<A HREF="#permanent">Regels instellen bij het opstarten</A>.
+<P>iptables vervangt ipfwadm en ipchains, maar met een speciale module kan je
+nog steeds je oude regels gebruiken onder iptables. Zie hiervoor 
+<A HREF="#oldstyle">Ipchains of ipfwadm gebruiken</A><H3><A NAME="permanent"></A> Regels instellen bij het opstarten</H3>
+
+<P>Omdat de pakket filter regels in de kernel worden opgeslagen, zullen
+deze verloren gaan bij het opnieuw opstarten van de computer.
+<P>Er zijn twee manieren om dit te voorkomen. Er zijn twee programma's,
+namelijk iptables-save en iptables-restore die een set regels in een
+bestand kunnen opslaan. Je kan dan bij het opstarten van je computer de regels
+laden uit een bestandje.
+<P>Je kan ook de filter regels in een scriptje zetten en het scriptje elke
+keer laden bij het opstarten van de computer. In het scriptje staan dan
+de commando's die je ook gebruikte om de huidige regels in te stellen.
+<H2><A NAME="s4">4. Wie is Rusty? Wie is Sjoerd?</A></H2>
+
+<P>Rusty is de man die het Linux IP pakket filter onderhoudt. Hij schreef ipchains
+en heeft daar veel van geleerd om iptables beter te maken. Natuurlijk heeft hij
+dit niet alleen gedaan en hij zou ook niet genoeg tijd hebben, als 
+<A HREF="http://www.watchguard.com">WatchGuard</A> hem hier niet voor
+betaalde. Rusty is geen kernel guru. Andere mensen zoals David S. Miller,
+Alexey Kuznetsov, Andi Kleen en Alan Cox hebben hem hiermee geholpen.
+<P>Het schrijven van iptables kostte Rusty en anderen een jaar, maar dat was
+zodat het in &eacute;&eacute;n keer goed kon.
+<P>Sjoerd is een van de webmasters bij 
+<A HREF="http://www.linuxonly.nl">LinuxOnly.nl</A> en was van plan een
+iptables HOWTO te schrijven toen hij de Engelse versie van dit document
+tegen kwam. Hij vond het wel een goed idee om dit naar het Nederlands te
+vertalen.
+<P>Als je `ik' leest, betekent het `Sjoerd'. Als Rusty iets heeft gezegd
+als `I think it's a good idea' dan wordt dat meestal vertaald met `Het is
+misschien een goed idee' en soms met `Rusty denkt...'.
+<H2><A NAME="s5">5.  Rusty's Turbo Pakket Filter cursus</A></H2>
+
+<P>De meeste mensen hebben een PPP connectie naar het internet en willen
+niet meer dan voorkomen dat er connecties gemaakt worden vanaf het internet.
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+## Voeg modules in (niet nodig als deze zijn ingebouwd in de kernel).
+# insmod ip_conntrack
+# insmod ip_conntrack_ftp
+
+## Nieuwe reeks regels maken, die alle inkomende connecties tegenhoud.
+# iptables -N block
+# iptables -A block -m state --state ESTABLISHED,RELATED -j ACCEPT
+# iptables -A block -m state --state NEW -i ! ppp0 -j ACCEPT
+# iptables -A block -j DROP
+
+## Ga naar die reeks vanuit de INPUT en FORWARD reeks.
+# iptables -A INPUT -j block
+# iptables -A FORWARD -j block
+</PRE>
+</CODE></BLOCKQUOTE>
+<H2><A NAME="s6">6.  Hoe de filters werken </A></H2>
+
+<P>Je kan je pakket filter vorm geven door regels toe te voegen aan reeksen.
+Zulke reeksen (<B>chains</B> in het Engels) worden regel voor regel
+nagelopen om te kijken of er een regel is voor het huidige pakketje.
+<P>Er zijn standaard drie reeksen in de kernel, namelijk <B>INPUT</B> (inkomend),
+<B>OUTPUT</B> (uitgaand) en <B>FORWARD</B> (doorsturen).
+<P>De reeksen zijn als volgt gerangschikt:
+<P>
+<PRE>
+                          _____
+Inkomend                 /     \         Uitgaand
+       -->[ Router ]--->|FORWARD|------->
+          [ keuze  ]     \_____/        ^
+               |                        |
+               v                      ____
+              ___                    /    \
+             /   \                  |OUTPUT|
+            |INPUT|                  \____/
+             \___/                      ^
+               |                        |
+               --> Lokale programma's --^
+</PRE>
+<P>De drie rondjes staan voor de drie reeksen. Als een pakketje bij zo'n
+cirkel aankomt worden de regels nagelopen om het lot van het pakketje te
+bepalen. Als hieruit blijkt dat het pakketje moet worden genegeerd (DROP)
+dan wordt het pakketje gelijk daar gestopt. Als uit de reeks blijkt dat
+er niets mis is met het pakketje (ACCEPT) dan doorloopt het pakketje
+de rest van het schema.
+<P>Elke reeks bestaat uit een aantal regels en een beleid (policy). Elke regel
+heeft de vorm van: "Als het pakketje deze eigenschappen heeft, doe dan dit 
+en dat met het pakketje.". Als deze regel niet van toepassing is op het
+pakketje (het pakketje heeft niet de eigenschappen voor deze regel), dan
+wordt de volgende regel gelezen. Als de laatste regel is gelezen en er is geen
+regel die van toepassing is op dit pakketje, dan wordt de actie uitgevoerd
+die het beleid is. Dit is dus een standaard actie die van toepassing is op 
+alle pakketjes die niet door een regel gespecifeerd zijn. Het beleid is meestal
+het pakketje negeren (DROP) zodat onbekende pakketjes niet door kunnen dringen.
+<P>
+<OL>
+<LI>Als een pakketje binnenkomt (via een modem of ethernetkaart
+bijvoorbeeld), bepaalt de kernel eerst waar het pakketje heen moet. Dit
+heet routing.</LI>
+<LI>Als het pakketje voor deze computer bedoeld is, wordt het pakketje
+doorgegeven aan de INPUT reeks. Als het hierdoor komt, wordt het doorgegeven
+aan de programma's op de computer.</LI>
+<LI>Als het pakketje voor een andere computer bedoeld is, en de kernel
+kan niet forwarden of het weet niet hoe het geforward moet worden, wordt 
+het pakketje genegeerd. Als er wel geforward kan worden, dan komt het
+pakketje in de FORWARD reeks. Komt het hierdoor, dan wordt het doorgestuurd
+naar een andere machine.</LI>
+<LI>Als een programma op de computer een pakketje verstuurd, moet het eerst
+door de OUTPUT reeks om verzonden te kunnen worden.</LI>
+</OL>
+<H2><A NAME="s7">7.  iptables gebruiken </A></H2>
+
+<P>iptables heeft een goede gebruikershandleiding (<CODE>man iptables</CODE>)
+en deze is dus te gebruiken als je ergens meer van wil weten. Als je al
+bekend bent met ipchains kan je het hoofdstuk
+<A HREF="#Appendix-A">Differences Between iptables and ipchains</A>
+lezen, maar je kan natuurlijk ook gewoon doorlezen.
+<P>Er zijn drie standaardreeksen die je niet kan verwijderen, maar je kan
+ook nog zelf extra reeksen maken. Hier zijn wat opties waarmee je reeksen
+kan onderhouden:
+<P>
+<OL>
+<LI> Een nieuwe reeks maken (-N);</LI>
+<LI> Een lege reeks verwijderen (-X);</LI>
+<LI> Het beleid (policy) voor een standaardreeks wijzigen (-P);</LI>
+<LI> De regels weergeven in een reeks (-L);</LI>
+<LI> Alle regels uit een reeks verwijderen (-F);</LI>
+<LI> De pakket en byte tellers op nul zetten (-Z).</LI>
+</OL>
+<P>Er zijn een paar manieren om regels in een reeks te onderhouden:
+<P>
+<OL>
+<LI> Voeg een regel toe aan het einde van een reeks (append) (-A);</LI>
+<LI> Voeg een regel toe op een bepaalde positie in een reeks (insert) (-I);</LI>
+<LI> Vervang een regel door een andere regel in een reeks (replace) (-R);</LI>
+<LI> Verwijder een bepaalde regel uit een reeks (-D).</LI>
+</OL>
+<H2>7.1  Wat er gebeurt als je je computer opstart </H2>
+
+<P>iptables kan in een kernel module zitten, namelijk <B>iptable_filter.o</B>.
+Deze module zou automatisch geladen moeten worden zodra je iptables opstart.
+Deze code kan ook in de kernel ingebouwd worden.
+<P>Voordat iptables een keer gestart is zijn alle standaard reeksen leeg
+en hebben het beleid ACCEPT, ofwel alles doorlaten. Je kan het beleid van
+de FORWARD reeks wijzigen door de optie "forward=0" mee te geven aan de
+iptable_filter module. Als op jou computer niet alle reeksen leeg zijn bij
+het opstarten van je computer, dan kan het zijn dat je distributie in de
+bootscripts de regels aanpast.
+<H2>7.2  Een regel opgeven </H2>
+
+<P>Natuurlijk kan je niets met een pakket filter als je geen regels op kan geven.
+Meestal wil je gewoon een regel aan het einde toevoegen (-A) of verwijderen.
+Een regel ergens invoegen (-I) is handig als de volgorde van je regels
+belangrijk is en een regel vervangen (-R) is handig als bijvoorbeeld een 
+IP-adres verandert.
+<P>Elke regel bepaalt welke eigenschappen een pakketje moet hebben zodat deze
+regel ervoor geld, en wat in dat geval met het pakketje moet gebeuren.
+Je kan bijvoorbeeld alle pakketjes die van het protocol ICMP zijn en die van
+het IP 127.0.0.1 afkomen, tegenhouden (DROP). De eigenschappen zijn dan 
+dat het protocol ICMP is, het IP 127.0.0.1. Het doel is DROP.
+<P>127.0.0.1 is de loopback adapter. Dit IP heb je zelfs als je geen netwerk
+hebt. Je kan ICMP pakketjes produceren met het programma ping, wat een pakketje
+stuurt en meld of het aangekomen is.
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ping -c 1 127.0.0.1
+PING 127.0.0.1 (127.0.0.1): 56 data bytes
+64 bytes from 127.0.0.1: icmp_seq=0 ttl=64 time=0.2 ms
+
+--- 127.0.0.1 ping statistics ---
+1 packets transmitted, 1 packets received, 0% packet loss
+round-trip min/avg/max = 0.2/0.2/0.2 ms
+# iptables -A INPUT -s 127.0.0.1 -p icmp -j DROP
+# ping -c 1 127.0.0.1
+PING 127.0.0.1 (127.0.0.1): 56 data bytes
+
+--- 127.0.0.1 ping statistics ---
+1 packets transmitted, 0 packets received, 100% packet loss
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Je ziet hierboven dat de eerste ping wel lukt, maar niet meer als de regel
+is toegevoegd aan de INPUT reeks.
+<P>Een regel kan op twee manieren verwijderd worden: ofwel door het nummer
+op te geven, ofwel door dezelfde opties op te geven als dat de regel gemaakt
+werd.
+<P>De nummering begint bovenaan met 1 en omdat er nog maar &eacute;&eacute;n regel in de
+reeks staat, is deze regel nummer 1. Deze regel kan dus als volgt verwijdert
+worden:
+<BLOCKQUOTE><CODE>
+<PRE>
+        # iptables -D INPUT 1
+        #
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>De tweede manier is hetzelfde als de regel maken, alleen wordt de -A
+nu vervangen door -D. Dit is vooral handig als je veel regels hebt en je
+hebt geen zin om te tellen. Onze regel zouden we dus als volgt verwijderen:
+<BLOCKQUOTE><CODE>
+<PRE>
+        # iptables -D INPUT -s 127.0.0.1 -p icmp -j DROP
+        #
+</PRE>
+</CODE></BLOCKQUOTE>
+
+Als er meerdere regels zijn die hetzelfde zijn, wordt alleen de eerste
+verwijderd met deze manier.
+<H2>7.3 Filter specificaties </H2>
+
+<P>Behalve protocol (-p) en de herkomst (-s) zijn er nog andere eigenschappen
+waaraan je bepaalde pakketjes kan herkennen. Hier volgen alle eigenschappen
+waar je pakketjes mee kan aanduiden.
+i
+<H3>Herkomst en doel </H3>
+
+<P>Herkomst (`-s', `--source' of `--src') en doel (`-d',
+`--destination' or `--dst') IP adressen kunnen worden opgegeven op vier
+manieren. Natuurlijk kan je gewoon een IP-adres opgeven, maar je kan
+ook een hostname gebruiken, zoals `localhost' of `www.linuxhq.com'.
+<P>De derde en vierde manieren laten het toe om meerdere IP-adressen te
+specificeren. `199.95.207.0/255.255.255.0', bijvoorbeeld geeft 255
+ip-adressen aan. Ook geldig is `199.95.207.0/24'. Allebei geven ze 
+IP-adressen aan van 199.95.207.0 tot 199.95.207.255.
+<P>Twee speciale varianten hiervan zijn 1.2.3.4/32, waar de /32 aangeeft dat het
+IP-adres helemaal moet voldoen. Dit is standaard. 1.2.3.4/0 kan ook, in welk
+geval het IP-adres helemaal niet uitmaakt. In dit geval wordt meestal 0/0
+opgegeven als IP adres. Dit is standaard als de -s of -d optie weggelaten
+wordt, dus als er geen herkomst of doel adres opgegeven wordt. Daarom wordt
+het ook weinig gebruikt:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+        [ NOTE: `-s 0/0' is redundant here. ]
+        # iptables -A INPUT -s 0/0 -j DROP
+        #
+</PRE>
+</CODE></BLOCKQUOTE>
+<H3>Inversie opgeven </H3>
+
+<P>Veel opties kunnen voorafgegaan worden door `!', wat staat voor `niet'.
+`-s ! localhost' heeft dus betrekking tot alle pakketjes, behalve die
+van localhost afkomen.
+<H3>Protocol opgeven </H3>
+
+<P>Het protocol kan worden opgegeven met `-p' of met `--protocol'. Het protocol
+kan een nummer zijn, of een naam zoals TCP, UDP of ICMP. Hoofdletters maken
+hier niets uit.
+<P>Ook de protocol optie kan vooraf worden gegaan door een uitroepteken:
+`-p! TCP' betekent alle pakketjes behalve TCP.
+<P>Het opgeven van een protocol is nodig als je regels wilt maken die afhankelijk
+zijn van het poortnummer waarop een connectie gemaakt wordt. Omdat ICMP geen
+poorten ondersteund, moet er TCP of UDP opgegeven worden.
+<H3>Een interface opgeven </H3>
+
+<P>De `-i' of `--in-interface' optie geeft de interface (netwerkkaart/modem) aan
+waar de pakketjes de computer mee inkomen.
+De `-o' of `--out-interface' optie geeft de interface aan waar de pakketjes
+uit de computer gaan. Je kan <CODE>ifconfig</CODE> gebruiken om een lijst van de
+huidige interfaces te krijgen.
+<P>Pakketjes die door de INPUT reeks komen hebben geen interface waarmee ze uit
+de computer gaan. Regels met -o erin zullen dus nooit waar zijn en overgeslagen
+worden. Bij regels in de OUTPUT reeks werkt het net zo: deze hebben geen
+interface waarmee ze binnengekomen zijn.
+<P>Pakketjes die door de FORWARD reeks gaan hebben zowel een interface waarmee
+ze naar binnen zijn gekomen, als een interface waarmee ze weer naar buiten
+gaan.
+<P>Je mag ook een interface opgeven die nog niet bestaat. De regel geld niet
+zolang deze interface niet bestaat, maar zodra deze interface gaat werken
+treed de regel in werking. Dit is handig voor inbel-connecties, zodat er
+regels ingevoerd kunnen worden voor het geval er ingebeld wordt.
+<P>Bij interfaces werkt het `+' teken als een sterretje; het zal meerdere
+interfaces specificeren. <CODE>-i ppp+</CODE> bijvoorbeeld zal voor alle PPP
+interfaces gelden, maar niet voor ethernet interfaces.
+<P>Ook de interface optie kan voorafgegaan worden door een `!' om de optie
+om te keren.
+<H3>Fragmenten opgeven </H3>
+
+<P>Soms is een pakketje te groot om in &eacute;&eacute;n keer verstuurd te kunnen worden.
+In zo'n geval wordt het pakketje opgesplitst in fragmenten en verzonden
+als meerdere pakketjes. Het probleem wat hierbij komt kijken is dat het
+eerste pakketje de headers heeft en dus moeiteloos door de regels komt,
+maar de opvolgende pakketjes hebben de header niet en dus zullen ze tegen
+gehouden worden.
+<P>Als je NAT gebruikt zullen de fragmenten aan elkaar gelijmd worden voordat
+ze door de reeksen gaan, dus hoef je je over fragmenten geen zorgen te maken.
+<P>Is dat niet het geval, dan is het belangrijk om te weten hoe fragmenten
+behandeld worden door de regels. Als een regel vraagt om bepaalde informatie,
+kan een fragment die niet verschaffen (het heeft tenslotte geen headers) en
+dus zal de regel niet gelden voor dit pakketje. Het eerste pakketje zal dus
+waarschijnlijk door de reeks komen, maar op de andere pakketjes wordt het
+beleid uitgevoerd.
+<P>Om dit probleem te omzeilen kan je fragments doorlaten of tegenhouden met de
+-f optie.
+<P>Het wordt als veilig beschouwd om fragmenten door te laten, hoewel er wel
+bugs in sommige systemen zitten die het laten crashen als er een los fragment
+op komt. Deze bugs zijn echter opgelost in moderne software.
+<P>De volgende regel zal alle fragmenten tegenhouden die naar 192.168.1.1 gaan:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# iptables -A OUTPUT -f -d 192.168.1.1 -j DROP
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+<H3>Het uitbreiden van iptables </H3>
+
+<P><CODE>iptables</CODE> is makkelijk uit te breiden, wat nieuwe mogelijkheden
+met zich mee brengt. Sommige van deze mogelijkheden zijn standaard, andere
+worden slechts in enkele gevallen gebruikt. In het laatste geval worden
+ze meestal apart verstrekt voor de mensen die de extra mogelijkheid nodig
+hebben.
+<P>Uitbreidingen van de kernel gaan meestal in de kernel module directory,
+meestal /lib/modules/2.4.x/net. Als je kernel gecompileerd is met CONFIG_KMOD,
+dan worden ze geladen als dat nodig is en hoef je ze niet handmatig te laden.
+<P>Uitbreidingen van iptables zijn `shared libraries', die meestal in
+de /usr/local/lib/iptables/ directory staan, hoewel sommige distributies deze
+in /usr/lib/iptables zetten.
+<P>Er zijn twee type uitbreidingen: nieuwe doelen en nieuwe regelopties.
+Sommige protocollen bieden je automatisch nieuwe regelopties. Deze zijn
+TCP, UDP en ICMP, die onder andere poorten kunnen specificeren.
+<P>Met de `-p' optie wordt automatisch een nieuwe uitbreiding geladen en
+om expliciet een uitbreiding te laden gebruik je de `-m' optie.
+<P>Om hulp te krijgen bij een uitbreiding, geef een optie om deze te laden
+(`-p', `-j' of `-m') en geef de optie `-h' of `--help':
+<BLOCKQUOTE><CODE>
+<PRE>
+# iptables -p tcp --help
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+<H3>TCP uitbreidingen </H3>
+
+<P>De TCP uitbreidingen worden automatisch geladen als het TCP protocol wordt
+gekozen. De volgende opties kunnen dan gebruikt worden:
+<P>
+<DL>
+<DT><B>--tcp-flags</B><DD><P>wordt gevolgd door twee lijsten met TCP markeringen.
+De eerste optie geeft de TCP markeringen (flags) aan die je wilt onderzoeken,
+de tweede geeft aan welke hiervan geactiveerd moeten zijn. Bijvoorbeeld:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# iptables -A INPUT --protocol tcp --tcp-flags ALL SYN,ACK -j DROP
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Deze regel geeft aan dat de TCP pakketjes die de SYN en ACK markeringen hebben
+geactiveerd, maar de rest niet, tegengehouden moeten worden.
+`ALL' is hetzelfde als `SYN,ACK,FIN,RST,URG,PSH'. Wil je geen markeringen
+opgeven, dan kan je `NONE' gebruiken.
+<DT><B>--syn</B><DD><P>Dit is hetzelfde als `--tcp-flags SYN,RST,ACK SYN'.
+<DT><B>--source-port</B><DD><P>kan gevolgd worden door een poortnummer of een
+poortbereik. Voor poortnummers kan je ook namen
+gebruiken, zoals die in /etc/services worden genoemd. Een poortbereik kan
+worden aangegeven door twee poorten, gescheiden met een dubbele punt, zoals
+1000:2000. Wordt het eerste poortnummer weggelaten (`:2000') dan geldt deze
+regel voor alle poorten tot 2000. Wordt het laatste poortnummer weggelaten
+(`1000:') dan geldt deze regel voor de poort 1000 en verder.
+<DT><B>--sport</B><DD><P>is hetzelfde als `--source-port'. 
+<DT><B>--destination-port</B><DD><P>en
+<DT><B>--dport</B><DD><P>zijn hetzelfde als de 
+bovenstaande, alleen geven ze de poorten van de doelbestemming aan in plaats
+van de herkomst.
+<DT><B>--tcp-option</B><DD><P>wordt gevolgd door een nummer. Deze regel geldt voor
+TCP pakketjes met de markering voor dit nummer. Als het pakketje een niet
+volledige header heeft, dan wordt het pakketje automatisch tegengehouden.
+</DL>
+<H3>Een uitleg van TCP markeringen </H3>
+
+<P>Soms is het handig om TCP connecties maar &eacute;&eacute;n kant op te laten werken; je wilt
+wel connecties maken naar buiten, maar niet andersom.
+<P>De oplossing hiervoor is om de pakketjes tegen te houden die een connectie
+willen openen. Deze pakketjes heten <B>SYN</B> pakketjes (het zijn eigenlijk
+pakketjes met de SYN markering geactiveerd en de RST en ACK markeringen
+niet geactiveerd). Door deze pakketjes tegen te houden, wordt er geen connectie
+gemaakt en zullen dus opvolgende pakketjes genegeerd worden.
+<P>De `--syn' optie wordt hiervoor gebruikt. Deze is alleen geldig voor het TCP
+protocol. Om een regel te maken die geldt voor de pakketjes die een connectie
+willen maken vanaf 192.168.1.1 kan je de volgende (niet complete) regel gebruiken:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+-p TCP -s 192.168.1.1 --syn
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Natuurlijk kan ook deze optie weer voorafgegaan worden door een uitroepteken,
+om pakketjes te specificeren die geen connectie willen maken.
+<H3>UDP Uitbreidingen </H3>
+
+<P>Deze uitbreidingen worden automatisch geladen als er een regel is die het 
+UDP protocol gebruikt (dus als er ergens in de regel `-p udp' voorkomt).
+Deze uitbreiding brengt de opties `--source-port', `--sport',
+`--destination-port' en `--dport' met zich mee en deze zijn identiek aan die
+van TCP.
+<H3>ICMP Extensies </H3>
+
+<P>Deze uitbreiding wordt automatisch geladen als het ICMP protocol gebruikt wordt
+en komt met slechts &eacute;&eacute;n extra optie:
+<P>
+<DL>
+<DT><B>--icmp-type</B><DD><P>wordt gevolgd door een ICMP type naam (zoals
+`host-unreachable'), door een nummer wat staat voor een type, of door twee
+nummers gescheiden door een `/'. De twee nummers staan voor het type en de code
+van het ICMP pakketje. De nummers kan je opzoeken door `-p icmp --help' te
+gebruiken.
+</DL>
+<H3>Andere optie uitbreidingen </H3>
+
+<P>Deze uitbreidingen kunnen worden gebruikt door de `-m' optie te gebruiken.
+<P>
+<DL>
+<DT><B>mac</B><DD><P>Deze module kan gebruikt worden om het hardware adres van de 
+netwerkkaart te gebruiken in je regels. Het werkt alleen met het hardware
+adres van de kaart waarmee de pakketjes in de computer komen. Het heeft 
+&eacute;&eacute;n optie:
+<P>
+<DL>
+<DT><B>--mac-source</B><DD><P> gevolgd door een hardware adres, zoals in
+`--mac-source 00:60:08:91:CC:B7'.
+</DL>
+<DT><B>limit</B><DD><P> Deze module wordt gebruikt om het aantal geldende regels in
+een bepaalde tijd terug te dringen. Zo kan je bijvoorbeeld zorgen
+dat er slechts 3 keer per uur een berichtje in je log komt te staan als er
+de hele tijd geldende pakketjes komen. Het specificeert twee opties:
+<DL>
+<DT><B>--limit</B><DD><P> wordt gevolgd door een nummer en het geeft het aantal
+pakketjes waar deze regel voor geldt, in een bepaald tijdsbestek.
+Het nummer kan ook een tijd aangeven, door gebruik te maken van
+`/second', `/minute', `/hour' of `/day' of de eerste letter ervan.
+`5/second' is dus hetzelfde als `5/s'.
+<DT><B>--limit-burst</B><DD><P> wordt gevolgd door een nummer en geeft de maximale
+grens voordat de bovenstaande optie gaat gelden.
+</DL>
+
+Om te kijken hoe het werkt kijken we naar de onderstaande regel, die de
+pakketjes door de FORWARD reeks logt, maar alleen als ze door de `limit' module
+heen komen.
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# iptables -A FORWARD -m limit -j LOG
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>De standaard `limit-burst' is vijf en daardoor worden de eerste vijf pakketjes
+gelogd. Hierna duurt het twintig minuten voordat het volgende pakketje gelogd
+wordt. Als er 20 minuten lang geen pakketje komt, dan kunnen er na nog eens
+20 minuten twee pakketjes doorheen. Na 100 minuten kunnen er dus weer 5
+pakketjes doorheen.
+<P>NB: Je kan niet een regel maken met een tijdsbestek van meer dan 59 uur.
+<P>Je kan deze regel ook gebruiken om DoS (Denial of Service) aanvallen tegen
+te gaan, door een overvloed aan pakketjes tegen te houden.
+<P>Syn-flood bescherming:
+<BLOCKQUOTE><CODE>
+<PRE>
+# iptables -A FORWARD -p tcp --syn -m limit --limit 1/s -j ACCEPT
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Furtive port scanner:
+<BLOCKQUOTE><CODE>
+<PRE>
+# iptables -A FORWARD -p tcp --tcp-flags SYN,ACK,FIN,RST RST -m limit --limit 1/s -j ACCEPT
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Ping of death:
+<BLOCKQUOTE><CODE>
+<PRE>
+# iptables -A FORWARD -p icmp --icmp-type echo-request -m limit --limit 1/s -j ACCEPT
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Hoe dit werkt laat de volgende grafiek zien:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+   snelheid (pkt/s)  
+             ^        .---.
+             |       / DoS \
+             |      /       \
+Rand van DoS-|.....:.........\.......................
+ = (limit *  |    /:          \
+limit-burst) |   / :           \         .-.
+             |  /  :            \       /   \
+             | /   :             \     /     \
+Eide van DoS-|/....:..............:.../.......\..../.
+ = limit     |     :              :`-'         `--'
+-------------+-----+--------------+------------------> tijd (s)
+RESULTAAT=>  Geldt |  Geldt niet  |    Geldt
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>De volgende grafiek is van een grens van &eacute;&eacute;n pakketje per seconde, met een
+`burst' van vijf pakketjes. Pakketjes komen binnen met vier per seconde,
+drie seconden lang. Vervolgens nog eens na weer drie seconden:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+
+
+        &lt;--Flood 1-->           &lt;---Flood 2--->
+
+Total  ^                   Line  __--      YNNN
+Packets|               Rate  __--      YNNN
+       |            mum  __--      YNNN
+    10 |        Maxi __--         Y
+       |         __--            Y
+       |     __--               Y
+       | __--    YNNN           
+       |-    YNNN
+     5 |    Y    
+       |   Y                                Key:  Y -> Matched Rule
+       |  Y                                       N -> Didn't Match Rule
+       | Y
+       |Y 
+     0 +-------------------------------------------------->  Time (seconds)
+        0   1   2   3   4   5   6   7   8   9  10  11  12
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Je ziet hier dat de eerste vijf pakketjes sneller binnenkomen dan &eacute;&eacute;n per
+seconde en ook doorgelaten worden. Dan pas begint de grens te gelden.
+De volgende pakketjes zullen dus slechts met &eacute;&eacute;n pakketje per seconde
+doorgelaten worden. Na de pauze kunnen er weer meer pakketjes doorgelaten
+worden, totdat de grens weer gaat gelden.
+<DT><B>owner</B><DD><P>Deze module zorgt dat je de eigenaar van het pakketje kan laten
+meetellen in een regel. Het werkt alleen in de OUTPUT reeks, en sommige
+pakketjes hebben geen eigenaar.
+<P>
+<DL>
+<DT><B>--uid-owner userid</B><DD><P>Geldt als het pakketje gemaakt werd door deze gebruiker.
+<DT><B>--gid-owner groupid</B><DD><P>Geldt als het pakketje gemaakt werd door een gebruiker in deze groep.
+<DT><B>--pid-owner processid</B><DD><P>Geldt als het pakketje gemaakt werd door dit programma.
+<DT><B>--sid-owner sessionid</B><DD><P>Geldt als het pakketje gemaakt werd door een programma in een sessie groep.
+</DL>
+<DT><B>unclean</B><DD><P> Deze module kijkt of de pakketjes wel geldig zijn en
+verschaft geen extra opties. Het zou niet gebruikt moeten worden om de 
+veiligheid van een computer te verhogen.
+</DL>
+<H3>De `state' uitbreiding </H3>
+
+<P>De 'state' uitbreiding stelt je in staat om regels te maken op basis van
+wat van een pakketje bekend is in verband met connectie tracking.
+Connectie tracking wordt gerealiseerd door de `ip_conntrack' module.
+Deze uitbreiding is makkelijk als je wilt weten of een pakketje deel
+uitmaakt van een bestaande connectie of niet. Het wordt aangeraden deze optie
+te gebruiken, zodat je geen pakketjes doorlaat die een ander doel hebben dan
+een connectie te openen.
+<P>Je gebruikt deze uitbreiding met de optie `-m state' en het levert een extra
+`--state' optie, die gevolgd wordt door een reeks toestanden (states) van de 
+pakketjes, gescheiden door komma's. De toestanden die beschikbaar zijn:
+<P>
+<DL>
+<DT><B>NEW</B><DD><P>Dit pakketje maakt een nieuwe verbinding.
+<DT><B>ESTABLISHED</B><DD><P>Dit pakketje behoort tot een bestaande verbinding
+(d.w.z. een antwoord-pakketje, of een pakketje op een connectie waar al verkeer
+is geweest).
+<DT><B>RELATED</B><DD><P>Een pakketje wat te maken heeft, maar niet deel uitmaakt
+van een bestaande connectie. Zulke pakketjes zijn ICMP error pakketjes of
+pakketjes deel uitmakend van een FTP connectie.
+<DT><B>INVALID</B><DD><P>Van dit pakketje kon niet uitgemaakt worden waar het bij
+hoort. Dit kan voorkomen als je geen vrij geheugen meer hebt of als je 
+ICMP error pakketjes krijgt die niets te maken hebben met een bestaande
+connectie. Zulke pakketjes kunnen normaal gesproken tegen gehouden worden.
+</DL>
+<H2>7.4 Doel specificaties </H2>
+
+<P>Nu we weten hoe we een pakketje kunnen specificeren, kunnen we iets doen
+met zo'n pakketje. Wat er moet gebeuren met een pakketje, heet het
+doel (target).
+<P>Er zijn twee simpele doelen al ingebouwd: DROP en ACCEPT. Met DROP wordt
+het pakketje tegengehouden. Met ACCEPT wordt het pakketje gewoon
+doorgelaten. Als een pakketje een doel heeft bereikt (DROP, ACCEPT of een
+ander doel) doorloopt het de resterende regels niet meer maar wordt het 
+doel gelijk afgehandeld.
+<P>Er zijn twee soorten doelen behalve de bovenstaande: uitbreidingen en 
+gebruikersreeksen.
+<H3>Gebruikersreeksen </H3>
+
+<P>Een van de kenmerken waar iptables zijn kracht vandaan haalt is dat het de
+gebruiker in staat stelt om zijn eigen reeksen te maken. Behalve de
+ingebouwde reeksen (INPUT, FORWARD en OUTPUT) kan je dus nog meer reeksen
+maken, die naar elkaar kunnen verwijzen en die ook weer regels bevatten.
+Meestal zijn de namen van gebruikersreeksen in kleine letters, om ze te kunnen
+onderscheiden van de ingebouwde regels.
+<P>Als een pakketje overeenkomt met een bepaalde regel en die regel verwijst naar
+een andere reeks, dan wordt die reeks doorlopen. Bepaald die reeks niet
+wat er met het pakketje gebeuren moet, dan wordt de volgende regel in de
+vorige reeks uitgevoerd.
+<P>In de mooie ASCII art tekening zie je twee reeksen: <CODE>INPUT</CODE> en
+<CODE>test</CODE>.
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+         `INPUT'                         `test'
+        -----------------------------   ----------------------------
+        | Regel1: -p ICMP -j DROP   |   | Regel1: -s 192.168.1.1    |
+        |---------------------------|   |---------------------------|
+        | Regel2: -p TCP -j test    |   | Regel2: -d 192.168.1.1    |
+        |---------------------------|   -----------------------------
+        | Regel3: -p UDP -j DROP    |
+        -----------------------------
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Zoals je ziet verwijst regel 2 naar de reeks `test'. Stel dat er nu een
+pakketje binnenkomt vanaf 192.168.1.1, dat gaat naar 1.2.3.4. Het komt binnen
+in de <CODE>INPUT</CODE> reeks en er wordt naar de eerste regel gekeken. Aangezien
+dit pakketje geen ICMP pakketje is, wordt de tweede regel bekeken. Deze geldt
+wel voor dit pakketje, dus wordt het doel uitgevoerd: reeks <CODE>test</CODE> wordt
+uitgevoerd op dit pakketje. Regel 1 geldt voor dit pakketje, maar er is hier
+geen doel opgegeven. Er gebeurt dus niets met dit pakketje. Regel 2 geldt niet 
+en we zijn aan het einde van deze reeks.
+Er wordt meer verder gegaan bij regel 3 van de <CODE>INPUT</CODE> reeks.
+<P>De weg van het pakketje is dus als volgt:
+<BLOCKQUOTE><CODE>
+<PRE>
+                                 v    __________________________
+         `INPUT'                 |   /    `test'                v
+        -------------------------|--/   ------------------------|----
+        | Regel1                 | /|   | Regel1                |   |
+        |------------------------|/-|   |-----------------------|---|
+        | Regel2                 /  |   | Regel2                |   |
+        |---------------------------|   ------------------------v----
+        | Regel3                 /--+___________________________/
+        -------------------------|---
+                                 v
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>
+<P>Gebruikersreeksen kunnen verwijzen naar andere gebruikersreeksen. Als je
+echter heen en weer verwijst kan het voorkomen dat je pakketjes in een lus
+komen. Dit vergt veel processortijd en je pakketjes worden tegengehouden.
+<H3>Uitbreidingen: Nieuwe doelen </H3>
+
+<P>Met uitbreidingen kan je nieuwe doelen opgeven. Een doel-uitbreiding bestaat
+uit een kernel module en eventueel een <CODE>iptables</CODE> uitbreiding. De
+volgende uitbreidingen zijn beschikbaar bij netfilter:
+<P>
+<DL>
+<DT><B>LOG</B><DD><P>Met deze uitbreiding kan je pakketjes loggen in je syslog. Het
+biedt de volgende opties:
+<DL>
+<DT><B>--log-level</B><DD><P> wordt gevolgd door een nummer of een naam, zoals
+`debug', `info', `notice', `warning', `err', `crit', `alert' of `emerg'.
+Deze namen komen overeen met de nummers 7 tot en met 0.
+De handleiding van syslog.conf geeft aan wat deze namen betekenen.
+<DT><B>--log-prefix</B><DD><P> wordt gevolgd door een regel van maximaal 29 letters.
+Deze regel komt v&oacute;&oacute;r de eigenlijke boodschap in het logbestand, zodat je de
+boodschap makkelijk kan terugvinden.
+</DL>
+<P>Het wordt aangeraden om de limit-uitbreiding te gebruiken in combinatie met
+deze module, zodat je niet je log (en misschien je harde schijf) vol zet als
+je opeens veel pakketjes krijgt.
+<DT><B>REJECT</B><DD><P> Deze module werkt hetzelfde als `DROP', alleen wordt de
+afzender op de hoogte gesteld dat het pakketje is tegengehouden door middel
+van een `port unreachable' (onbereikbaar) ICMP pakketje. Zo'n pakketje
+wordt niet verzonden als
+<P>
+<UL>
+<LI> Het pakketje wat gefilterd werd een ICMP error pakketje was, of een
+onbekend ICMP pakketje.</LI>
+<LI> Het pakketje een fragment was.</LI>
+<LI> Er al te veel ICMP error pakketjes zijn verzonden.</LI>
+</UL>
+<P>REJECT heeft ook een extra optie `--reject-with' waarmee je kan bepalen
+welk pakketje teruggestuurd moet worden. Zie de handleiding voor meer
+informatie hierover.
+</DL>
+<H3>Speciale ingebouwde doelen </H3>
+
+<P>Er zijn twee ingebouwde doelen die een speciale functie hebben:
+<CODE>RETURN</CODE> en <CODE>QUEUE</CODE>.
+<P><CODE>RETURN</CODE> beeindigd een gebruikersreeks. Het heeft hetzelfde effect
+als aan het einde van de reeks komen, namelijk dat naar de oorspronkelijke
+reeks wordt teruggekeerd en dat de volgende regel uitgevoerd wordt.
+Als dit in een ingebouwde reeks wordt gebruikt, wordt het beleid van die
+reeks uitgevoerd op het pakketje.
+<P><CODE>QUEUE</CODE> bewaart het pakketje om later door een programma verwerkt te
+worden. Dit is alleen nuttig als:
+<P>is a special target, which queues the packet for
+userspace processing.  For this to be useful, two further components are
+required:
+<P>
+<UL>
+<LI>er een "queue handler" (afhandelaar) is, die het pakketje van de kernel
+aanpakt.</LI>
+<LI>er een programma is wat iets met het pakketje doet.</LI>
+</UL>
+
+De queue-handler voor IPv4 is de ip_queue kernel module, die nog
+experimenteel is.
+<P>Als er geen programma is wat op de pakketjes wacht, dan worden ze
+tegengehouden. Om zo'n programma te schrijven kan je de libipq API
+gebruiken. Het bestand <CODE>/proc/net/ip_queue</CODE> geeft de status van
+ip_queue aan en het bestand <CODE>/proc/sys/net/ipv4/ip_queue_maxlen</CODE> geeft
+de maximale lengte van de queue (normaal 1024). 
+<H2><A NAME="chain-ops"></A> 7.5 Reeksen onderhouden </H2>
+
+<P>Als je veel regels hebt kan het wel eens een chaos worden als je ze allemaal
+in &eacute;&eacute;n reeks zet. Daarom is het handig om zelf reeksen te maken. Je kan je
+eigen reeksen noemen zoals je wilt, maar aangeraden wordt kleine letters te
+gebruiken om ze te kunnen onderscheiden van ingebouwde reeksen, die namen in
+hoofdletters hebben. De namen van reeksen kunnen niet langer zijn dan 31
+letters.
+<H3>Een nieuwe reeks maken </H3>
+
+<P>Hier volgt een voorbeeld van hoe je een reeks kan maken met een hele originele
+naam: <CODE>test</CODE>:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# iptables -N test
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Dat is alles. Nu heb je een reeks zonder regels erin, die <CODE>test</CODE> heet.
+<H3>Een reeks verwijderen </H3>
+
+<P>Een reeks verwijderen is ook simpel, maar kan alleen als de reeks helemaal
+geen regels meer bevat. Er moeten ook geen verwijzingen meer zijn naar de reeks
+die je wilt verwijderen. Je verwijdert een regel met `-X' of `--delete-chain':
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# iptables -X test
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Als je de naam van de reeks weg laat, worden alle gebruikersreeksen verwijdert.
+<H3><A NAME="flushing"></A> Een reeks leeg maken </H3>
+
+<P>Er is een simpele manier om alle regels uit een reeks te verwijderen, namelijk
+met de `-F' of `--flush' optie:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# iptables -F FORWARD
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Als je geen reeks opgeeft, worden alle reeksen leeg gemaakt.
+<H3>De regels in een reeks bekijken </H3>
+
+<P>Om alle regels in een reeks te bekijken gebruik je de `-L' optie, of
+de `--list' optie.
+<P>Bij gebruikersreeksen zie je een `refcnt' staan. Dit is het aantal verwijzingen
+naar deze reeks. Dit moet nul zijn voordat de reeks kan worden verwijdert.
+<P>Je kan nog drie extra opties gebruiken naast `-L'. Met de `-n' optie kan je
+zorgen dat IP adressen niet omgezet worden naar domeinnamen. Dit is
+nuttig als je DNS niet goed werkt. Het opzoeken van namen zorgt dan namelijk
+voor grote vertragingen. Poorten worden ook weergegeven als nummers (`80')
+in plaats van namen (`www').
+<P>Met de `-v' optie krijg je alle pikante details te zien, zoals de interfaces en
+pakket tellers.
+<P>De pakket en byte tellers gebruiken achtervoegsels zoals `K' (kilo) en `M'
+(mega) voor 1.000 en 1.000.000. Gebruik de `-x' optie als je de hele cijfers
+wilt weten, zonder achtervoegsels.
+<H3>Tellers op nul zetten </H3>
+
+<P>Je kan een teller op nul zetten met de `-Z' of `--zero' optie.
+<P>Als je het volgende doet:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# iptables -L FORWARD
+# iptables -Z FORWARD
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Kunnen er nog pakketjes doorkomen in de tijd dat je het tweede commando aan
+het typen bent. Om dit te voorkomen kan je de `-L' en `-Z' opties tegelijk
+gebruiken, om de tellers tegelijk te lezen en op nul te zetten. 
+<H3><A NAME="policy"></A> Het beleid instellen </H3>
+
+<P>Als een pakketje aan het einde van een reeks komt, wordt het beleid uitgevoerd.
+Alleen ingebouwde reeksen (<CODE>INPUT</CODE>, <CODE>OUTPUT</CODE> en <CODE>FORWARD</CODE>)
+hebben een beleid.
+<P>Het beleid kan <CODE>ACCEPT</CODE> (doorlaten) of <CODE>DROP</CODE> (tegenhouden) zijn.
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# iptables -P FORWARD DROP
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+
+Dit voorbeeld stelt het beleid van de reeks <CODE>FORWARD</CODE> in op <CODE>DROP</CODE>.
+<H2><A NAME="oldstyle"></A> <A NAME="s8">8.  Ipchains of ipfwadm gebruiken</A> </H2>
+
+<P> Twee modules, ipchains.o en ipfwadm.o, stellen je in staat om je oude
+firewall regels te gebruiken. Laad &eacute;&eacute;n van deze twee als module in je kernel
+en je kan gewoon ipchains of ipfwadm gebruiken.
+<P>Je kan slechts &eacute;&eacute;n van de drie modules laden die uitmaken welke regels je
+gebruikt: ipfwadm.o, ipchains.o of iptables.o. Laad er niet meer dan &eacute;&eacute;n.
+<P>Ipfwadm en ipchains worden natuurlijk niet eeuwig ondersteund. Er komt een
+tijd dat je iptables wel moet gebruiken. Volgens Rusty hoef je je geen zorgen
+te maken tot 2004 als je ipfwadm of ipchains gebruikt.
+<H2><A NAME="s9">9.  NAT en een pakket filter tegelijk gebruiken </A></H2>
+
+<P>NAT staat voor Network Address Translation en het stelt je in staat om
+pakketjes een ander doel of bestemming te geven. Meer details hierover vind
+je in de NAT HOWTO. Je kan NAT en een pakket filter goed combineren.
+<P>Als je een pakket filter opzet, kan je gewoon je NAT negeren: de bestemming
+van je regel is de `echte' bestemming en wordt niet be&iuml;nvloed door NAT.
+Als je bijvoorbeeld je NAT zo hebt ingesteld dat pakketjes die naar 1.2.3.4
+poort 80 gaan, naar 10.1.1.1 poort 8080 gestuurd worden, ziet je pakket
+filter de pakketjes naar 10.1.1.1 poort 8080 gaan en niet naar 1.2.3.4.
+De pakketjes gaan tenslotte niet naar 1.2.3.4, dus heeft het ook geen zin
+hier regels voor te maken.
+<P>Bij masquerading (SNAT) komen de pakketjes dus van hun interne netwerkadres
+(192.168.1.1) en gaan naar een extern adres (www.linux.org).
+Ingaande pakketjes worden eerst omgeschreven, dan gefilterd, uitgaande
+pakketjes worden eerst gefilterd, dan omgeschreven.
+<P>Je kan de `state' uitbreiding gebruiken zonder dat het extra moeite kost
+voor het pakket filter, want die moet het toch al bijhouden om NAT te kunnen
+doen. Om inkomende connecties tegen te houden en masquerading te gebruiken
+kan je het volgende doen (dit staat ook deels in de NAT howto):
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# Masquerade uitgaand ppp0
+iptables -t nat -A POSTROUTING -o ppp0 -j MASQUERADE
+
+# Houd NEW en INVALID inkomende of doorgestuurde connecties tegen.
+iptables -A INPUT -i ppp0 -m state --state NEW,INVALID -j DROP
+iptables -A FORWARD -i ppp0 -m state --state NEW,INVALID -j DROP
+
+# IP forwarding aanzetten
+echo 1 > /proc/sys/net/ipv4/ip_forward
+</PRE>
+</CODE></BLOCKQUOTE>
+<H2><A NAME="Appendix-A"></A> <A NAME="s10">10.  Verschillen tussen ipchains en iptables</A></H2>
+
+<P>
+<UL>
+<LI> De namen van de ingebouwde reeksen hebben nu namen in hoofdletters.
+Ze heten dus geen `input', `forward' en `output' meer maar `INPUT', `FORWARD'
+en `OUTPUT'. De INPUT en OUTPUT reeksen krijgen respectievelijk alleen
+pakketjes die voor deze computer bedoeld zijn of die door deze computer
+gemaakt zijn. Bij ipchains kwam al het verkeer door deze reeksen.</LI>
+<LI> De `-i' optie betekent nu de interface van het inkomende verkeer,
+en werkt alleen in de INPUT en FORWARD reeksen. Sommige regels in de FORWARD
+reeks en alle regels in de OUTPUT reeks moeten aangepast worden: `-i' moet
+vervangen worden door `-o', de optie voor de uitgaande interface.</LI>
+<LI> De TCP en UDP opties om een poort te specificeren zijn nu 
+--source-port of --sport (of --destination-port/--dport) en deze moeten na
+`-p tcp' of `-p udp' komen, omdat deze opties de TCP en UDP uitbreidingen
+laden.</LI>
+<LI> De TCP `-y' optie is veranderd naar `--syn' en moet na `-p tcp' komen.</LI>
+<LI> Het DENY doel is veranderd naar DROP.</LI>
+<LI> Je kan reeksen leegmaken terwijl je de informatie ervan bekijkt.</LI>
+<LI> Het leegmaken van ingebouwde reeksen leegt nu ook de beleidstellers.</LI>
+<LI> FIXME: Listing chains gives you the counters as an atomic snapshot.</LI>
+<LI> REJECT en LOG zijn nu uitbreidingen, wat betekent dat ze apart geladen
+moeten worden.</LI>
+<LI> Reeksen kunnen namen hebben tot 31 tekens.</LI>
+<LI>MASQ is veranderd in MASQUERADE en werkt ook anders. REDIRECT heeft
+dezelfde naam gehouden maar werkt ook anders. Meer informatie hierover kan
+je vinden in de NAT HOWTO.</LI>
+<LI> De `-o' optie betekent nu de uitgaande interface in plaats van pakketjes
+naar `userspace' te sturen. Pakketjes worden nu naar `userspace' gestuurd via
+het QUEUE doel.</LI>
+<LI> Duizenden dingen meer.</LI>
+</UL>
+<H2><A NAME="s11">11.  Pakket filter advies </A></H2>
+
+<P>Het is vaak een goed idee voor maximale veiligheid om alles tegen te houden,
+en dan selectief sommige dingen door te laten. Iets onbekends wordt dan
+tegengehouden.
+<P>Draai geen daemons, servers en services als je ze niet nodig hebt, zelfs
+als je denkt dat je ze geblockt hebt.
+<P>Het kan geen kwaad veilige dingen te combineren. Je kan beter te veel
+veiligheid hebben dan te weinig. Gebruik tcp-wrappers, proxies, route
+verificatie en een pakket filter. Route verificatie is pakketjes blokken die
+een IP hebben op een verkeerde interface. Als je interne netwerk addressen
+heeft als 10.1.1.1 en er komt een pakketje vanaf IP 10.1.1.2 in je computer
+via je externe interface, kan je hem beter tegenhouden. Doe je dat niet, dan
+denkt je computer dat het een pakketje van je netwerk is, dus van mensen die
+vertrouwd kunnen worden. Dit kan als volgt ingesteld worden:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# echo 1 > /proc/sys/net/ipv4/conf/ppp0/rp_filter
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Of voor alle interfaces:
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# for f in /proc/sys/net/ipv4/conf/*/rp_filter; do
+#     echo 1 > $f
+# done
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Debian doet dit standaard al, maar bij sommige routers moet dit uitgezet worden
+omdat ze pakketjes uit rare richtingen horen te krijgen.
+<P>Logging is nuttig om meer informatie te krijgen, maar als je firewall hevig
+gebruikt wordt kan je log wel eens overvol raken. Dit kan zelfs resulteren tot
+een DoS situatie. Om dit te voorkomen kan je `limit' gebruiken, zie hierboven.
+<P>Rusty raad dringend aan om connectie tracking in te stellen. Het maakt de
+boel iets langzamer, maar het is erg nuttig om de toegang tot je netwerk te
+bepalen. Als je connectie tracking niet hebt ingebouwd moet je de module
+`ip_conntrack.o' laden. Als je ingewikkelde protocolen wilt tracken, dan moet
+je hulp modules laden, zoals `ip_conntrack_ftp.o'. Hier een voorbeeldje van wat
+je kan doen met connectie tracking:
+<P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# iptables -N no-conns-from-ppp0
+# iptables -A no-conns-from-ppp0 -m state --state ESTABLISHED,RELATED -j ACCEPT
+# iptables -A no-conns-from-ppp0 -m state --state NEW -i ! ppp0 -j ACCEPT
+# iptables -A no-conns-from-ppp0 -i ppp0 -m limit -j LOG --log-prefix "Bad packet from ppp0:"
+# iptables -A no-conns-from-ppp0 -i ! ppp0 -m limit -j LOG --log-prefix "Bad packet not from ppp0:"
+# iptables -A no-conns-from-ppp0 -j DROP
+
+# iptables -A INPUT -j no-conns-from-ppp0
+# iptables -A FORWARD -j no-conns-from-ppp0
+</PRE>
+</CODE></BLOCKQUOTE>
+<P>Een goede firewall bouwen is niet het onderwerp van deze HOWTO. Zie daarvoor
+de Security HOWTO. Een goede tip is altijd zo min mogelijk door te laten.
+</BODY>
+</HTML>

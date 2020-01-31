@@ -1,0 +1,1082 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE article PUBLIC "-//OASIS//DTD DocBook XML V4.5//EN" 
+"http://www.oasis-open.org/docbook/xml/4.5/docbookx.dtd">
+
+<article lang="fr">
+
+  <articleinfo>
+    <title>Guide pratique du maintien de connexion TCP</title>
+    
+    <subtitle>
+    
+    Version française du <foreignphrase lang="en">TCP Keepalive 
+    HOWTO</foreignphrase>.
+    
+    </subtitle>
+
+    <author>
+       <firstname>Fabio</firstname>
+       <surname>Busatto</surname>
+       <affiliation>
+         <address><email>fabio.busatto@sikurezza.org</email></address>
+       </affiliation>
+    </author>
+
+  <releaseinfo>Version&nbsp;: 1.0.fr.1.0</releaseinfo>
+
+  <pubdate>2007-05-04</pubdate>
+
+  <othercredit role="traduction" class="translator">
+     <firstname>Laurent</firstname>
+     <surname>Gauthier</surname>
+     <contrib>Adaptation française</contrib>
+     <email>laurent POINT mail CHEZ gmail POINT com</email>
+  </othercredit>
+
+
+  <othercredit role="relecture" class="translator">
+    <firstname>Eric</firstname>
+    <surname>Deschamps</surname>
+    <contrib>Relecture de la version française</contrib>
+    <email>erdesc CHEZ free POINT fr</email>
+  </othercredit>
+
+
+  <othercredit role="publication" class="copyeditor">
+    <firstname>Jean-Philippe</firstname>
+    <surname>Guérard</surname>
+    <contrib>Préparation de la publication de la v.f.</contrib>
+    <email>fevrier CHEZ tigreraye POINT org</email>
+  </othercredit>
+
+
+    <revhistory>
+
+      <revision>
+        <revnumber>1.0.fr.1.0</revnumber>
+        <date>2008-05-02</date>
+        <authorinitials>LG, ED, JPG</authorinitials>
+        <revremark>
+        
+          Première adaptation française.
+          
+        </revremark>
+      </revision>
+
+      <revision>
+        <revnumber>1.0</revnumber>
+        <date>2007-05-04</date>
+        <authorinitials>FB</authorinitials>
+        <revremark>
+        
+          Première édition, révisée par TM.
+          
+        </revremark>
+      </revision>
+
+    </revhistory>
+
+    <abstract>
+      <para>
+
+        Ce document décrit l'implémentation du TCP keepalive dans le noyau
+        linux, présente le concept global et détaille à la fois la 
+        configuration système et le développement d'application.
+
+      </para>
+    </abstract>
+  </articleinfo>
+
+<sect1 id="introduction">
+  <title>Introduction</title>
+
+  <para>
+    Comprendre TCP keepalive n'est pas indispensable dans la plupart des cas,
+    mais cela peut être très utile dans certaines circonstances. Il vous faudra
+    posséder quelques notions de base des réseaux TCP/IP et de la programmation
+    en langage C pour comprendre toutes les sections de ce document.
+  </para>
+
+  <para>
+    Le principal objectif de ce tutoriel (HOWTO) est de décrire en détail le 
+    TCP keepalive et de présenter différents cas d'application. Après avoir 
+    débuté avec un peu de théorie, le propos se concentre sur 
+    l'implémentation des routines TCP keepalive dans les noyaux Linux
+    actuels (2.4.x, 2.6.x), et sur les moyens dont les administrateurs système
+    peuvent tirer parti de ces routines, avec des exemples de configuration 
+    précis et des astuces.
+  </para>
+
+  <para>
+    La seconde partie de ce tutoriel met en jeu l'interface de programmation  
+    proposée par le noyau Linux, et le mode d'écriture des applications qui
+    implémentent le TCP keepalive en langage C. Des exemples pratiques sont
+    présentés, et une approche du projet <literal>libkeepalive</literal> est
+    amorcée, permettant aux applications de bénéficier par héritage du keepalive
+    sans modification de code.
+  </para>
+
+  <sect2 id="copyright">
+    <title>Droits d'utilisation</title>
+
+    <para>
+      Les droits de ce document, TCP Keepalive HOWTO, sont déposés sous
+      copyright (c) 2007 par Fabio Busatto. Il est permis de copier, distribuer
+      et/ou modifier ce document dans le cadre de la  Licence de Documentation
+      Libre GNU, Version 1.1 ou ultérieure publiée par la Free Software 
+      Foundation; aucune section invariable, pas de texte de couverture.
+      Un exemplaire de la licence est disponible à l'adresse 
+      <ulink url="http://www.gnu.org/licenses/licenses.fr.html#FDL">
+      http://www.gnu.org/licenses/licenses.fr.html#GPL</ulink>.
+    </para>
+
+    <para>
+      Le code source inclus dans ce document relève de la licence publique
+      générale (GPL) GNU General Public License, Version 2 ou ultérieure
+      publiée par la Free Software Foundation. Un exemplaire de la licence
+      est disponible à l'adresse
+      <ulink url="http://www.gnu.org/licenses/licenses.fr.html#GPL">
+      http://www.gnu.org/licenses/licenses.fr.html#GPL</ulink>.
+    </para>
+
+    <para>
+      Linux est une marque déposée de Linus Torvalds.
+    </para>
+  </sect2>
+
+  <sect2 id="avertissement">
+    <title>Avertissement</title>
+
+    <para>
+      Aucune responsabilité relative au contenu du présent document ne sera
+      endossée. L'utilisation des concepts, exemples et informations est à vos
+      propres risques. Des erreurs ou imprécisions peuvent endommager votre 
+      système. Agissez avec précaution, et même si cela est peu commun, 
+      l'auteur n'endosse aucune responsabilité (NdT : le traducteur non plus).
+    </para>
+
+    <para>
+      Tous les droits sont détenus par leurs propriétaires respectifs, sauf 
+      mention particulière. L'utilisation de termes de ce document ne doit 
+      pas être considérée comme une atteinte à la validité d'une marque 
+      déposée ou marque de service. Citer un produit ou une marque ne devrait
+      pas être considéré comme répréhensible.
+    </para>
+  </sect2>
+
+  <sect2 id="credits">
+    <title>Remerciements et contributions</title>
+
+    <para>
+      Ce travail ne doit à personne que je devrais remercier. Mais il doit à 
+      ma vie, et à mon savoir aussi: donc, merci à chacun m'ayant soutenu,
+      avant ma naissance, actuellement, ou dans le futur. Sincèrement.
+    </para>
+
+    <para>
+      Un merci tout spécial à Tabatha, la femme patiente qui a lu mon travail et 
+      fait les corrections nécessaires.
+    </para>
+  </sect2>
+
+  <sect2 id="feedback">
+    <title>Commentaires et corrections</title>
+
+    <para>
+      Vos retours sur ce document seront les bienvenus. Adressez vos ajouts,
+      commentaires et remarques à l'auteur à l'adresse mail suivante :
+      <email>fabio.busatto@sikurezza.org</email>.
+    </para>
+  </sect2>
+
+  <sect2 id="translations">
+    <title>Traductions</title>
+
+    <para>
+      Si vous êtes intéressé par la traduction de ce HOWTO en d'autres langues,
+      n'hésitez pas à me contacter. Votre contribution sera la bienvenue.
+    </para>
+    <para>
+      Langues disponibles : 
+      <itemizedlist>
+        <listitem>
+          <para>
+            <ulink url="http://www.tldp.org/HOWTO/html_single/TCP-Keepalive-HOWTO/">
+              anglais (document original)
+            </ulink>
+          </para>
+        </listitem>
+        <listitem>
+          <para>
+            <ulink url="http://www.traduc.org/docs/howto/lecture/TCP-Keepalive-HOWTO.html">
+              français
+            </ulink>
+          </para>
+        </listitem>
+      </itemizedlist>
+    </para>
+  </sect2>
+</sect1>
+
+<sect1 id="apercu">
+  <title>Aperçu de TCP keepalive</title>
+
+  <para>
+    Afin de comprendre ce que fait TCP keepalive (que nous appellerons
+    'keepalive'), vous n'avez besoin que d'en lire le nom : keep TCP
+    alive (maintenir TCP en vie), c'est à dire conserver la connexion TCP.
+    Cela signifie que vous serez en mesure de vérifier l'état de votre socket
+    de connexion (appelée aussi socket TCP), et de déterminer si la connexion
+    est toujours établie ou si elle est rompue.
+  </para>
+
+  <sect2 id="questce">
+    <title>Qu'est-ce que TCP keepalive ?</title>
+
+    <para>
+      Le concept du keepalive est très simple: lorsque vous initiez une 
+      connexion TCP, vous y associez un jeu de chronomètres. Certains de ces 
+      chronomètres ont trait à la procédure du keepalive. Quand la durée
+      maximale du keepalive est atteinte, vous adressez à l'hôte distant un
+      paquet sonde de keepalive ne contenant aucune donnée, avec le bit ACK 
+      positionné. Cela est possible grâce aux particularités de TCP/IP,
+      une sorte de ACK doublé, et l'hôte distant n'aura aucun argument,
+      puisque TCP est un protocole orienté flux. En retour vous aurez une 
+      réponse de l'hôte distant (qui n'a nul besoin d'implémenter le keepalive,
+      mais seulement TCP/IP), sans donnée, et le ACK positionné.
+    </para>
+
+    <para>
+      Si vous recevez une réponse à votre sonde keepalive, vous pouvez être
+      certain que la connexion est toujours établie et active sans inquiétude
+      pour le niveau applicatif. Concrètement, TCP permet de maintenir un flux,
+      sans paquet, donc un paquet de longueur zéro n'est pas dangereux pour 
+      le programme utilisateur.
+    </para>
+
+    <para>
+      Cette méthode est utile car si les autres points distants perdent leurs 
+      connexions (en raison d'un redémarrage par exemple) vous détecterez que
+      la connexion est rompue, même sans avoir de flux de donnée. Si les sondes 
+      keepalive n'obtiennent pas de réponse, vous pouvez certifier que la 
+      connexion ne peut plus être considérée comme valide et agir en 
+      conséquence.
+    </para>
+  </sect2>
+
+  <sect2 id="pourquoiutiliser">
+  <title>Pourquoi utiliser TCP keepalive ?</title>
+    <para>
+      Vous pouvez vivre plutôt heureux sans keepalive, donc si vous lisez ces
+      lignes, soit vous essayez de comprendre si keepalive est une réponse 
+      possible à vos problèmes, soit vous n'avez rien de plus intéressant à 
+      faire et c'est bien aussi. :)
+    </para>
+
+    <para>
+      Keepalive est non invasif, et dans la plupart des cas, si vous avez un
+      doute, vous pouvez l'activer sans risque d'erreur. mais souvenez vous que
+      c'est générateur de flux supplémentaire, ce qui peut avoir un impact sur
+      les routeurs et les pare-feu.
+    </para>
+
+    <para>
+      En résumé, utilisez vos méninges et soyez prudent.
+    </para>
+
+    <para>
+      Dans la section suivante nous distinguerons les deux objectifs de 
+      keepalive:
+      <itemizedlist>
+        <listitem>
+          <para>S'assurer qu'un hôte distant n'est pas injoignable</para>
+        </listitem>
+        <listitem>
+          <para>Éviter une déconnexion due à une inactivité réseau.</para>
+        </listitem>
+      </itemizedlist>
+    </para>
+  </sect2>
+
+  <sect2 id="verifierinjoignables">
+    <title>Vérifier les hôtes injoignables</title>
+
+    <para>
+      Keepalive peut être utilisé pour être averti que l'hôte distant est mort
+      avant qu'il soit capable de vous le notifier. Cela pourrait se produire 
+      en différentes circonstances, une panique noyau ou une interruption 
+      soudaine du processus maintenant la connexion par exemple. 
+      Un autre cas justifiant keepalive pour détecter que l'hôte distant n'est
+      pas joignable est la défaillance du réseau. Dans ce cas, si le réseau
+      n'est pas à nouveau opérationnel, vous êtes dans la même situation que 
+      pour la mort de l'hôte distant. C'est dans ces cas de figure que les 
+      mécanismes TCP classiques ne permettent pas de s'assurer de l'état d'une 
+      connexion.
+    </para>
+
+    <para>
+      Songez à une simple connexion TCP entre l'hôte A et l'hôte B: il y a 
+      la poignée de main initiale en trois phases, le paquet SYN de A vers B,
+      le SYN/ACK en retour de B vers A, et le ACK final de A vers B. A ce 
+      stade, nous sommes dans une situation stable : la connexion est établie,
+      et les données peuvent donc être envoyées sur ce lien. Mais le problème 
+      survient : débranchez l'alimentation de B et instantanément il s'éteint,
+      sans rien envoyer sur le réseau pour notifier A que la connexion va être
+      interrompue. A, de son côté, est prêt à envoyer des données, et 
+      n'imagine pas que B est muet. Maintenant rebranchez l'alimentation de B
+      et attendez que le système redémarre. A et B sont de retour, mais A 
+      présente une connexion toujours active vers B, alors que B l'ignore. 
+      La situation se résout d'elle-même lorsque A tente d'envoyer des données
+      à B sur une connexion morte, et que B répond par un paquet RST, forçant 
+      A à finalement mettre fin à la connexion.
+    </para>
+
+    <para>
+      Keepalive peut vous notifier quand un destinataire devient injoignable
+      sans risque de faux positif. En fait, si le problème tient au réseau 
+      entre les deux hôtes, le rôle du keepalive est d'attendre un temps pour
+      tenter à nouveau, adressant le paquet keepalive avant de notifier de la 
+      rupture du lien.
+    </para>
+
+    <para>
+
+<screen><![CDATA[
+ _____                                                     _____
+|     |                                                   |     |
+|  A  |                                                   |  B  |
+|_____|                                                   |_____|
+   ^                                                         ^
+   |--->--->--->-------------- SYN -------------->--->--->---|
+   |---<---<---<------------ SYN/ACK ------------<---<---<---|
+   |--->--->--->-------------- ACK -------------->--->--->---|
+   |                                                         |
+   |                                   le système meurt ---> X
+   |
+   |                               le système redémarre ---> ^
+   |                                                         |
+   |--->--->--->-------------- PSH -------------->--->--->---|
+   |---<---<---<-------------- RST --------------<---<---<---|
+   |                                                         |
+]]></screen>
+    </para>
+  </sect2>
+
+  <sect2 id="eviterdeconnexion">
+    <title>Éviter une déconnexion due à une inactivité réseau.</title>
+
+    <para>
+      L'autre objectif utile de keepalive est d'éviter que l'inactivité ne
+      provoque une déconnexion. C'est un cas fréquent d'être déconnecté sans
+      raison lorsque vous vous trouvez derrière un proxy NAT ou un pare-feu.
+      Ce comportement est dû aux procédures de surveillance des connexions
+      des proxies et pare-feu, qui tiennent un inventaire des connexions qui
+      les traverse. En raison des limites physiques de leurs ressources, ces 
+      machines ne peuvent conserver en mémoire qu'un nombre déterminé de 
+      connexions. La règle la plus courante et la plus logique est de maintenir
+      les connexions les plus récentes et de mettre d'abord fin aux connexions 
+      les plus anciennes ou inactives.
+    </para>
+
+    <para>
+      Pour revenir à nos hôtes A et B, reconnectons les. Une fois le lien 
+      établi, attendons qu'un évènement se produise pour le transmettre à l'hôte
+      distant. Qu'en est-il si cet évènement se produit après un long moment ? 
+      Notre connexion a sa propre durée, qui est inconnue du proxy. Lorsque nous
+      finissons par transmettre des données, le proxy n'est plus capable de les 
+      traiter correctement, et la connexion est rompue.
+    </para>
+
+    <para>
+      Puisque le fonctionnement normal est de mettre en tête de liste la 
+      connexion par laquelle transitent des paquets, et de choisir la dernière
+      connexion de la file quand il faut en supprimer une, le fait d'envoyer
+      périodiquement des paquets sur le réseau est un bon moyen pour toujours 
+      rester en phase avec un risque minime de suppression.
+    </para>
+
+    <para>
+<screen><![CDATA[
+ _____           _____                                     _____
+|     |         |     |                                   |     |
+|  A  |         | NAT |                                   |  B  |
+|_____|         |_____|                                   |_____|
+   ^               ^                                         ^
+   |--->--->--->---|----------- SYN ------------->--->--->---|
+   |---<---<---<---|--------- SYN/ACK -----------<---<---<---|
+   |--->--->--->---|----------- ACK ------------->--->--->---|
+   |               |                                         |
+   |               | <--- connexion supprimée de la table    |
+   |               |                                         |
+   |--->- PSH ->---| <--- connexion invalide                 |
+   |               |                                         |
+]]></screen>
+    </para>
+  </sect2>
+</sect1>
+
+<sect1 id="usingkeepalive">
+  <title>Utiliser TCP keepalive sous Linux</title>
+
+  <para>
+    Linux intègre nativement le keepalive. Vous devez activer le réseau TCP/IP
+    pour pouvoir l'utiliser. Vous avez aussi besoin du support de 
+    <literal>procfs</literal> et de <literal>sysctl</literal> pour pouvoir 
+    configurer les paramètre noyau au lancement.
+  </para>
+
+  <para>
+    Les fonctions impliquant keepalive utilisent trois variables manipulées par l'utilisateur :
+
+    <variablelist termlength="23">
+      <varlistentry>
+        <term>
+          <varname>tcp_keepalive_time</varname>
+        </term>
+        <listitem>
+          <para>
+            intervalle entre le dernier envoi de paquet (le simple ACK n'étant
+            pas considéré comme de la donnée) et la première sonde keepalive;
+            après que la connexion ait été marquée comme requérant un keepalive, 
+            ce compteur n'est plus utilisé.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <varname>tcp_keepalive_intvl</varname>
+        </term>
+        <listitem>
+          <para>
+            intervalle entre deux sondes keepalive, indépendamment de ce qui 
+            est échangé sur la connexion dans l'intervalle
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <varname>tcp_keepalive_probes</varname>
+        </term>
+        <listitem>
+          <para>
+            nombre de sondes non acquittées à envoyer avant de considérer la 
+            connexion perdue et de notifier la couche applicative.
+          </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </para>
+
+  <para>
+    Rappelez-vous que le support du keepalive, même s'il est configuré dans le
+    noyau, n'est pas le comportement par défaut de Linux. Les programmes 
+    doivent requérir le contrôle du keepalive pour que ses sockets puissent
+    utiliser l'interface <literal>setsockopt</literal>. Relativement peu de 
+    programmes implémentent keepalive, mais vous pouvez facilement ajouter le
+    support du keepalive pour la plupart d'entre eux en suivant les 
+    instructions détaillées plus avant dans ce document.
+  </para>
+
+  <sect2 id="configuringkernel">
+    <title>Configurer le noyau</title>
+
+    <para>
+      Il existe deux moyens de configurer les paramètres keepalive du noyau
+      au travers de commandes utilisateur:
+
+      <itemizedlist>
+        <listitem>
+          <para>l'interface <literal>procfs</literal></para>
+        </listitem>
+        <listitem>
+          <para>l'interface <literal>sysctl</literal></para>
+        </listitem>
+      </itemizedlist>
+    </para>
+
+    <para>
+      Nous aborderons essentiellement comment procéder au travers de l'interface
+      procfs car elle est la plus utilisée, recommandée et la plus simple à 
+      appréhender. L'interface sysctl, particulièrement sous l'aspect de l'appel
+      système (syscall) <citerefentry><refentrytitle>
+      <function>sysctl</function></refentrytitle><manvolnum>2</manvolnum>
+      </citerefentry> et non de l'outil <citerefentry><refentrytitle><command>
+      sysctl</command></refentrytitle><manvolnum>8</manvolnum></citerefentry>,
+      n'est là qu'à titre informatif.
+    </para>
+
+    <sect3 id="procfsinterface">
+      <title>L'interface<literal>procfs</literal></title>
+
+      <para>
+        Cette interface nécessite que<literal>sysctl</literal> et <literal>
+        procfs</literal> soient inclus au noayu, et que <literal>procfs
+        </literal> soit monté quelque part dans le système de fichiers 
+        (habituellement <filename>/proc</filename>, comme dans l'exemple 
+        ci-dessous). Vous pouvez lire les valeurs des paramètres actuels
+        en listant avec la commande <quote>cat</quote> les fichiers du 
+        répertoire <filename>/proc/sys/net/ipv4/</filename> :
+
+        <informalexample><programlisting>
+  <prompt># </prompt><userinput>cat /proc/sys/net/ipv4/tcp_keepalive_time</userinput>
+  <computeroutput>7200</computeroutput>
+
+  <prompt># </prompt><userinput>cat /proc/sys/net/ipv4/tcp_keepalive_intvl</userinput>
+  <computeroutput>75</computeroutput>
+
+  <prompt># </prompt><userinput>cat /proc/sys/net/ipv4/tcp_keepalive_probes</userinput>
+  <computeroutput>9</computeroutput>
+        </programlisting></informalexample>
+      </para>
+
+      <para>
+        Les deux premiers paramètres sont exprimés en secondes, et le dernier 
+        est un nombre simple. Cela signifie que les routines keepalive 
+        attendent deux heures (7200 secs) avant d'adresser la première sonde
+        keepalive, et en adressent une nouvelle toutes les 75 secondes. 
+        Si aucune réponse ACK n'est reçue après neuf tentatives consécutives,
+        la connexion est considérée comme rompue.
+      </para>
+
+      <para>
+        La modification de ces valeurs est directe : il faut écrire de 
+        nouvelles valeurs dans les fichiers. Supposons que souhaitiez 
+        configurer la machine pour que le keepalive débute après dix minutes
+        d'inactivité sur le lien, et que des sondes soient envoyées chaque 
+        minute. En raison de l'instabilité de ce brin de votre réseau
+        et de la faible valeur de l'intervalle, supposons que vous vouliez 
+        augmenter le nombre de tentatives à 20.
+      </para>
+
+      <para>
+        Voici comment paramétrer ces valeurs :
+
+        <informalexample><programlisting>
+  <prompt># </prompt><userinput>echo 600 &gt; /proc/sys/net/ipv4/tcp_keepalive_time</userinput>
+
+  <prompt># </prompt><userinput>echo 60 &gt; /proc/sys/net/ipv4/tcp_keepalive_intvl</userinput>
+
+  <prompt># </prompt><userinput>echo 20 &gt; /proc/sys/net/ipv4/tcp_keepalive_probes</userinput>
+        </programlisting></informalexample>
+      </para>
+
+      <!-- <para>
+        To be sure that all succeeds, recheck the files and confirm these new
+        values are showing in place of the old ones.
+      </para> Suppression ? -->
+      <para>
+        Pour confirmer la prise en compte des nouvelles valeurs, affichez à 
+        nouveau le contenu des fichiers pour vérifier qu'ils présentent bien
+        les valeurs souhaitées.
+      </para>
+
+      <para>
+        Il faut garder présent à l'esprit que <literal>procfs</literal> manipule
+        des fichiers spéciaux, et vous ne pouvez pas tout faire sur ces fichiers 
+        qui ne sont qu'une interface vers l'environnement du noyau, non de 
+        véritables fichiers. Testez vos scripts avant de les utiliser et faites
+        en sorte d'utiliser des modes d'accès simples comme dans les exemples 
+        ci-dessus.
+      </para>
+
+      <para>
+        Vous pouvez accéder à l'interface grâce à l'outil <citerefentry><refentrytitle>
+        <command>sysctl</command></refentrytitle><manvolnum>8</manvolnum>
+        </citerefentry>, en précisant ce que vos voulez lire ou écrire.
+
+        <informalexample><programlisting>
+  <prompt># </prompt><userinput>sysctl \</userinput>
+  <prompt>&gt; </prompt><userinput>net.ipv4.tcp_keepalive_time \</userinput>
+  <prompt>&gt; </prompt><userinput>net.ipv4.tcp_keepalive_intvl \</userinput>
+  <prompt>&gt; </prompt><userinput>net.ipv4.tcp_keepalive_probes</userinput>
+  <computeroutput>net.ipv4.tcp_keepalive_time = 7200
+  net.ipv4.tcp_keepalive_intvl = 75
+  net.ipv4.tcp_keepalive_probes = 9</computeroutput>
+        </programlisting></informalexample>
+      </para>
+
+      <para>
+        Remarquez que les noms <literal>sysctl</literal> sont proches des chemins
+        <literal>procfs</literal>. L'écriture se fait grâce à l'option <option>-w</option>
+        de <citerefentry><refentrytitle><command>sysctl</command>
+        </refentrytitle><manvolnum>8</manvolnum></citerefentry>:
+
+        <informalexample><programlisting>
+  <prompt># </prompt><userinput>sysctl -w \</userinput>
+  <prompt>&gt; </prompt><userinput>net.ipv4.tcp_keepalive_time=600 \</userinput>
+  <prompt>&gt; </prompt><userinput>net.ipv4.tcp_keepalive_intvl=60 \</userinput>
+  <prompt>&gt; </prompt><userinput>net.ipv4.tcp_keepalive_probes=20</userinput>
+  <computeroutput>net.ipv4.tcp_keepalive_time = 600
+  net.ipv4.tcp_keepalive_intvl = 60
+  net.ipv4.tcp_keepalive_probes = 20</computeroutput>
+        </programlisting></informalexample>
+      </para>
+
+      <para>
+        Remarquez que <citerefentry><refentrytitle><command>sysctl</command>
+        </refentrytitle><manvolnum>8</manvolnum></citerefentry> n'utilise pas
+        l'appel système (syscall)<citerefentry><refentrytitle><function>sysctl</function></refentrytitle>
+        <manvolnum>2</manvolnum></citerefentry>, mais lit et écrit directement
+        dans l'arborescence <literal>procfs</literal>, donc <literal>procfs</literal>
+        devra être  activé dans le noyau et monté dans le système de fichiers,
+        comme si vous accédiez directement aux fichiers via l'interface
+        <literal>procfs</literal>. <citerefentry><refentrytitle>
+        <command>Sysctl</command></refentrytitle><manvolnum>8</manvolnum>
+        </citerefentry> n'est qu'un moyen différent de faire la même chose.
+      </para>
+    </sect3>
+
+    <sect3 id="sysctlinterface">
+      <title>L'interface<literal>sysctl</literal></title>
+
+      <para>
+        Il existe un autre moyen d'accéder aux variables du noyau : l'appel 
+        système <citerefentry><refentrytitle><function>sysctl</function>
+        </refentrytitle><manvolnum>2</manvolnum></citerefentry>. Cela peut être 
+        utile lorque <literal>procfs</literal> n'est pas disponible du fait que 
+        la communication avec le noyau est réalisée directement via syscall et pas 
+        au travers de l'arborescence <literal>procfs</literal> . Il n'existe 
+        actuellement aucun programme qui implémente l'appel syscall 
+        (souvenez-vous que <citerefentry><refentrytitle><command>
+        sysctl</command></refentrytitle><manvolnum>8</manvolnum></citerefentry>
+        ne l'utilise pas).
+      </para>
+
+      <para>
+        Pour une utilisation détaillé de <citerefentry><refentrytitle><function>
+        sysctl</function></refentrytitle><manvolnum>2</manvolnum></citerefentry>
+        reportez vous au manuel (man).
+      </para>
+    </sect3>
+  </sect2>
+
+  <sect2 id="rendremodifspersistantes">
+    <title>Rendre les modifications persistantes au redémarrage</title>
+
+    <para>
+      Il existe différents moyens de paramétrer le système à chaque démarrage.
+      Tout d'abord, souvenez vous que chaque distribution Linux possède son 
+      propre jeu de scripts d'initialisation appelé par
+      <citerefentry><refentrytitle><command>init</command>
+      </refentrytitle><manvolnum>8</manvolnum></citerefentry>. 
+      Les configurations les plus courantes incluent soit le répertoire 
+      <filename>/etc/rc.d/</filename> , soit <filename>/etc/init.d/</filename> . 
+      Dans ce cas vous pouvez positionner les paramètres dans un script de 
+      démarrage quelconque, keepalive relisant les valeurs à chaque fois 
+      que ses routines en ont besoin. Donc si vous changez la valeur de 
+      <varname>tcp_keepalive_intvl</varname> alors que la connexion est 
+      encore active, le noyau utilisera la nouvelle valeur pour continuer.
+    </para>
+
+    <para>
+      Les commandes d'initialisation peuvent logiquement être placées en trois 
+      endroits différents : le premier est dans la configuration réseau,
+      le second dans le script <filename>rc.local</filename> , habituellement 
+      inclus dans toutes les distributions, et connu comme étant le point de
+      configuration utilisateur au démarrage. Le troisième point existe 
+      peut-être déjà sur votre système. En revenant à l'outil
+      <citerefentry><refentrytitle><command>sysctl</command>
+      </refentrytitle><manvolnum>8</manvolnum></citerefentry> , vous pouvez
+      voir que l'option <option>-p</option> charge les paramètres du fichier
+      de configuration <filename>/etc/sysctl.conf</filename> . Il est fréquent 
+      que votre script d'initialisation exécute déjà <command>sysctl</command> <option>-p</option>
+      (un <quote>grep</quote> sur le répertoire de configuration le confirmera),
+      et vous n'avez alors qu'à ajouter les lignes dans <filename>
+      /etc/sysctl.conf</filename> pour qu'elles soient prises en compte 
+      à chaque démarrage. Pour davantage d'informations sur la syntaxe de
+      <citerefentry><refentrytitle><filename>sysctl.conf</filename>
+      </refentrytitle><manvolnum>5</manvolnum></citerefentry>, 
+      reportez vous au manuel.
+    </para>
+  </sect2>
+</sect1>
+
+<sect1 id="programmer">
+  <title>Programmer des applications</title>
+
+  <para>
+    Cette section aborde le code nécessaire à l'écriture d'une application utilisant
+    keepalive. Ce n'est pas un manuel de programmation, et il requiert d'avoir 
+    une connaissance du langage C et des concepts réseau. Je considère que la 
+    notion de socket vous est familière, de même que tous les aspects généraux 
+    de votre application.
+  </para>
+
+  <sect2 id="quandrequis">
+    <title>Quand votre code requiert keepalive</title>
+
+    <para>
+      Les applications réseau ne requièrent pas toutes l'aide du keepalive. 
+      Souvenez vous qu'il s'agit de TCP keepalive. Comme vous pouvez le 
+      deviner, seules les sockets TCP peuvent en tirer parti.
+    </para>
+
+    <para>
+      La plus belle chose que vous puissiez faire en écrivant une application est
+      de la rendre aussi paramétrable que possible, et de ne pas en forcer les choix.
+      Si vous voulez prendre en compte le bonheur de vos utilisateurs, vous 
+      devriez implémenter keepalive et laisser les utilisateurs décider s'ils
+      veulent ou non l'utiliser en prévoyant un paramètre de configuration ou 
+      une option de ligne de commande.
+    </para>
+  </sect2>
+
+  <sect2 id="setsockopt">
+    <title>L'appel de fonction <function>setsockopt</function></title>
+
+    <para>
+      Tout ce dont vous avez besoin pour que keepalive soit activé sur une 
+      socket particulière est de positionner l'option sur cette socket.
+      Le prototype de fonction est le suivant:
+
+      <synopsis>
+  int <function>setsockopt</function>(int s, int level, int optname,
+                 const void *optval, socklen_t optlen)
+      </synopsis>
+    </para>
+
+    <para>
+      Le premier paramètre est la socket, préalablement créée avec
+      <citerefentry><refentrytitle><function>socket</function></refentrytitle>
+      <manvolnum>2</manvolnum></citerefentry>; le second doit être <constant>
+      SOL_SOCKET</constant>, et le troisième <constant>SO_KEEPALIVE
+      </constant>. Le quatrième doit être un entier booleéen, indiquant que 
+      l'option est active, alors que le dernier est la taille de la valeur 
+      passée précédemment.
+    </para>
+
+    <para>
+      Conformément au manuel, le code retour <returnvalue>0</returnvalue>
+      indique le succès, <returnvalue>-1</returnvalue> est la valeur 
+      d'erreur (et <varname>errno</varname> est correctement renseignée).
+    </para>
+
+    <para>
+      Il existe aussi trois autres options de socket qu'il est possible de 
+      renseigner en écrivant votre application. Toutes utilisent le niveau
+      <constant>SOL_TCP</constant> au lieu de <constant>SOL_SOCKET</constant>,
+      et elles prennent le pas sur les variables système pour la socket
+      courante. Si vous lisez avant d'écrire, les paramètres système seront
+      retournés.
+    </para>
+
+    <itemizedlist>
+      <listitem>
+        <para><constant>TCP_KEEPCNT</constant> : prend le pas sur <varname>
+        tcp_keepalive_probes</varname></para>
+      </listitem>
+      <listitem>
+        <para><constant>TCP_KEEPIDLE</constant> : prend le pas sur <varname>
+        tcp_keepalive_time</varname></para>
+      </listitem>
+      <listitem>
+        <para><constant>TCP_KEEPINTVL</constant> : prend le pas sur <varname>
+        tcp_keepalive_intvl</varname></para>
+      </listitem>
+    </itemizedlist>
+  </sect2>
+
+  <sect2 id="exemples">
+    <title>Exemples de code</title>
+
+    <para>
+      Voici un petit exemple qui crée une socket, montre que keepalive est 
+      désactivé, puis l'active et vérifie que l'option est réellement positionnée.
+    </para>
+
+    <informalexample><programlisting><![CDATA[
+            /* --- début du programme de test  KEEPALIVE --- */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+
+int main(void);
+
+int main()
+{
+   int s;
+   int optval;
+   socklen_t optlen = sizeof(optval);
+
+   /* Creation de la socket */
+   if((s = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+      perror("socket()");
+      exit(EXIT_FAILURE);
+   }
+
+   /* Verifie l'etat de l'option keepalive */
+   if(getsockopt(s, SOL_SOCKET, SO_KEEPALIVE, &optval, &optlen) < 0) {
+      perror("getsockopt()");
+      close(s);
+      exit(EXIT_FAILURE);
+   }
+   printf("SO_KEEPALIVE is %s\n", (optval ? "ON" : "OFF"));
+
+   /* Rend l'option active */
+   optval = 1;
+   optlen = sizeof(optval);
+   if(setsockopt(s, SOL_SOCKET, SO_KEEPALIVE, &optval, optlen) < 0) {
+      perror("setsockopt()");
+      close(s);
+      exit(EXIT_FAILURE);
+   }
+   printf("SO_KEEPALIVE set on socket\n");
+
+   /* Verifie a nouveau son etat */
+   if(getsockopt(s, SOL_SOCKET, SO_KEEPALIVE, &optval, &optlen) < 0) {
+      perror("getsockopt()");
+      close(s);
+      exit(EXIT_FAILURE);
+   }
+   printf("SO_KEEPALIVE is %s\n", (optval ? "ON" : "OFF"));
+
+   close(s);
+
+   exit(EXIT_SUCCESS);
+}
+
+            /* ---  fin du programme de test  KEEPALIVE  --- */
+    ]]></programlisting></informalexample>
+  </sect2>
+</sect1>
+
+<sect1 id="applitierce">
+  <title>Implémenter keepalive sur une application tierce</title>
+
+  <para>
+    Tout le monde n'est pas développeur d'application, et tout le monde ne 
+    réécrira pas entièrement une application pour combler le manque
+    d'une fonctionnalité. Peut-être souhaitez vous ajouter keepalive à une 
+    application existante, et même si son auteur n'a pas considéré cela 
+    important, vous pensez que ce sera utile.
+  </para>
+
+  <para>
+    Tout d'abord, souvenez vous de ce qui a été dit précédemment à propos 
+    des cas où keepalive est nécessaire. Ensuite vous devrez affecter les
+    sockets TCP orientées connexion.
+  </para>
+
+  <para>
+    Comme Linux ne fournit pas la possibilité d'activer le support keepalive
+    via le noyau (les OS de type BSD le permettent souvent), le seul moyen
+    est d'appeler <citerefentry><refentrytitle><function>setsockopt
+    </function></refentrytitle><manvolnum>2</manvolnum></citerefentry>
+    après la création de la socket. Il y a deux solutions:
+
+    <itemizedlist>
+      <listitem>
+        <para>modification du code source du programme original</para>
+      </listitem>
+      <listitem>
+        <para>injection <citerefentry><refentrytitle><function>setsockopt</function>
+        </refentrytitle><manvolnum>2</manvolnum></citerefentry> en utilisant 
+        la technique de préchargement de bibliothèque</para>
+      </listitem>
+    </itemizedlist>
+  </para>
+
+  <sect2 id="modifiersource">
+    <title>Modifier le code source</title>
+
+    <para>
+      Souvenez-vous que keepalive n'est pas orienté programme, mais orienté 
+      socket, donc si vous avez de multiples sockets, vous pouvez gérer 
+      keepalive séparément pour chacune d'entre elles. La première étape
+      consiste à comprendre ce que fait le programme, la seconde à rechercher
+      le code pour chaque socket dans le programme. Cela peut être fait en 
+      utilisant <citerefentry><refentrytitle><command>grep</command></refentrytitle>
+      <manvolnum>1</manvolnum></citerefentry>, comme suit:
+
+      <programlisting>
+  <prompt># </prompt><userinput>grep 'socket *(' *.c</userinput>
+      </programlisting>
+    </para>
+
+    <para>
+      Cela vous montrera à peu près toutes les sockets du code. L'étape 
+      suivante consiste à choisir les bonnes : vous ciblez les sockets TCP,
+      donc recherchez <constant>PF_INET</constant> (ou <constant>AF_INET</constant>),
+      <constant>SOCK_STREAM</constant> et <constant>IPPROTO_TCP</constant> (ou
+      plus communément, <constant>0</constant>) dans les paramètres de votre
+      liste de sockets, et enlevez celles qui ne correspondent pas.
+    </para>
+
+    <para>
+      Il existe un autre moyen de créer une socket au travers de
+      <citerefentry><refentrytitle><function>accept</function></refentrytitle>
+      <manvolnum>2</manvolnum></citerefentry>. En ce ce cas, suivez les sockets
+      TCP identifiées et vérifiez si certaines sont en écoute : si c'est
+      le cas, gardez à l'esprit que <citerefentry><refentrytitle>
+      <function>accept</function></refentrytitle><manvolnum>2</manvolnum>
+      </citerefentry> retourne un descripteur de socket, qui doit être ajouté
+      à votre liste de sockets.
+    </para>
+
+    <para>
+      Une fois les sockets identifiées, vous pouvez procéder aux modifications.
+      Le patch le plus 'fast &amp; furious' peut consister à simplement ajouter
+      la fonction <citerefentry>
+      <refentrytitle><function>setsockopt</function></refentrytitle><manvolnum>2
+      </manvolnum></citerefentry> juste après le bloc de création de la socket.
+      Éventuellement, vous pouvez ajouter des appels supplémentaires pour
+      modifier les paramètres systèmes par défaut de keepalive. Surtout soyez 
+      attentif au positionnement des vérifications d'erreurs et des handlers 
+      de la fonction, peut-être en recopiant le style du code alentour. Songez
+      à affecter à <varname>optval</varname> une valeur non nulle et à 
+      initialiser <varname>optlen</varname> avant d'appeler la fonction.
+    </para>
+
+    <para>
+      Si vous en avez le temps ou pensez que ce serait plus élégant, essayez 
+      d'implémenter complètement le keepalive à votre programme, en incluant
+      une option de ligne de commande ou un paramètre de configuration pour 
+      laisser à l'utilisateur la liberté d'utiliser ou non keepalive.
+    </para>
+  </sect2>
+
+  <sect2 id="libkeepalive">
+    <title><application>libkeepalive</application>: préchargement de bibliothèque</title>
+
+    <para>
+      Dans de nombreux cas vous n'avez pas la possibilité de modifier le code 
+      source d'une application, ou bien lorsque vous devez activer keepalive
+      pour tous vos programmes, tout patcher et tout recompiler n'est pas 
+      recommandé.
+    </para>
+
+    <para>
+      Le projet <application>libkeepalive</application> a vu le jour pour 
+      faciliter l'implémentation du keepalive au sein des applications 
+      puisque le noyau Linux ne permet pas de le faire nativement 
+      (comme le fait BSD). La page d'accueil du projet 
+      <application>libkeepalive</application> est disponible à l'adresse
+      <ulink url="http://libkeepalive.sourceforge.net/">
+      http://libkeepalive.sourceforge.net/</ulink>
+    </para>
+
+    <para>
+      Il consiste en une bibliothèque partagée qui outrepasse l'appel système 
+      socket de la plupart des exécutables, sans aucun besoin de les recompiler
+      ni de les modifier. La technique repose sur la fonctionnalité de
+      pré-chargement (<firstterm>preloading</firstterm>) de
+      <citerefentry><refentrytitle><command>ld.so</command></refentrytitle>
+      <manvolnum>8</manvolnum></citerefentry>, chargeur inclus dans Linux, qui
+      qui permet le chargement de bibliothèques partagées avec une priorité
+      supérieure à la normale. Les programmes utilisent habituellement l'appel
+      de fonction <citerefentry><refentrytitle><function>socket</function>
+      </refentrytitle><manvolnum>2</manvolnum></citerefentry> situé dans la
+      <literal>glibc</literal>, librairie partagée; avec <application>libkeepalive</application> 
+      il est possible d'encapsuler la fonction <citerefentry><refentrytitle>
+      <function>setsockopt</function></refentrytitle>
+      <manvolnum>2</manvolnum></citerefentry> juste après la création, retournant 
+      au programme principal une socket avec keepalive déjà positionné.
+      En raison des mécanismes utilisés pour réaliser l'appel système,
+      ce procédé ne fonctionne pas lorsque la fonction socket est compilée
+      statiquement dans le binaire, comme dans le cas d'un programme lié par 
+      l'option <option>-static</option> de <citerefentry><refentrytitle>
+      <command>gcc</command></refentrytitle><manvolnum>1
+      </manvolnum></citerefentry>.
+    </para>
+
+    <para>
+      Après avoir téléchargé et installé <application>libkeepalive</application>,
+      vous serez en mesure d'ajouter le support de keepalive à vos programmes
+      sans être <literal>root</literal> au préalable, simplement en
+      initialisant la variable d'environnement <envar>LD_PRELOAD</envar>
+      avant d'exécuter le programme. Au fait, le super utilisateur peut aussi
+      forcer la pré-chargement au travers d'une configuration globale, et 
+      les utilisateurs peuvent choisir de le désactiver en positionnant 
+      la variable d'environnement <envar>KEEPALIVE</envar> à <constant>off</constant>.
+    </para>
+
+    <para>
+      L'environnement est aussi utilisé pour positionner des valeurs
+      spécifiques pour les paramètres de keepalive, vous avez donc la
+      possibilité de gérer chaque programme de façon distincte,
+      en initialisant <envar>KEEPCNT</envar>, <envar>KEEPIDLE</envar>
+      et <envar>KEEPINTVL</envar> avant de lancer l'application.
+    </para>
+
+    <para>
+      Voici un exemple d'utilisation de libkeepalive :
+
+      <informalexample><programlisting>
+  <prompt>$ </prompt><userinput>test</userinput>
+  <computeroutput>SO_KEEPALIVE is OFF</computeroutput>
+
+  <prompt>$ </prompt><userinput>LD_PRELOAD=libkeepalive.so \</userinput>
+  <prompt>&gt; </prompt><userinput>KEEPCNT=20 \</userinput>
+  <prompt>&gt; </prompt><userinput>KEEPIDLE=180 \</userinput>
+  <prompt>&gt; </prompt><userinput>KEEPINTVL=60 \</userinput>
+  <prompt>&gt; </prompt><userinput>test</userinput>
+  <computeroutput>SO_KEEPALIVE is ON
+  TCP_KEEPCNT   = 20
+  TCP_KEEPIDLE  = 180
+  TCP_KEEPINTVL = 60</computeroutput>
+      </programlisting></informalexample>
+    </para>
+
+    <para>
+      Et vous pouvez utiliser <citerefentry><refentrytitle><command>strace</command>
+      </refentrytitle><manvolnum>1</manvolnum></citerefentry> pour comprendre
+      ce qui se passe:
+    </para>
+
+    <informalexample><programlisting>
+  <prompt>$ </prompt><userinput>strace test</userinput>
+  <computeroutput>execve("test", ["test"], [/* 26 vars */]) = 0
+  [..]
+  open("/lib/libc.so.6", O_RDONLY)        = 3
+  [..]
+  socket(PF_INET, SOCK_STREAM, IPPROTO_TCP) = 3
+  getsockopt(3, SOL_SOCKET, SO_KEEPALIVE, [0], [4]) = 0
+  close(3)                                = 0
+  [..]
+  _exit(0)                                = ?</computeroutput>
+
+  <prompt>$ </prompt><userinput>LD_PRELOAD=libkeepalive.so \</userinput>
+  <prompt>&gt; </prompt><userinput>strace test</userinput>
+  <computeroutput>execve("test", ["test"], [/* 27 vars */]) = 0
+  [..]
+  open("/usr/local/lib/libkeepalive.so", O_RDONLY) = 3
+  [..]
+  open("/lib/libc.so.6", O_RDONLY)        = 3
+  [..]
+  open("/lib/libdl.so.2", O_RDONLY)       = 3
+  [..]
+  socket(PF_INET, SOCK_STREAM, IPPROTO_TCP) = 3
+  setsockopt(3, SOL_SOCKET, SO_KEEPALIVE, [1], 4) = 0
+  setsockopt(3, SOL_TCP, TCP_KEEPCNT, [20], 4) = 0
+  setsockopt(3, SOL_TCP, TCP_KEEPIDLE, [180], 4) = 0
+  setsockopt(3, SOL_TCP, TCP_KEEPINTVL, [60], 4) = 0
+  [..]
+  getsockopt(3, SOL_SOCKET, SO_KEEPALIVE, [1], [4]) = 0
+  [..]
+  getsockopt(3, SOL_TCP, TCP_KEEPCNT, [20], [4]) = 0
+  [..]
+  getsockopt(3, SOL_TCP, TCP_KEEPIDLE, [180], [4]) = 0
+  [..]
+  getsockopt(3, SOL_TCP, TCP_KEEPINTVL, [60], [4]) = 0
+  [..]
+  close(3)                                = 0
+  [..]
+  _exit(0)                                = ?</computeroutput>
+    </programlisting></informalexample>
+
+    <para>
+      Pour d'autres informations, visitez la page d'accueil du projet
+      <application>libkeepalive</application> :
+      <ulink url="http://libkeepalive.sourceforge.net/">
+      http://libkeepalive.sourceforge.net/</ulink>
+    </para>
+  </sect2>
+</sect1>
+
+</article>

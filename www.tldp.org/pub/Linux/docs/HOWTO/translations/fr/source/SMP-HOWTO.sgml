@@ -1,0 +1,1550 @@
+<!doctype linuxdoc system>
+<article>
+
+<title>Linux SMP HOWTO
+<author>David Mentré, <tt/David.Mentre@irisa.fr/ 
+<date>v1.9, 13 janvier 2000
+
+<abstract>
+Ce HOWTO passe en revue les principaux problèmes et leurs solutions liés 
+la configuration et à l'emploi d'un système SMP sous Linux.
+</abstract>
+
+<toc>
+
+<sect>Introduction
+<p>
+Linux fonctionne sur les machines SMP (Symetric Multi-Processors).
+Le support SMP fut introduit dans la version 2.0 du noyau et a été 
+largement amélioré depuis. La gestion est beaucoup plus fine dans la série
+2.2.x que dans la 2.0.x, d'où de meilleures performances lorsque les processus 
+font appel au noyau !
+
+<p>
+HOWTO maintenu par David Mentré (<htmlurl name="David.Mentre@irisa.fr"
+url="mailto:David.Mentre@irisa.fr">). La dernière version de ce HOWTO
+peut être obtenue à
+<itemize>
+  <item> <htmlurl url="http://www.irisa.fr/prive/mentre/smp-howto/"
+         name="http://www.irisa.fr/prive/mentre/smp-howto/"> (France)
+  <item> <htmlurl url="http://www.phy.duke.edu/brahma/smp-faq/"
+         name="http://www.phy.duke.edu/brahma/smp-faq/"> (USA)
+</itemize>
+
+<p>
+Si vous voulez contribuer à ce HOWTO, je préfère les diffs
+<url name="SGML version"
+url="http://www.irisa.fr/prive/mentre/smp-howto/smp-howto.sgml"> de ce
+document, mais toute remarque (en texte pur) sera grandement apprécié.
+Si vous m'envoyez un e-mail à propos de ce document, insérez s'il vous plaît 
+un tag tel <tt>[Linux SMP HOWTO]</> dans le champ <tt>Suject:</> de votre
+e-mail. Ça m'aide à trier automatiquement mon courrier (et vous recevrez
+une réponse plus rapide <tt>;)</>).
+
+<p>
+Ce HOWTO reprend et enrichit <url name="first draft"
+url="http://www.ihoc.net/linux-smp-faq-draft.html"> écrit par <bf>Chris
+Pirih</bf>.
+
+<p>
+Toutes les informations contenues dans ce HOWTO sont fournies "tel que".
+Toute garantie explicite, implicite ou légale, concernant l'exactitude
+de l'information, de la convenance à quelque usage particulier est par la
+présente spécifiquement déclinée. Alors que tous les efforts ont été faits 
+pour assurer l'exactitude des informations contenues dans ce HOWTO, les 
+auteurs n'assument aucune responsabilité pour les erreurs, omissions ou 
+dommages résultant de l'utilisation des informations contenues dans ce 
+document.
+
+<sect>Questions indépendantes de l'architecture.
+<p>
+
+<sect1>Côté noyau
+<p>
+<p>
+<enum>
+<item> <bf>Linux supporte-t-il les threads multiples ?
+Si je lance deux ou plusieurs processus, seront-ils répartis entre
+les différents processeurs disponibles ?</bf>
+<p>
+Oui. Les processus et les threads du noyau sont répartis entre
+les processeurs. Ceux de l'espace utilisateur ne le sont pas.
+
+<item> <bf>Quelles sont les architectures SMP supportées ?</bf>
+<p>
+<descrip>
+<tag/D'après <bf>Alan Cox</bf>&nbsp:/
+<p>
+Les versions 2.0 du noyau supportent les systèmes SMP de type hypersparc 
+(SS20, etc...) et Intel 486, Pentium ou machines supérieurs compatible avec la 
+norme Intel MP1.1/1.4.
+<bf>Richard Jelinek</bf> ajoute&nbsp: jusqu'à présent, seul des systèmes
+ne comprenant pas plus de 4 processeurs ont été testés. La spécification MP 
+(et donc Linux) autorise théoriquement jusqu'à 16 processeurs.
+<p>
+Le support SMP pour les architectures UltraSparc, SparcServer, Alpha et
+PowerPC est disponible dans le 2.2.x.
+<p>
+<tag/De <bf>Ralf Bächle</bf>&nbsp:/ MIPS, m68k et ARM ne gèrent pas le SMP;
+les deux derniers ne le supporteront probablement jamais.
+<p>
+Ceci étant, je ferai un hack pour MIPS-SMP dès que j'aurais une machine SMP...
+</descrip>
+
+<item> <bf>Comment construire un noyau Linux gérant le SMP ?</bf>
+<p>
+La plupart des distributions ne fournissent pas un noyau adapté au SMP.
+Vous devrez donc en faire un vous même. Si vous n'avez encore jamais 
+compilé de noyau, voila une excellente occasion d'apprendre.
+Expliquer comment compiler un nouveau noyau dépasse le
+cadre de ce document; préférez-vous au Linux Kernel Howto pour de plus amples
+informations (<bf>C. Polisher</bf>).
+Dans la série 2.0 jusqu'à la version 2.1.132 exclue du noyau, décommentez la 
+ligne <tt/SMP=1/ dans le Makefile principal (<tt>/usr/src/linux/Makefile</>).
+
+<p>
+Dans la version 2.2, configurez le noyau et répondez "oui" à la question
+"Symetric multi-processing support" (<bf>Michael Elizabeth Chastain</bf>).
+
+<p>
+Autorisez l'horloge temps réel en cochant l'option "RTC support"
+(<bf>Robert G.  Brown</bf>). Notez qu'inclure le support RTC, en réalité, pour
+autant que je sache, n'empêche pas le problème connu de la dérive de l'horloge
+avec le SMP&nbsp: activer cette fonctionnalité avertit en cas de lecture de
+l'horloge au démarrage.
+Une note de <bf>Richard Jelinek</bf> signale aussi qu'activer "Enhandced RTC" 
+est nécessaire pour activer le deuxième processeur (identification) sur 
+certaines cartes mère Intel exotiques.
+
+<p>
+Enfin, sur plate-forme Intel, N'ACTIVEZ PAS l'option APM (Advanced Power 
+Management)! APM et SMP sont incompatibles et votre système plantera 
+certainement (ou du moins probablement <tt>;)</>) au démarrage si APM est 
+activé (<bf>Jakob Oestergaard</bf>). 
+<bf>Alan Cox</bf> le confirme&nbsp: désactivez APM pour les machines SMP en 
+2.1.x. En gros le comportement APM est indéfini en présence de systèmes SMP et 
+tout peut arriver.
+Toujours sur plate-forme Intel, activez "MTRR (Memory Type Range Register) 
+support". Certains BIOS sont défectueux et n'activent pas la mémoire cache du 
+second processeur. Le support MTRR contient le code pour y remédier.
+
+<p>
+Vous devez reconstruire votre noyau et vos modules quand vous passez en SMP
+et quand vous changez de mode SMP. N'oubliez pas d'effectuer un 
+<tt>make modules</> et un <tt>make modules_install</> (<bf>Alan Cox</bf>).
+
+<p>
+Si vous obtenez des erreurs au chargement des modules, vous n'avez probablement
+pas réinstallé vos modules. Néanmoins, avec quelques noyaux 2.2.x,
+certains ont rapporté des problèmes lors de la recompilation d'un noyau SMP
+en noyau UP (Uni-Processeur). Afin de résoudre cela, sauvegardez votre fichier
+.config, et faites un <em>make mrproper</em>, restaurez votre fichier 
+<em>.config</em> et recompilez votre noyau (<em>make dep</em>, etc...)
+(<bf>Wade Hampton</bf>).
+N'oubliez pas de relancer lilo après avoir recopié votre nouveau noyau.
+
+<p>
+Récapitulation :
+<code>
+make config # ou menuconfig ou xconfig
+make dep
+make clean
+make bzImage # ou ce que vous voulez
+# copiez l'image du noyau manuellement puis RELANCER LILO 
+# ou make lilo
+make modules
+make modules_install
+</code>
+<p>
+
+<item> <bf>Comment compile-t-on un noyau Linux <bf>non</bf>-SMP ?</bf>
+<p>
+Dans la série 2.0, <bf>commentez</bf> la ligne <tt/SMP=1/ dans le Makefile
+principal (/usr/src/linux/Makefile).
+<p>
+Pour la série 2.2, configurez le noyau et répondez "no" à la question
+"Symmetric multi-processing support" (<bf>Michael Elizabeth Chastain</bf>).
+
+<p>
+Vous devez absolument recompiler votre noyau et ses modules pour activer
+ou désactiver le mode SMP. N'oubliez pas de faire <tt>make modules</>, 
+<tt>make modules_install</> et de relancer lilo. Voyez les notes plus haut
+sur les problèmes de configuration possibles.
+
+<item> <bf>Savoir si ça marche</bf>
+<p>
+<verb> cat /proc/cpuinfo </verb>
+
+<p>
+Sortie typique (bi-PentiumII):
+<code>
+processor       : 0
+cpu             : 686
+model           : 3
+vendor_id       : GenuineIntel
+[...]
+bogomips        : 267.06
+ 
+processor       : 1
+cpu             : 686
+model           : 3
+vendor_id       : GenuineIntel
+[...]
+bogomips        : 267.06
+</code>
+
+<item> <bf>Statut de la migration du noyau vers un verrouillage fin et le 
+multithreading ?</bf>
+<p>
+La version 2.2 du noyau possède une gestion des signaux, des interruptions
+et de quelque E/S à verrouillage fin (fine grain locking). Le reste est en 
+cour de migration. En mode SMP, plusieurs processus peuvent être ordonnancés
+simultanément. 
+
+<p>
+Les noyaux 2.3 (futur 2.4) possèdent vraiment des verrous noyaux fins. Dans la
+série des noyaux 2.3 l'usage des gros blocages noyau a tout simplement disparu.
+Tous les sous-systèmes majeurs du noyau Linux sont complètement codés avec
+des threads : réseau, VFS, VM, ES, block/pages de cache, ordonnancement,
+interruptions, signaux, etc... (<bf>Ingo Molnar</bf>)
+
+<item> <bf>Linux SMP supporte-t-il les affinités processeur ?</bf>
+<p>
+<descrip>
+
+<tag/Noyaux standard/
+Oui et non. Il n'est pas possible de forcer l'assignation d'un processus
+à un processeur spécifique mais l'ordonnanceur Linux possède un parti-pris
+pour chaque processus qui tend à conserver les processus attachés à un
+processeur spécifique.
+
+<tag/Noyau patché/
+Oui. Voir <url name="PSET - Processor Sets for the Linux kernel"
+url="http://isunix.it.ilstu.edu/~thockin/pset/">:
+<quote>
+Ce projet a pour but d'offrir une version compatible au niveau
+sources et fonctionnalités de pset (tel que défini par SGI - partiellement
+retiré de leur noyau 6.4 IRIX) pour Linux. Cela autorise les utilisateurs à
+déterminer sur quel processeur ou ensemble de processeurs un processus peut
+tourner. Les utilisations possibles incluent l'assignement de thread à des 
+processeurs distincts, la synchronisation, la sécurité (un processeur dédié
+à `root') et sûrement davantage encore.
+</quote>
+
+Nous nous sommes attachés à concentrer toutes les fonctionnalités autour de
+l'appel système sysmp(). Cette routine accepte un certain nombre de paramètres
+qui déterminent la fonctionnalité requise.
+Ces fonctions comprennent:
+<itemize>
+	<item> affecter un processus/thread à un processeur spécifique;
+	<item> interdire un processeur d'exécuter certains processus;
+	<item> empêcher strictement l'utilisation d'un processeur;
+	<item> assigner à un processeur un _unique_ processus (et ses fils);
+	<item> information sur l'état du processeur;
+	<item> créer/supprimer un ensemble de processeurs, sur lesquels les
+	  processus peuvent être limités
+</itemize>
+
+</descrip>
+
+<item> <bf>A qui rapporter les bogues SMP ?</bf>
+<p>
+Signalez s'il vous plaît les bogues à <tt>linux-smp@vger.rutgers.edu</>.
+
+<item> <bf>A propos des performances SMP</bf>
+<p>
+Si vous voulez mesurer les performances de votre système SMP, vous pouvez 
+essayer les tests de Cameron MacKinnon, disponibles à
+<htmlurl name="http://www.phy.duke.edu/brahma/benchmarks.smp"
+url="http://www.phy.duke.edu/brahma/benchmarks.smp">.
+
+</enum>
+
+<p>
+<sect1>Côté utilisateur
+<p>
+<enum>
+<item> <bf>Ai-je vraiment besoin de SMP ?</bf>
+
+<p>
+Si vous vous le demandez, vous n'en avez probablement pas besoin. <tt/:)/
+En général les systèmes multiprocesseurs offrent de meilleurs
+performances que les systèmes monoprocesseurs, mais pour obtenir un gain
+quelconque vous devez considérer bien d'autres facteurs que le seul nombre
+de processeurs. Par exemple, sur un système donné, si le processeur
+est en général inactif, la plupart du temps à cause d'un disque dur
+lent, alors le système est bloqué au niveau des entrées/sorties 
+("input/output bound"); il ne bénéficiera probablement pas de la puissance 
+d'un processeur supplémentaire. Si, d'un autre coté, un système doit exécuter
+beaucoup de processus simultanément et que l'utilisation processeur est très 
+forte, alors vous êtes susceptible d'améliorer les performances de votre 
+système. Les disques dur SCSI peuvent être très efficaces en utilisation avec 
+plusieurs processeurs. Ils peuvent gérer plusieurs commandes simultanément
+sans immobiliser le processeur (<bf>C. Polisher</bf>).
+
+<item> <bf>Obtient-on les mêmes performances avec un biprocesseur 
+300 MHz qu'avec un processeur 600 MHz ?</bf>
+<p>
+Tout dépend de l'application, mais généralement non. Le SMP implique
+quelques "frais de gestion" absents d'une machine monoprocesseur.
+(<bf>Wade Hampton</bf>).
+<tt/:)/
+
+<item> <bf>Comment afficher les performances de plusieurs processeurs ?</bf>
+<p>
+Grâce à <bf>Samuel S. Chessman</bf>, se ici trouvent quelques utilitaires
+pratiques&nbsp:
+<descrip>
+<tag/Character based:/ <htmlurl
+name="http://www.cs.inf.ethz.ch/~rauch/procps.html"
+url="http://www.cs.inf.ethz.ch/~rauch/procps.html">
+
+En gros, il s'agit de procps v1.12.2 (top, ps, et. al.) et de quelques patches 
+pour le support SMP.
+<p>
+Pour les 2.2.x, <bf>Gregory R. Warnes</bf> a rendu disponible un patch à
+<htmlurl name="http://queenbee.fhcrc.org/~warnes/procps"
+url="http://queenbee.fhcrc.org/~warnes/procps"> 
+
+<tag/Graphique:/
+xosview-1.5.1 supporte le SMP, les noyaux supérieurs au 2.1.85 (inclus) et
+l'entrée cpuX dans le fichier /proc/stat.
+
+Page d'accueil officielle pour xosview&nbsp:
+<htmlurl url="http://lore.ece.utexas.edu/~bgrayson/xosview.html"
+name="http://lore.ece.utexas.edu/~bgrayson/xosview.html"> 
+
+Vous ici trouverez une version patchée par <bf>Kumsup Lee</bf> pour les noyaux 
+2.2.p&nbsp: 
+<htmlurl url="http://www.ima.umn.edu/~klee/linux/xosview-1.6.1-5a1.tgz"
+name="http://www.ima.umn.edu/~klee/linux/xosview-1.6.1-5a1.tgz">
+
+Les différents patches noyau de Forissier sont disponibles à&nbsp:
+<htmlurl url="http://www-isia.cma.fr/~forissie/smp_kernel_patch/"
+name="http://www-isia.cma.fr/~forissie/smp_kernel_patch/">
+</descrip>
+<p>
+Néanmoins, vous ne pouvez pas contrôler l'ordonnancement de façon précise avec
+xosview car ce dernier le perturbe (<bf>H. Peter Anvin</bf>).
+
+<item> <bf>Comment autoriser plus d'un processus lors de la compilation
+du noyau ?</bf>
+<p>
+Utiliser&nbsp:
+<code>
+        # make [modules|zImage|bzImages] MAKE="make -jX"
+        où X = nombre maximum de processus.
+        Notez que ça ne marche pas avec "make dep".
+</code>
+<p>
+Avec un noyau 2.2, référez vous au fichier
+<tt>/usr/src/linux/Documentation/smp.txt</> pour des instructions précises.
+<p>
+Par exemple, comme lancer de multiples compilateurs autorise une machine avec
+suffisamment de mémoire à utiliser le temps processeur autrement perdu
+durant les délais causés par les E/S, <tt>make MAKE="make -j 2" -j 2</>
+aide réellement même sur les machines monoprocesseurs.
+(de <bf>Ralf Bächle</bf>).
+
+<item> <bf>Pourquoi le temps donné par la commande <tt>time</> est-il 
+erroné ?</bf>
+(de <bf>Joel Marchand</bf>)
+<p>
+Dans la série des 2.0, le résultat de la commande <tt>time</> est faux.
+La somme utilisateur+système est juste *mais* 'l'étendue' entre le temps 
+utilisateur et le temps système est faux.
+<p>
+Plus précisément&nbsp: "tout le temps passé sur un processeur autre que celui 
+de démarrage est comptabilisé comme temps système. Si vous chronométrez un 
+programme, ajoutez le temps utilisateur et le temps système. Votre mesure sera 
+alors correcte, à ceci près qu'elle inclura aussi le temps système qui restera
+à décompter" (<bf>Jakob Østergaard</bf>).
+<p>
+Ce bogue est corrigé dans les versions 2.2.
+</enum>
+<p>
+
+<sect1>Programmation SMP
+<p>
+Section par <bf>Jakob Østergaard</bf>.
+
+Cette section a pour but de signaler ce qui fonctionne et ce qui ne fonctionne 
+pas quand il s'agit de programmer des logiciels avec des threads pour Linux 
+SMP.
+
+<sect2>Méthodes de parallélisation
+<p>
+<enum>
+	<item> threads POSIX (POSIX Threads)
+	<item> PVM / MPI Message Passing Libraries
+	<item> fork() -- Processus multiples
+</enum>
+
+Comme ni fork() ni les processus PVM/MPI ne partagent généralement
+la mémoire, mais communiquent au moyen d'IPC ou d'une API de messagerie,
+ils ne seront pas décrits davantage dans cette section. Ils ne sont pas
+vraiment spécifiques à SMP, puisqu'ils sont tout autant employés - sinon plus -
+avec des ordinateurs monoprocesseurs et des clusters.
+<p>
+
+Seuls les threads POSIX fournissent des threads multiples partageant certaines
+ressources telles la mémoire. Cette propriété des machines SMP autorise
+plusieurs processeurs à partager leur mémoire. Pour employer deux (ou plus ;) )
+processeurs avec un système SMP, utilisez une librairie de thread du noyau.
+Une bonne librairie <url name="LinuxThreads, une librairie de thread
+écrite par Xavier Leroy" url="http://pauillac.inria.fr/~xleroy/linuxthreads/">
+est maintenant intégrée avec la glibc2 (aka libc6). Les distributions Linux
+récentes intègrent toutes cette librairie par défaut. Vous n'avez donc pas à
+obtenir un paquetage séparé pour utiliser les threads du noyau.
+<p>
+Il existe des mises en oeuvre des threads (et thread POSIX) de niveau
+application qui ne tirent pas avantage des threads du noyau.
+Ces paquetages gardent le thread dans un seul processus et, partant, ne 
+profitent pas du SMP. Néanmoins, elles sont bonnes pour beaucoup d'applications
+et ont tendance à être plus rapides que les threads du noyau sur des systèmes
+monoprocesseurs.
+<p>
+Le multithreading n'a jamais été vraiment populaire dans le monde UN*X.
+Pour diverses raisons, les applications exigeant de multiples processus ou 
+threads ont été pour la plupart écrites en utilisant fork(). Donc, avec une 
+approche de type threads, on rencontre des problèmes d'incompatibilités et
+de non-adaptation aux thread des librairies, compilateurs et débogueurs.
+GNU/Linux n'y fait pas exception. Espérons que les sections qui suivent
+apporteront quelques lumières sur ce qui est possible et sur ce qui ne l'est
+pas.
+
+<sect2>La librairie C
+<p>
+Les vieilles librairies ne sont pas sûres au niveau des threads. Il est très
+important que vous utilisiez la GNU libc (<bf>glibc</bf>), aussi connue
+sous le nom de <bf>libc6</bf>. Vous pouvez évidemment utiliser des versions
+antérieurs, mais cela vous causera plus de problèmes que mettre à jour votre
+système. Enfin, probablement :)
+
+Si vous voulez utiliser GDB pour déboguer vos programmes, voyez plus bas.
+
+<sect2>Langages, compilateurs et débogueurs
+<p>
+Il existe de nombreux langages de programmation disponibles pour 
+GNU/Linux et beaucoup d'entre eux utilisent les threads d'une manière ou d'une 
+autre. Certains langages comme Ada et Java incluent même les threads dans les 
+primitives du langage.
+
+Cette section, pour l'instant, ne décrira que le C et le C++.
+Si vous avez une expérience de programmation SMP avec d'autre langages,
+merci de nous en faire part.
+
+Les compilateurs GNU C et C++, tout comme EGCS C et C++, fonctionnent avec
+le support thread de la librairie C standard (<bf>glibc</bf>). Il y a
+néanmoins quelques problèmes&nbsp:
+<p>
+<enum>
+  <item> Quand vous compilez en C ou C++, incluez <bf>-D_REENTRANT</bf> dans 
+    la ligne de commande du compilateur. Il est nécessaire d'activer certaines 
+    fonctions de gestion des erreurs telles celles relatives à la variable 
+    errno.
+  <item> Quand vous utilisez C++, si deux threads rencontrent des exceptions
+    simultanément, le programme retournera une erreur de segmentation. Le 
+    compilateur génère un code d'exception inadapté aux threads. Une manière 
+    de contourner le problème consiste à mettre un 
+    pthread_mutex_lock(&amp;global_exception_lock) dans le(s) constructeur(s) 
+    de chaque classe que vous throw() et à insérer le pthread_mutex_unlock(...)
+    correspondant dans le destructeur. Ce n'est pas très beau mais ça marche.
+    Cette solution a été fournie par <bf>Markus Ferch</bf>.
+</enum>
+
+Le débogueur GNU <bf>GDB</bf>, à partir de la version 4.18, devrait prendre en 
+charge les threads correctement. La plupart des distributions Linux comprennent
+une version patchée de gdb qui gère les threads.
+
+Il n'est pas nécessaire de patcher la <bf>glibc</bf> pour qu'elle 
+fonctionne avec des threads. Si vous n'avez pas besoin de déboguer le logiciel
+(cela peut-être vrai pour toutes les machines qui ne sont pas dédiées au 
+développement), il n'y a pas besoin de patcher la <bf>glibc</bf>.
+
+Notez que les core-dumps ne sont d'aucune utilité quand vous utilisez des
+threads. D'une manière ou d'une autre, le core dump est attaché
+au thread courant et non au programme tout entier. Aussi, pour déboguer 
+quoi que ce soit, faites le depuis le débogueur.
+
+<bf>Astuce&nbsp:</bf> si vous avez un thread qui perd la tête, se met à 
+utiliser 100% du temps CPU et que vous ne voyez pas pourquoi, voici une 
+méthode élégante de trouver ce qui se passe&nbsp: lancez le programme
+depuis la ligne de commande, sans GDB. Faites dérailler votre thread.
+Utilisez <bf>top</bf> pour obtenir le PID du processus. Lancez GDB tel que
+<bf>gdb program pid</bf>. GDB s'attachera lui-même au processus dont
+vous avez spécifié le PID et arrêtera le thread. Vous disposez maintenant 
+d'une session GDB avec le thread incriminé et vous pouvez utiliser <bf>bt</bf> 
+ou d'autres commandes pour suivre ce qui se passe.
+
+<sect2>Autres librairies
+<p>
+<bf>ElectricFence&nbsp:</bf> cette librairie n'est pas sûre du point de vue 
+SMP.  Il devrait néanmoins être possible de la faire fonctionner dans un 
+environnement threadé en insérant des verrous dans son code source.
+
+<sect2>Autres points concernant la programmation SMP
+<p>
+<enum>
+
+<item> <bf>Où puis-je trouver plus d'informations sur la programmation 
+parallèle ?</bf>
+<p>
+Voyez <url name="Linux Parallel Processing HOWTO"
+url="http://yara.ecn.purdue.edu/~pplinux/PPHOWTO/pphowto.html">
+<p>
+Beaucoup d'informations utiles se trouvent sur <url name="Parallel
+Processing using Linux" url="http://yara.ecn.purdue.edu/~pplinux/">
+<p>
+Voyez aussi <url name="Linux Threads FAQ"
+url="http://linas.org/linux/threads-faq.html">
+
+<item> <bf>Existe-t-il des programmes ou des librairies utilisant les threads ?</bf>
+<p>
+Oui. Pour les programmes vous devriez regarder à
+<url name="Multithreaded programs on linux"
+url="http://www.informatik.uni-bremen.de/~hollow/mthread.html"> (j'adore les 
+liens hypertextes, le saviez vous ? <tt>;)</>)
+<p>
+En ce qui concerne les librairies&nbsp:
+<descrip>
+
+<tag/OpenGL Mesa library/ Grâce à <bf>David Buccarelli</bf>,
+<bf>andreas Schiffler</bf> et <bf>Emil Briggs</bf>, il existe une version 
+multithread (à l'heure actuelle [1998-05-11], une version fonctionne et permet 
+d'obtenir un accroissement de 5-30% avec certaines suites de test OpenGL). 
+La partie multithread est maintenant incluse dans la distribution Mesa 
+officielle comme une option expérimentale. Pour plus d'information, voyez
+<url name="Mesa library" url="http://www.ssec.wisc.edu/~brianp/Mesa.html">
+
+<tag/BLAS/
+<url name="BLAS et FFTs optimisés Pentium pro pour Intel Linux"
+url="http://www.cs.utk.edu/~ghenry/distrib/">
+<p>
+Les routines multithread BLAS ne sont pas disponibles pour l'instant, mais une 
+librairie multithread est prévue pour 1998-05-27, voir <url name="Blas News"
+url="http://www.cs.utk.edu/~ghenry/distrib/blasnews"> pour plus de détails.
+
+<tag/The GIMP/ <bf>Emil Briggs</bf>, la même personne qui est impliquée dans la 
+version multithread de MESA, est aussi en train de travailler sur la version 
+multithread des plugins de The Gimp. Voyez <htmlurl
+name="http://nemo.physics.ncsu.edu/~briggs/gimp/index.html"
+url="http://nemo.physics.ncsu.edu/~briggs/gimp/index.html"> pour plus d'info.
+
+</descrip>
+
+</enum>
+<p>
+
+
+<sect>Questions spécifiques à l'architecture x86
+
+<p>
+<sect1>Pourquoi cela ne marche-t-il pas avec ma machine ?
+
+<p>
+<enum>
+
+<item> <bf>Puis-je utiliser le mode SMP avec un CPU Cyrix/AMD/non-Intel ?</bf>
+<p>
+<bf>Réponse courte:</bf> non.
+
+<p>
+<bf>Réponse longue</bf> 
+Intel révendique la propriété sur les plan APIC SMP, et tant qu'une compagnie 
+ne prend pas de licence d'Intel pour cela, ils ne peuvent pas l'utiliser.
+Aucune compagnie ne l'a fait pour l'instant. Cela peut évidement changer dans 
+le futur. A titre anecdotique, Cyrix et AMD adhèrent au standard 
+non-propriétaire OpenPIC SMP mais actuellement il n'existe pas de carte mère 
+l'utilisant.
+
+<item> <bf>Pourquoi mon vieux Compaq ne fonctionne-t-il pas ?</bf>
+<p>
+Mettez le en mode compatibilité MP1.1/1.4.
+<p>
+Vérifiez "Configure Hardware" -> "View / Edit details" -> "Advanced mode"
+(F7 je pense) pour les options de configuration "APIC mode" et cochez 
+"full Table mode". Il s'agit d'une recommandation officielle de Compaq 
+(<bf>Daniel Roesen</bf>).
+<p>
+<bf>Adrian Portelli</bf>&nbsp:
+<enum>
+  <item> Pressez F10 quand le serveur démarre afin d'entrer dans l'utilitaire 
+	 de configuration système (System Configuration Utility)
+  <item> Pressez Entrée pour effacer l'écran de démarrage
+  <item> Pressez immédiatement CTRL+A
+  <item> Un message apparaîtra vous informant que vous êtes maintenant en 
+	 "Advanced Mode"
+  <item> Sélectionnez ensuite "Configure Hardware" -> "View / Edit details"
+  <item> Vous verrez alors les réglages avancés (mélangés avec les réglages 
+	 ordinaires)
+  <item> Descendez jusqu'au "APIC Mode" et sélectionnez alors "Fully Mapped"
+  <item> Sauvegardez les changements et redémarrez
+</enum>
+
+<item> <bf>Pourquoi mon ALR ne fonctionne-t-il pas ?</bf>
+<p>
+De <bf>Robert Hyatt</bf>: ALR Revolution quad-6 semble à peu près sûre,
+alors que quelques machines Revolution quad plus vieilles sans processeurs P6
+ne semble pas "fiables"...
+ 
+<item> <bf>Pourquoi ma machine SMP est-elle si lente ?</bf> ou <bf>Pourquoi 
+un processeur montre-t-il une valeur bogomips basse et pas l'autre ?</bf>
+<p>
+De <bf>Alan Cox</bf>: si un de vos processeurs rapporte une valeur bogomips 
+très basse, son cache n'est pas activé. Votre vendeur vous à probablement 
+fournis un BIOS bogué. Obtenez un patch pour contourner cela ou mieux retournez 
+la à votre vendeur et achetez une carte mère chez un fournisseur compétent.
+<p>
+Un noyau 2.0 (> 2.0.36) contient un patch MTRR qui devrait résoudre ce problème
+(sélectionnez l'option "handle buggy SMP BIOSes with bad MTRR setup" dans le 
+menu "General setup").
+<p>
+Je pense que les BIOS SMP bogués sont pris en charge automatiquement dans les 
+derniers noyaux 2.2.
+
+<item> <bf>J'ai entendu dire que des machines IBM avaient des problèmes</bf>
+
+<p>
+Certaines machines IBM possèdent le bloc BIOS MP1.4 dans l'EBDA. C'est autorisé
+mais pas supporté en dessous des noyaux 2.2.
+
+Il y a une vieille machine IBM SMP basée sur des 486SLC. Linux/SMP requiert
+un support FPU matériel.
+
+<item> <bf>Les spécification MP 1.4 présentent-elles un quelconque avantage 
+vis-à-vis des spécifications 1.1 ?</bf>
+<p>
+Non (selon Alan <tt/:)/ ), 1.4 est juste une spécification plus stricte de 1.1.
+
+<item> <bf>Pourquoi l'horloge dérive-t-elle si rapidement quand la machine 
+fonctionne en mode SMP ?</bf>
+<p> 
+Il s'agit d'un problème connu avec la gestion des IRQ et les blocages noyau 
+longs dans la série 2.0 des noyaux. Pensez à mettre à jour votre système vers 
+un 2.2 plus récent.
+<p>
+De <bf>Jakob Oestergaard</bf>: ou pensez à utiliser xntpd. Cela devrait garder 
+votre horloge à l'heure. Je pense avoir entendu qu'activer RTC dans le noyau 
+corrigeait aussi le problème de dérive de l'horloge. Ça a marché pour moi,
+mais j'ignore si cela est général ou si j'ai juste été chanceux !
+
+<p>
+Certaines corrections du noyau dans les derniers 2.2.x devraient résoudre ce 
+problème.
+<p>
+
+<item> <bf>Pourquoi mes processeurs sont-ils numérotés 0 et 2 au lieu de 0 et 
+1 (ou autre numérotation bizarre) ?</bf>
+<p>
+Le numéro du processeur est fixé par le fabricant de la carte mère et ne veut
+absolument rien dire. Ignorez le.
+
+<item> <bf>Mon système quadruple Xeon plante dès qu'il a décompressé le 
+noyau</bf>
+<p>
+(<bf>Doug Ledford</bf>) Essayez de recompiler LILO avec le support LARGE_EBDA 
+et faites attention à bien toujours utiliser bzImage quand vous compilez le 
+noyau. Cela semble avoir résolu le problème de plantage au démarrage ici sur 
+une carte mère Intel multi-Xeon. Notez cependant que cela semble aussi 
+affecter LILO en ceci que l'option root= ne fonctionne plus. Faites donc bien 
+attention d'avoir appliqué 'rdev' à votre noyau au moment où vous lancerez 
+LILO afin d'être sur que votre noyau charge correctement le système de fichier 
+racine au démarrage.
+
+<p>
+(<bf>Robert M. Hyatt</bf>) Avec 3 processeurs, avez-vous un terminateur dans 
+le 4ème emplacement ?
+
+<item> <bf>Durant le démarrage la machine plante en signalant un problème 
+IOAPIC</bf>
+<p>
+Essayez l'option de démarrage "noapic" (<bf>John Aldrich</bf>) et/ou 
+"reboot=bios" (<bf>Terry Shull</bf>).
+
+<item> <bf>Mon système se bloque lors de trafic NFS intense</bf>
+<p>
+Essayez le dernier noyau 2.2.x et le patch knfsd. Cela est en cours 
+d'investigation.  (<bf>Wade Hampton</bf>)
+
+<p>
+<item> <bf>Mon système bloque sans message oops</bf>
+<p>
+Si vous utilisez les noyaux 2.2.11 ou 2.2.12, récupérez le dernier noyau. Par 
+exemple 2.2.13 possède de nombreuses corrections SMP. Plusieurs personnes ont 
+rapporté ces noyaux comme instables pour le SMP. Ces mêmes noyaux peuvent avoir 
+des problèmes NFS qui provoqueraient des blocages. Aussi, utilisez une console 
+série pour capturer vos messages oops. (<bf>Wade Hampton</bf>)
+<p>
+Si le problème persiste (et que les suggestions sur cette liste n'ont pas 
+aidé davantage), vous devriez alors essayer les derniers noyaux 2.3. Ils ont 
+un code SMP/APIC plus bavard (et plus robuste) et un code de prévention contre 
+les blocages durs qui produit des oops plus significatifs au lieu de planter 
+en silence (<bf>Ingo Molnar</bf>).
+<p>
+(<bf>Osamu Aoki</bf>) Vous DEVEZ aussi <em>désactiver</em> toutes les 
+fonctionnalités du BIOS liées à l'économie d'énergie. Exemple d'une bonne 
+configuration (Dual Celeron 466 Abit BP6)&nbsp:
+<code>
+ POWER MANAGEMENT SETUP.
+   ACPI:              Disabled
+   POWER MANAGEMENT:  Disabled
+   PM CONTROL by APM: No
+</code>
+Si les fonctions d'économie d'énergie sont activées, des plantages aléatoires 
+peuvent se produire
+
+<item> <bf>Déboguer des blocages</bf>
+<p>
+(item par <bf>Wade Hampton</bf>)
+<p>
+Un bon moyen de déboguer les blocages consiste à se procurer le patch ikd de
+Andrea Arcangeli: 
+<htmlurl url="ftp://ftp.suse.com/pub/people/andrea/kernel-patches/"
+name="ftp://ftp.suse.com/pub/people/andrea/kernel-patches">
+<p>
+Il y a plusieurs options de débogage. N'utilisez PAS l'option de blocage
+logicielle ! Pour des machines SMP récentes, activez l'option kernel debugging
+et ensuite l'option NMI oopser. Afin de vérifier que le NMI oopser fonctionne,
+après avoir démarré avec votre nouveau noyau, exécutez un
+<tt>/cat /proc/interrupts</> et vérifiez que vous obtenez des NMI.
+Quand la machine se bloque, vous devriez obtenir un oops.
+<p>
+Vous pouvez aussi essayer l'option %eip. Elle autorise le noyau à écrire sur 
+la console l'adresse %eip à chaque fois qu'une fonction du noyau est appelée. 
+Quand la machine se bloque, écrivez sur un papier la première colonne ordonnée 
+selon la seconde colonne et cherchez ensuite les adresses dans le fichier 
+System.map. Ca ne marche qu'en mode console.
+<p>
+Notez que l'utilisation d'une console série facilite grandement le débogage 
+des blocages noyau, qu'ils soient SMP ou non !
+
+<item> <bf>Messages "APIC error interrupt on CPU#n, should never happen" 
+dans les logs</bf>
+<p>
+Un message comme:
+<code>
+APIC error interrupt on CPU#0, should never happen.
+... APIC ESR0: 00000002
+... APIC ESR1: 00000000
+</code>
+indique la réception d'une erreur de calcul de code d'intégrité. Linux ne peut 
+en être responsable car la partie calcul des messages APIC est complètement 
+matérielle. Il peut s'agir d'un problème matériel marginal. Tant que vous ne 
+percevez pas d'instabilité, ils ne sont pas problématiques. Les messages APIC 
+sont renvoyés jusqu'à ce qu'il soient délivrés (<bf>Ingo Molnar</bf>).
+</enum>
+
+
+<sect1>Causes possibles de plantages
+
+<p>
+Dans cette section vous trouverez quelques information sur les causes
+<bf>possibles</bf> de plantage sur une machine SMP (merci à <bf>Jakob 
+Østergaard</bf> pour cette partie).
+Autant que je sache (David), les problèmes évoqués ici sont spécifiques aux 
+plate-formes Intel.
+
+<p>
+<itemize>
+
+<item> <bf>Problèmes de refroidissement</bf>
+<p>
+De <bf>Ralf Bächle</bf>: (concernant la taille des boîtiers et les 
+ventilateurs) il est important que l'air circule. 
+Bien sûr, ce n'est pas possible quand toutes sortes d'obstacles, tels des 
+câbles, l'en empêchent dans des boîtiers par trop exigus. 
+D'un autre côté, j'ai vu des boîtiers surdimensionnés provoquer de gros 
+problèmes. Il existe des boîtiers au format tour sur le marché qui s'avèrent
+actuellement pire à rafraîchir que des boîtiers au format bureau.
+En bref, la meilleure chose à faire est de penser à l'aérodynamique dans le 
+boîtier. Des boîtiers supplémentaires pour les périphériques dégageant de la 
+chaleur sont également utiles.
+<p>
+Bien sûr vous pouvez toujours aller chez Radio Shack (ou similaire) et acheter 
+un ventilateur. Vous pouvez utiliser lm_sensor pour surveiller la température 
+des processeurs PII et PIII. Cela peut vous aider à déterminer si la chaleur 
+est un problème ou non (<bf>Wade Hampton</bf>).
+
+<item><bf>Mauvaise barrette de mémoire</bf>
+<p>
+N'achetez pas de la RAM bon marché et ne mélangez pas des barrettes différente 
+sur une même carte mère.
+<p>
+Les cartes mères Tyan sont tout particulièrement connues pour leur 
+susceptibilité sur la vitesse de la RAM (voir le paragraphe ci-dessous sur 
+Tyan pour une solution éventuelle).
+<p>
+Il y a eu des rapports sur des mémoire RAM PC 100 à 10ns vendues avec des 
+cartes mères dont le processeur avait vraiment besoin de RAM à 8ns 
+(<bf>Wade Hampton</bf>).
+
+<item> <bf>Mauvaise combinaison de processeurs de fréquences différentes</bf>
+<p>
+Vérifiez <tt>/proc/cpuinfo</> pour voir si vos processeurs fonctionnent à la 
+même cadence.
+
+<item> <bf>Si votre système est instable, SURTOUT ne l'overclockez pas !</bf>
+<p>
+D'ailleurs, même s'il est stable, ne le surcadencez pas.
+
+<p>
+De <bf>Ralf Bächle</bf>: le surcadencement pose des problèmes très subtils.
+J'ai un bel exemple: une de mes vieilles machines surcadencées commet des 
+erreurs de calcul pour quelques pixels d'une fractale de 640 X 400. Le 
+problème est seulement visible quand on les compare en utilisant des outils. 
+Le mieux est donc de ne <em>jamais, never, nuncas, niemals</em> surcadencer.
+
+<item> <bf>Noyaux 2.0.x et Ethernet rapide</bf> (de <bf>Robert G. Brown</bf>)
+<p>
+Les noyaux 2.0.x sur des systèmes Ethernet rapide et hautes performances ont 
+des problèmes significatifs (et connus) avec les conditions de 
+course/inter-blocage (race/deadlock) dans la prise en charge des interruptions 
+réseau.
+
+<p>
+La solution consiste à obtenir la dernière version des pilotes 100BT en 
+cours de développement à <url name="CESDIS Linux Ethernet device drivers site"
+url="http://cesdis.gsfc.nasa.gov/linux/drivers/"> (ceux qui sont au point 
+définissent SMPCHECK).
+
+<item> <bf>Un bogue dans le chipset 440FX</bf> (de <bf>Emil Briggs</bf>) 
+<p>
+Si votre système utilise le chipset 440FX alors les problèmes de blocage 
+sont peut-être dûs à une erreur (documentée) du chipset. En voici la 
+référence:
+
+<p>
+Intel 440FX PCIset 82441FX (PMC) et 82442FX (DBX) Specification Update.  
+pg. 13 
+
+<p>
+<htmlurl name="http://www.intel.com/design/pcisets/specupdt/297654.htm"
+url="http://www.intel.com/design/pcisets/specupdt/297654.htm">
+
+<p>
+Le problème peut se résoudre avec un contournement par le BIOS (ou un patch du
+noyau). David Wragg a écrit un patch qui est inclus dans le patch MTRR
+de Richard Gooch's. Pour plus d'informations ainsi qu'un descriptif de 
+solution, voyez ici:
+
+<p>
+<htmlurl name="http://nemo.physics.ncsu.edu/~briggs/vfix.html"
+url="http://nemo.physics.ncsu.edu/~briggs/vfix.html">
+
+<item> <bf>NE PAS lancer emm386.exe avant de démarrer Linux SMP</bf>
+<p>
+De <bf>Mark Duguid</bf>, Règle implicite #1 avec une carte mère W6LI. <tt>;)</>
+
+<item> <bf>Si la machine redémarre/gèle au bout d'un moment, il peut y avoir
+  deux bonne raisons liées à la mémoire et au BIOS</bf> 
+  (<bf>Jakob Østergaard</bf>)
+<itemize>
+  <item> Si le BIOS est muni de réglages comme "memory hole at 16M" et/ou
+         "OS/2 memory > 64MB", essayez de les désactiver tous les deux. Linux 
+         ne réagit pas toujours très bien à ces deux options.
+  <item> Si vous avez plus de 64 MB de mémoire dans votre machine, et que vous
+         spécifiez manuellement le chiffre exact dans la configuration de LILO, 
+         vous devriez spécifier 1 MB de moins que ce vous avez réellement dans 
+         votre machine. Si vous avez 128 MB, votre ligne dans votre lilo.conf 
+         ressemble à: append="mem=127M"
+</itemize>
+<item> <bf>Soyez avertis des problèmes concernant les IRQ</bf>
+<p>
+Parfois, certaines cartes ne sont pas reconnues ou peuvent déclencher
+des conflits d'IRQ. Essayez de mettre les cartes sur des slots différents
+et si possible de les assigner à des IRQ différentes.
+
+<p>
+Contribution de <bf>hASCII</bf>&nbsp: enlever la ligne "append="hisax=9,2,3"
+dans lilo.conf autorisant à utiliser un noyau de la série 2.1.xx avec
+le support ISDN + Hisax activé. Les noyaux de la série 2.0.xx ne posent pas
+ce genre de problème.
+
+<p>
+Essayez aussi de configurer les option de configuration du BIOS comme 
+"MP 1.4 mode" ou "route PCI interrupts through IOAPIC" ou "OS Type"
+configuré ni pour DOS ni pour Novell (<bf>Ingo Molnar</bf>).
+
+<p>
+<item> <bf>Utilisation simultanée du lecteur de disquettes de la sortie son</bf>
+<p>
+Si vous bloquez alors que vous essayez d'accéder au lecteur de disquettes
+(par exemple pendant que du son est joué) vous devriez peut-être éditer
+le fichier drivers/pci/quirks.c et positionner 
+<tt>/int isa_dma_bridge_buggy = 1;</>. Le problème se manifeste avec mon Dell 
+WS400 dual PII/300, 2.2.x, SMP (<bf>Wade Hampton</bf>).
+
+</itemize>
+
+<sect1>Informations spécifiques aux cartes mères
+<p>
+<em>Notez</em> que des informations plus précises peuvent être trouvées avec 
+la liste des <url name="Cartes mère supposées fonctionner sous
+Linux SMP" url="http://www.nlug.org/smp/">
+
+
+<sect2>Cartes mères avec des problèmes connus
+<p>
+<itemize>
+<item> Aucune pour l'instant
+</itemize>
+
+<sect1>Machine SMP Linux à bas prix (machine double Celeron)
+<p>
+(<bf>Stéphane Écolivet</bf>)
+<p>
+
+Les machines SMP Linux les moins chères avec des processeurs disponibles
+de nos jours sont les systèmes double Celeron. Un tel système n'est pas
+officiellement possible selon Intel. On a intérêt à vérifier qu'il s'agit bien
+de Celerons de seconde génération, ceux avec 128 Kb de cache L2.
+
+<sect2>Est-il possible de faire fonctionner une machine double Celeron ?
+<p>
+<bf>Réponse officielle d'Intel&nbsp:</bf> non, le Celeron ne peut pas 
+fonctionner en mode SMP.
+
+<p>
+<bf>Réponse pratique&nbsp:</bf> c'est possible, mais cela demande une 
+modification matérielle pour les processeurs Slot 1. La manipulation est 
+décrite par Tomohiro Kawada sur sa page <url name="Dual Celeron System" 
+url="http://kikumaru.w-w.ne.jp/pc/celeron/index_e.html">. 
+Naturellement, de telles modifications annulent la garantie... Certaines 
+versions du processeur Celeron sont aussi disponibles au format Socket 370. 
+Dans ce cas, l'altération peut-être faite sur l'adaptateur Socket 370 à Slot 1 
+qui peut même être vendu pré-cablé pour une utilisation SMP
+(<bf>Andy Poling</bf>, <bf>Hans - Erik Skyttberg</bf>, <bf>James Beard</bf>).
+
+<p>
+Il existe aussi une carte mère (ABIT BP6) autorisant l'insertion de deux 
+Celerons dans le format Socket 370 (<bf>Martijn Kruithof</bf>, 
+<bf>Ryan McCue</bf>), l'ABIT Computer BP6 vérifiée, testée et supportée sous 
+linux avec deux ppga socket 370 (<bf>Andre Hedrick</bf>).
+
+<sect2>Comment Linux se comporte-t-il sur les systèmes double Celeron ?
+<p>
+Bien, merci.
+
+<sect2>Les processeurs Celeron sont réputés pour être facilement surcadençable.
+Qu'en est-il des systèmes doubles Celeron ?
+<p>
+Cela <bf>peut</bf> marcher. Néanmoins, surcadencer un tel système n'est pas 
+aussi facile que pour un monoprocesseur. Ce n'est franchement pas une bonne
+idée pour un système de production. Pour une utilisation personnelle, des 
+systèmes double Celeron 300 A fonctionnant parfaitement à 450 MHz ont été 
+signalés (<bf>de nombreuses personnes</bf>).
+
+<sect2>Et un système quadruple Celeron ?
+<p>
+C'est impossible. Les processeurs Celerons possèdent à peu près les mêmes
+fonctionnalités qu'un Pentium II basique. Si vous voulez plus de deux
+processeur dans votre système, vous devriez regarder du côté des machines
+à base de Pentium Pro, Pentium II Xeon ou Pentium III (?).
+
+<sect2>Pourquoi ne pas mélanger Celeron et Pentium II ?
+<p>
+Un système utilisant un Celeron "ré-autorisé" et un Pentium II à la même
+cadence <bf>peut théoriquement</bf> fonctionner.
+<p>
+<bf>Alexandre Charbey</bf> à fabriqué un tel système:
+<itemize>
+  <item> Carte mère Asus P2B-D, proc 1: Celeron 366, proc 2: Pentium II 400@266
+  <item> Les fréquences de bus 66Mhz et 75Mhz furent fonctionnelles
+  <item> Le processeur le plus rapide (dans ce cas le Celeron) doit être placé
+         sur le deuxième slot. Inverser les processeurs (le plus rapide en 
+         premier) conduit rapidement à un échec.
+</itemize>
+
+<sect>Questions spécifiques à l'architecture Sparc
+<p>
+
+<sect1>Quellles sont les machines Sparc supportées ?
+<p>
+Citation de la page web <url name="UltraLinux" url="http://ultra.linux.cz/">
+(systèmes SMP seulement):
+<itemize>
+  <item> Workstation UltraSPARC à base de PCI: Ultra60, Ultra450
+  <item> Serveurs UltraSPARC à base de SBUS: Enterprise 1, 2, 150 
+  <item> Serveurs large UltraSPARC à base de SBUS: Enterprise 3000, 4000, 5000, 6000, 10000 
+  <item> Serveurs UltraSPARC à base de PCI : Enterprise 250, 450 
+  <item> Machines SPARC sun4m SMP (<bf>Anton Blanchard</bf>)
+</itemize>
+
+UltraLinux a fonctionné sur une machine de 14 processeurs (voir la
+<url name="sortie dmesg" url="http://lwn.net/1998/1210/a/dm-sparc.html">).
+
+<sect1>Problèmes spécifiques au support SMP Sparc
+<p>
+(<bf>David Miller</bf>) 
+Il ne devrait pas y avoir d'inquiétudes.
+
+Le seul problème connu et que nous n'avons pas l'intention de corriger,
+consiste en ce qu'un noyau SMP compilé pour des systèmes 32bits (ie. 
+non-ultrasparc) ne fonctionnera pas sur les systèmes sun4c.
+
+<sect1>Limites SMP spécifiques au noyau courant (2.2)
+<p>
+<bf>David Miller</bf>: il y a un bug dans le fichier d'en-tête 
+include/linux/tasks.h, cela nécessite de définir NR_CPUS à 64 sur UltraSparc 
+puisqu'il s'agit de la limite supérieure pour le matériel que nous 
+supportons :-)
+
+<sect>Questions spécifiques à l'architecture PowerPC
+<p>
+
+<sect1>Quellles sont les machines PPC supportées ?
+<p>
+<itemize>
+  <item> Cartes mères PowerSurge (incluant UMAX s900)
+  <item> PowerMac
+  <item> Motorola MTX&nbsp: support en cours de développement. Les patches ne 
+         sont pas encore inclus dans le noyau principal 
+         (<bf>Troy Benjegerdes</bf>).
+</itemize>
+
+(<bf>Cort Dougan</bf>) Non supporté: Systèmes PPC RS/6000
+
+<sect1>Problèmes spécifiques concernant le support SMP PPC
+<p>
+Rien. Compilation SMP normale (voir plus haut). Comme d'habitude, soyez 
+attentif. Les modules sont spécifiques pour UP ou pour SMP. Recompilez les 
+(<bf>Paul Mackerras</bf>).
+
+<sect>Questions spécifiques à l'architecture Alpha
+
+<p>
+<sect1>Quelles sont les machines Alpha supportées ?
+<p>
+<bf>Geerten Kuiper</bf>&nbsp: le SMP marche pour la plupart des serveurs AXP, 
+sinon pour tous.
+
+<bf>Jay A Estabrook</bf>&nbsp: le SMP semble fonctionner sur la plupart de 
+nos machines [Compaq] avec deux processeurs ou plus. La liste de celles-ci 
+comprend&nbsp:
+<itemize>
+  <item> AS2000/2100 (SABLE)
+  <item> AS4000/4100 (RAWHIDE)
+  <item> DS20 (DP264)
+</itemize>
+
+En sont exclus&nbsp:
+<itemize>
+  <item> AS2100A (LYNX)
+  <item> TurboLaser bigboys (8200/8400)
+</itemize>
+
+<sect1>Problèmes spécifiques au support SMP Alpha
+<p>
+Aucun (vraiment ? :-) ).
+
+<sect>Pointeurs utiles
+
+<p>
+<sect1>Divers
+<p>
+<itemize>
+  <item> <url name="Parallel Processing en utilisant Linux"
+         url="http://yara.ecn.purdue.edu/~pplinux/"> 
+  <item> <url name="Linux Parallel Processing HOWTO"
+         url="http://yara.ecn.purdue.edu/~pplinux/PPHOWTO/pphowto.html">
+  <item> <bf>(dépassé)</bf> <url name="Page d'acceuille SMP Linux"
+         url="http://www.uk.linux.org/SMP/title.html">
+  <item> linux-smp mailing list
+<p>
+Pour <bf>souscrire</bf>, envoyez <tt/subscribe linux-smp/ dans le corps du 
+message à <htmlurl url="mailto:majordomo@vger.rutgers.edu"
+name="majordomo@vger.rutgers.edu">
+<p>
+Pour se <bf>désinscrire</bf>, envoyez <tt/unsubscribe linux-smp/ dans le corps 
+du message à <htmlurl url="mailto:majordomo@vger.rutgers.edu"
+name="majordomo@vger.rutgers.edu">
+<p>
+<url name="Archives Linux SMP" url="http://www.linuxhq.com/lnxlists/linux-smp/">
+<p>
+<url name="Archives Linux SMP à progressive-comp.com"
+url="http://www.progressive-comp.com/Lists/?l=linux-smp&amp;r=1&amp;w=2#linux-smp">
+  <item> <url name="La librairie pthread de Xavier Leroy"
+         url="http://pauillac.inria.fr/~xleroy/linuxthreads/">
+  <item> <url name="Les Cartes mères qui paraît-il marche avec Linux SMP"
+         url="http://www.nlug.org/smp/">
+  <item> <url name="procps"
+         url="http://www.cs.inf.ethz.ch/~rauch/procps.html">
+  <item> <url name="patch pour procps pour 2.2.x"
+         url="http://queenbee.fhcrc.org/~warnes/procps">
+  <item> <url name="xosview"
+         url="http://lore.ece.utexas.edu/~bgrayson/xosview.html">
+  <item> <url name="xosview pour 2.2.x"
+ url="http://www.ima.umn.edu/~klee/linux/xosview-1.6.1-5a1.tgz">
+  <item> <url name="Performance SMP de Linux"
+         url="http://www.phy.duke.edu/brahma/benchmarks.smp">
+  <item> <url name="CESDIS Linux Ethernet device drivers site"
+         url="http://cesdis.gsfc.nasa.gov/linux/drivers/">
+  <item> <url name="Systèmes Double Celeron"
+         url="http://kikumaru.w-w.ne.jp/pc/celeron/index_e.html">
+</itemize>
+<p>
+
+<sect1> Programmes et librairies multithread
+<p>
+<itemize>
+  <item> <url name="Linux Threads FAQ"
+         url="http://linas.org/linux/threads-faq.html">
+  <item> <url name="Programmes multithread sur linux"
+         url="http://www.informatik.uni-bremen.de/~hollow/mthread.html">
+  <item> <url name="BLAS et FFTs optimisé Pentium pro pour Intel Linux"
+         url="http://www.cs.utk.edu/~ghenry/distrib/"> (pas disponible tout de 
+         suite, mais une librairie double processeurs est prévue pour le 
+         5/27/98. Pour plus de détails, voir <url name="Blas News"
+         url="http://www.cs.utk.edu/~ghenry/distrib/blasnews">).
+  <item> <url name="Librairie Mesa"
+         url="http://www.ssec.wisc.edu/~brianp/Mesa.html"> (support 
+         multithread expérimental) 
+  <item> <url name="Plugins parallèles pour The GIMP"
+         url="http://nemo.physics.ncsu.edu/~briggs/gimp/index.html">  
+</itemize>
+<p>
+
+<sect1>Patches spécifiques SMP
+<p>
+<itemize>
+  <item> <url name="Patches noyau de Forissier"
+         url="http://www-isia.cma.fr/~forissie/smp_kernel_patch/">
+  <item> <url name="Patch pour un bug dans le chipset 440FX"
+         url="http://nemo.physics.ncsu.edu/~briggs/vfix.html">
+  <item> <url name="Patch MTRR (dernière version: 1.9)"
+         url="http://www.atnf.csiro.au/~rgooch/kernel-patches.html">
+  <item> <url name="PSET - Processor Sets for the Linux kernel"
+         url="http://isunix.it.ilstu.edu/~thockin/pset/"> 
+  <item> <url name="Patches SMP de Ingo Molnar"
+         url="http://www.redhat.com/~mingo/"> (pour les esthètes seulement, 
+         s'il vous plaît lisez linux-smp@vger.rutgers.edu)
+</itemize>
+<p>
+
+<sect1> Compilateurs parallèliseurs/optimiseurs pour les machines 586/686 
+(<bf>Sumit Roy</bf>)
+<p>
+<itemize>
+  <item> <url name="Pentium Compiler Group"
+         url="http://www.goof.com/pcg/"> créateur de pgcc
+  <item> <url name="Absoft" url="http://www.absoft.com/"> compilateur Fortran 
+         90 et Fortran 77
+  <item> <url name="The Portland Group, Inc."
+         url="http://www.pgroup.com/"> supporte le standard <url name="OpenMP"
+         url="http://www.openmp.org"> pour la parallèlisation Fortran sur 
+         Linux
+  <item> <url name="Pacific-Sierra Research Corporation"
+         url="http://www.psrv.com/"> contient un compilateur gratuit F90 pour 
+         Linux et aussi des compilateurs parallèlisant pour SMP Linux
+  <item> <url name="Applied Parallel Research"
+         url="http://s006.infomall.org/index.html"> inclut actuellement des 
+         compilateurs parallèlisant pour NT
+  <item> <url name="KAI" url="http://www.kai.com"> offre un compilateur C++ 
+         pour Linux qui inclut OpenMPI. Il s'appelle Guide_OpenMP. Information 
+         à <htmlurl name="http://www.kai.com/parallel/kappro/guide"
+         url="http://www.kai.com/parallel/kappro/guide"> 
+         (<bf>Gero Wedemann</bf>).
+</itemize>
+
+<sect>Glossary
+<p>
+<itemize>
+  <item> <bf>SMP</bf> Multi-Processeur Symmétrique
+  <item> <bf>APIC</bf> Contrôleur d'Interruptions Programmable Avancé
+  <item> <bf>thread</bf> Un thread est l'activité processeur dans un processus.
+         Un même processus peut avoir de multiples thread. Ces threads partagent 
+         l'espace adresse du processus et peuvent donc par-là partager des 
+         données.
+  <item> <bf>pthread</bf> Posix thread, threads définie par le standard Posix.
+  <item> <bf>APM</bf> Gestion avancée de l'énergie
+</itemize>
+
+<sect> Quoi de neuf ?
+<p>
+
+<descrip>
+<tag/v1.9, 13 janvier 2000
+<itemize>
+  <item> Rappel, désactivation de toutes les fonctions de gestion d'énergie 
+         du BIOS (<bf>Osamu Aoki</bf>)
+  <item> Explication sur la manière d'accéder au mode de configuration avancé 
+         du serveur Compaq (<bf>Adrian Portelli</bf>)
+</itemize>
+
+<tag/v1.8, 8 novembre 1999
+<itemize>
+  <item> La carte mère quadruple celeron était un canular, restauration de 
+         l'ancien paragraphe (<bf>Simen Timian Thoresen</bf>)
+</itemize>
+
+<tag/v1.7, 6 novembre 1999
+<itemize>
+  <item> Nouvelle introduction (<bf>C. Polisher</bf> aka cp)
+  <item> De nombreuses corrections typographiques et grammaticales (cp)
+  <item> Paragraphe d'introduction sur la compilation du noyau (cp)
+  <item> Paragraphe d'introduction sur les besoins SMP (cp)
+  <item> Référence sur KAI un compilateur optimisé (<bf>Gero Wedemann</bf>)
+  <item> Les cartes mères quadruple celeron existent 
+         (<bf>Jeffrey H. Ingber</bf>)
+</itemize>
+
+<tag/v1.6, 21 octobre 1999
+<itemize>
+  <item> Ajout d'information sur la perturbation horaire de xosview
+  <item> Ajout du message d'information "Erreur d'interruption APIC sur le 
+         CPU#n"
+  <item> Ajout d'information sur les blocages matériels
+  <item> Suppression de la section "Comment obtenir un maximum de 
+         performance" (obsolète)
+  <item> Ajout d'information sur les systèmes double processeurs avec différents 
+         processeurs x86 (un Celeron et un PII)
+</itemize>
+
+<tag/v1.5, 4 octobre 1999
+<itemize>
+  <item> Plus de précision dans la description de PSET
+</itemize>
+
+<tag/v1.4, 30 septembre 1999
+<itemize>
+  <item> Précision sur l'activation du support MTRR pour les noyaux SMP 
+         x86 (moi)
+</itemize>
+
+<tag/v1.3, 29 septembre 1999
+<itemize>
+  <item> Beaucoup beaucoup de corrections grammaticales et typographique
+         (<bf>Wade Hampton</bf> aka hww)
+  <item> Ajout d'information dans la courte introduction à propos des 
+         différences entre 2.2/2.4/2.0 (hww)
+  <item> Ajout des choses à faire pas à pas pour recompiler le noyau (hww et 
+         moi)
+  <item> Ajout d'information concernant les problèmes liés aux modules SMP/UP 
+         (hww)
+  <item> Ajout de précision dans la section Threads Posix concernant les 
+         threads utilisateurs vs. les threads du noyau (hww)
+  <item> Nouvel item à propos de NFS et des blocages du noyau (hww)
+  <item> Nouvel item à propos des blocage noyau sans message d'alerte (hww)
+  <item> Nouvel item à propos du débogage des problèmes de blocage (hww)
+  <item> Ajout d'information à propos des problèmes de dégagement de chaleur 
+         (hww)
+  <item> Divers mise à jour que j'ai oublié (hww)
+  <item> Nouvel item à propos des accès disquette et du son (hww)
+</itemize>
+
+<tag/v1.2, 27 septembre 1999
+<itemize>
+  <item> Changement de nom: ce document est maintenant un Howto.
+         TWD, et rapide! (<bf>Guylhem Aznar</bf>)
+</itemize>
+
+<tag/v1.1, 26 septembre 1999
+<itemize>
+  <item> Ajout d'un lien vers le premier brouillon de la FAQ de Chris Pirish
+  <item> Extension des problèmes liés aux IRQ
+</itemize>
+
+<tag/v1.00, 25 septembre 1999
+<itemize>
+  <item> Première mise à jour depuis bien longtemps !
+  <item> Retraitement de toute la FAQ: le 2.2 est là et le 2.4 arrive
+  <item> Ajout des informations sur le verrouillage noyau de Ingo Molnar
+  <item> Suppression de l'item "Quelle seront les performance de mes 
+         applications sous SMP"&nbsp: dépassé
+  <item> Suppression de l'item "Mon système SMP se verrouille tout le 
+         temps."&nbsp: dépassé
+  <item> Suppression de l'item "Vous utilisez le 2.0.35, n'est-ce 
+         pas ?"&nbsp: dépassé
+  <item> Suppression de l'item "Certains matériels sont aussi connu pour poser 
+         des problèmes."&nbsp: dépassé
+  <item> Effacement de la section "Cartes mère avec des problèmes connus". Nous
+         devrions recommencer du début.
+  <item> Suppression de la section "Carte mère sans problèmes connus"&nbsp: 
+         dépassée
+  <item> Mise à jour de la section celeron (de nombreuses personnes)
+  <item> Ajout de "Les machines SPARC sun4m SMP" dans les machines Sparc 
+         supportées (<bf>Anton Blanchard</bf>) 
+  <item> Ajout de l'item "Durant le démarrage la machine se bloque en signalant 
+         un problème IOAPIC" dans la section "Pourquoi cela ne marche-t-il pas sur ma machine ?"
+  <item> Ajout de l'item "A propos des performances SMP ?"
+  <item> Mise à jour de l'item "Pourquoi mon vieux Compaq ne marche-t-il pas ?"
+  <item> Réparation d'un lien dépassé
+  <item> Ajout d'un pointeur vers les patches de test SMP d'Ingo
+</itemize>
+
+<tag/v0.54, 13 mars 1999
+<itemize>
+  <item> Ajout de la section à propos des systèmes SMP Alpha
+</itemize>
+
+<tag/v0.53, 08 mars 1999
+<itemize>
+  <item> Ajout de la section sur les systèmes PowerPC SMP
+</itemize>
+
+<tag/v0.52, 07 mars 1999
+<itemize>
+  <item> Ajout de la section sur les systèmes Sparc SMP
+</itemize>
+
+<tag/v0.51, 06 mars 1999
+<itemize>
+  <item> Ajout de la section dual-celeron
+  <item> Suppression de la section Adaptec
+  <item> Mise à jour du lien procps
+  <item> Mise à jour du lien xosview
+  <item> Ajout d'une réponse pour le plantage du quadri Xeon
+  <item> Mise à jour de l'item à propos du patch de la glibc pour 
+         gd&nbsp: devrait être inclus dans la RH 5.2
+</itemize>
+
+<tag/v0.50, 03 février 1999
+<itemize>
+  <item> Mise à jour du lien "Programmes Multithread sous linux"
+</itemize>
+
+<tag/v0.49, 13 janvier 1999
+<itemize>
+  <item> Mise à jour à propos de CONFIG_SMP. Ajout du .txt dans 
+         Documentation/smp. (<bf>Michael Elizabeth Chastain</bf>) 
+</itemize>
+
+<tag/v0.48, 10 décembre 1998
+<itemize>
+  <item> Fautes d'orthographes corrigée. Adresses email corrigée.
+</itemize>
+
+<tag/v0.47, 20 novembre 1998
+<itemize>
+  <item> Ajout de la mention du patch MTRR est inclus 2.0.36 (lié à des 
+         problème de BogoMips)
+</itemize>
+
+<tag/v0.46, 10 novembre 1998
+<itemize>
+  <item> Mise à jour à propos des cartes mère Epox KP6-LS
+</itemize>
+
+<tag/v0.45, 25 octobre 1998
+<itemize>
+  <item> Correction d'une erreur concernant le fichier /proc/stat 
+  <item> Ajout d'un pointeur vers le site CESDIS Ethernet Linux Drivers
+</itemize>
+
+<tag/v0.44, 14 octobre 1998
+<itemize>
+  <item> Mise à jour du lien vers la page web&nbsp: <em> Cartes mère supposées 
+         fonctionner sous Linux SMP</em> 
+  <item> Ajout de l'explication de Jakob&nbsp: comment chronométrer un système 
+         SMP avec les noyaux 2.0
+</itemize>
+
+<tag/v0.43, 9 septembre 1998
+<itemize>
+  <item> Mise à jour de la première question dans la section 3.1
+  <item> Mise à jour du lien mt-Mesa&nbsp: multithread est maintenant inclus 
+         comme expérimental dans la distribution Mesa 
+</itemize>
+
+<tag/v0.42, 2 septembre 1998/
+<itemize>
+  <item> Mise à jour cosmétique dans la section 3.3
+  <item> Deux liens sont marquer comme obsolètes (Multithreaded Mesa et 
+         performance SMP)
+  <item> Mise à jour de l'item à propos des threads et des exceptions en C++ 
+         (sect 3.3)
+</itemize>
+
+<tag/v0.41, 1 septembre 1998/
+<itemize>
+  <item> Ajout d'une section majeur: "3.3 Programmation SMP" écrite par
+         Jakob Østergaard
+  <item> Déplacement de la section "3.2 Coté utilisateur" vers la section 3.3
+</itemize>
+
+<tag/v0.40, 27 août 1998/
+<itemize>
+  <item> Mise à jour: section 3.1, item 7: processor affinity
+</itemize>
+
+<tag/v0.39, 27 août 1998/
+<itemize>
+  <item> Mise à jour nécessaire du BOIS Award pour les cartes mères Tyan
+         (<bf>hASCII</bf>)
+  <item> Ajout d'un item sur les IRQ dans la section plantage (moi et
+         <bf>hASCII</bf>) 
+  <item> Ajout du bon support de l'Asus P2B-DS (<bf>Ulf Rompe</bf>)
+  <item> Ajout d'une autre archive smp-list dans la section pointeur
+         (<bf>Hank Leininger</bf>)
+</itemize>
+
+<tag/v0.38, 8 août 1998/
+<itemize>
+  <item> Ajout d'un pointeur vers la FAQ Linux Threads
+</itemize>
+
+<tag/v0.37, 30 Juillet 1998/
+<itemize>
+  <item> <bf>Emil Briggs</bf> est en train de travailler sur des plugins 
+         parallèles pour Gimp (voir "Existe-t-il des programmes ou des 
+         library utilisant les threads ?", section "Coté utilisateur")
+</itemize>
+
+<tag/v0.36, 26 Juillet 1998/
+<itemize>
+  <item> Merci à <bf>Jakob Østergaard</bf>, deux changement dans "Possible
+         causes of Crash"
+ <itemize>
+ <item> Changé le 2.0.33 pour le 2.0.35 (dernier noyau stable)
+ <item> Ajout de la section "Les plantages liés au BIOS"
+ </itemize>
+</itemize>
+
+<tag/v0.35, 14 Juillet 1998/
+<itemize>
+  <item> Ajout des N440BX Server Board dans carte-mère-sans-aucun-problème
+  <item> Ajout d'une success story pour la carte mère GigaByte avec une mise à 
+         jour du BIOS
+  <item> Ajout de la section "Comment obtenir les performances maximum ?" 
+         (attend vos suggestions ;) 
+</itemize>
+
+<tag/v0.34, 10 juin 1998/
+<itemize>
+  <item> Ajout de la section "Parallelizing/Optimizing Compilers for 586/686 i
+         machines" dans la section "Useful Pointers", merci à <bf>Sumit 
+         Roy</bf>
+  <item> Correction, "Asus P/I-UP5" est en fait "Asus P/I-P65UP5" 
+</itemize>
+
+<tag/v0.33, 3 juin 1998/
+<itemize>
+  <item> Encore une success story avec une carte mère GigaByte DLX.
+  <item> Une astuce pour les cartes mère Tyan, désactiver l'option "DRAM Fast 
+         Leadoff" du BIOS
+</itemize>
+
+<tag/v0.32, 27 mai 1998/
+<itemize>
+  <item> Asus P/I-UP5 ajouter à la section carte-mère-sans-aucun-problème
+</itemize>
+
+<tag/v0.31, 18 mai 1998/
+<itemize>
+  <item> Elitegroup P6LX2-A marche avec le 2.1.100 et le 101
+  <item> Les bugs doivent être rapportés à<tt>linux-smp@vger.rutgers.edu</>
+</itemize>
+
+<tag/v0.30, 12 mai 1998/
+<itemize>
+  <item> SuperMicro est maintenant une carte mère dans la section
+carte-mère-sans-aucun-problème
+</itemize>
+
+<tag/v0.29, 11 mai 1998/
+<itemize>
+  <item> La success story d'une carte mère GigaByte 686 avec le 2.1.101
+  <item> Ajout d'un nouvel item dans la section "Coté utilisateur"&nbsp:
+         "Existe-t-il des programmes ou des library utilisant les threads ?"
+  <item> La library OpenGL Mesa library est en train de passer au multithread.
+         Cool! Voir la nouvelle section pour plus de détails.
+</itemize>
+
+<tag/v0.28, 09 mai 1998/
+<itemize>
+  <item> Un miroir US de cette FAQ est maintenant disponible (voir 
+         Introduction)
+  <item> Fusion de deux entrées confuses, Gigabyte 686
+</itemize>
+
+<tag/v0.27, 05 mai 1998/
+<itemize>
+  <item> Nouvelles informations pour les pilotes Adaptec et TekRam
+  <item> Les cartes mères Micronics W6-LI marche avec SMP
+</itemize>
+
+</descrip>
+
+<sect>Liste des contributeurs
+
+<p>
+Un grand merci à ceux qui m'ont aidé à maintenir ce HOWTO:
+
+<enum>
+  <item> Tigran A. Aivazian
+  <item> John Aldrich
+  <item> Niels Ammerlaan
+  <item> H. Peter Anvin
+  <item> Osamu Aoki
+  <item> Guylhem Aznar
+  <item> Ralf Bächle
+  <item> James Beard
+  <item> Troy Benjegerdes
+  <item> Anton Blanchard
+  <item> Emil Briggs
+  <item> Robert G. Brown
+  <item> Alexandre Charbey
+  <item> Michael Elizabeth Chastain
+  <item> Samuel S. Chessman
+  <item> Alan Cox
+  <item> Andrew Crane
+  <item> Cort Dougan
+  <item> Mark Duguid
+  <item> Stéphane Écolivet
+  <item> Jocelyne Erhel
+  <item> Jay A Estabrook
+  <item> Byron Faber
+  <item> Mark Garlanger
+  <item> hASCII
+  <item> Wade Hampton
+  <item> Andre Hedrick
+  <item> Claus-Justus Heine
+  <item> Benedikt Heinen
+  <item> Florian Hinzmann
+  <item> Moni Hollmann
+  <item> Robert M. Hyatt
+  <item> Jeffrey H. Ingber
+  <item> Richard Jelinek
+  <item> Tony Kocurko
+  <item> Geerten Kuiper
+  <item> Martijn Kruithof
+  <item> Doug Ledford
+  <item> Kumsup Lee
+  <item> Hank Leininger
+  <item> Ryan McCue
+  <item> Paul Mackerras
+  <item> Cameron MacKinnon
+  <item> Joel Marchand
+  <item> David Maslen
+  <item> Chris Mauritz
+  <item> Jean-Francois Micouleau
+  <item> David Miller
+  <item> Ingo Molnar
+  <item> Ulf Nielsen
+  <item> Jakob Oestergaard
+  <item> C Polisher
+  <item> Adrian Portelli
+  <item> Matt Ranney
+  <item> Daniel Roesen
+  <item> Ulf Rompe
+  <item> Jean-Michel Rouet
+  <item> Volker Reichelt
+  <item> Sean Reifschneider
+  <item> Sumit Roy
+  <item> Thomas Schenk
+  <item> Terry Shull
+  <item> Chris K. Skinner
+  <item> Hans - Erik Skyttberg
+  <item> Szakacsits Szabolcs
+  <item> Jukka Tainio
+  <item> Simen Timian Thoresen
+  <item> El Warren
+  <item> Gregory R. Warnes
+  <item> Gero Wedemann
+  <item> Christopher Allen Wing
+  <item> Leonard N. Zubkoff
+</enum>
+
+</article>
+

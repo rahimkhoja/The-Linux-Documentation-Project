@@ -1,0 +1,148 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+<HEAD>
+ <META NAME="GENERATOR" CONTENT="LinuxDoc-Tools 0.9.21">
+ <TITLE>Linux ADSM Mini-Howto</TITLE>
+</HEAD>
+<BODY>
+<H1>Linux ADSM Mini-Howto</H1>
+
+<H2>par Thomas K&ouml;nig, <CODE>Thomas.Koenig@ciw.uni-karlsruhe.de</CODE></H2>v, 15 Janvier 1997
+<HR>
+<EM> Ce document décrit l'installation et l'utilisation sur un poste de
+travail Linux d'un client pour le système de sauvegarde commercial ADSM.</EM>
+<HR>
+<H2><A NAME="s1">1. Introduction</A></H2>
+
+<P>ADSM est un système de sauvegarde en réseau vendu par IBM que l'on retrouve 
+dans de nombreuses organisations. Les programmes clients existent pour une 
+large palette de systèmes&nbsp;: différents Unix, Windows, Novell,
+Mac, Windows NT. Malheureusement, à la date de rédaction de ce
+document, aucune version spécifique à Linux n'existe.</P>
+<P>L'utilisation d'ADSM implique donc le recours au binaire SCO et à l'émulateur
+iBCS2. Il est ici question d'ADSM v2r1.</P>
+<P>A ce jour, je ne connais qu'une version fonctionnant sous Linux, et
+uniquement sur plate-forme i386.</P>
+
+<H2><A NAME="s2">2. Installation du module iBCS </A></H2>
+
+<P>Le module iBCS est disponible à l'adresse suivante&nbsp;:
+<A HREF="ftp://tsx-11.mit.edu/pub/linux/BETA/ibcs2">ftp://tsx-11.mit.edu/pub/linux/BETA/ibcs2</A>.  
+[NdT&nbsp;: un miroir français 
+<A HREF="ftp://ftp.lip6.fr/pub/linux/tsx-11/BETA/ibcs2">ftp://ftp.lip6.fr/pub/linux/tsx-11/BETA/ibcs2</A> ]
+Si vous employez une version 1.2.13 du noyau, récupérez
+<CODE>ibcs-1.2-950721.tar.gz</CODE>, décompactez-le et appliquez les patches
+<CODE>ibcs-1.2-950808.patch1</CODE> et <CODE>ibcs-1.2-950828.patch2</CODE>.
+Vous pouvez alors invoquer &quot;<CODE>make</CODE>&quot; et insérer le module iBCS
+via &quot;<CODE>insmod</CODE>&quot;.</P>
+<P>Pour un noyau 2.0, récupérez <CODE>ibcs-2.0-960610.tar.gz</CODE>, décompressez-le dans 
+un répertoire adéquat, allez dans ce répertoire et appliquez le patch 
+ci-dessous&nbsp;:
+<PRE>
+
+--- iBCSemul/ipc.c.orig Wed Jan 15 21:32:15 1997
++++ iBCSemul/ipc.c      Wed Jan 15 21:32:31 1997
+@@ -212,7 +212,7 @@
+        switch (command) {
+                case U_SEMCTL:
+                        cmd = ibcs_sem_trans(arg3);
+-                       arg4 = (union semun *)get_syscall_parameter (regs, 4);
++                       arg4 = (union semun *)(((unsigned long *) regs->esp) + (5));
+                        is_p = (struct ibcs_semid_ds *)get_fs_long(arg4->buf);
+ #ifdef IBCS_TRACE
+                        if ((ibcs_trace &amp; TRACE_API) || ibcs_func_p->trace)
+</PRE>
+
+Copiez ensuite <CODE>CONFIG.i386</CODE> en <CODE>CONFIG</CODE> et invoquez <CODE>make</CODE>.</P>
+<P>S'ils ne sont pas déjà présents, créez les périphériques requis en
+exécutant&nbsp;:
+<PRE>
+# cd /dev
+# ln -s null XOR
+# ln -s null X0R
+# mknod socksys c 30 0
+# mknod spx c 30 1
+</PRE>
+</P>
+<H2><A NAME="s3">3. Installation du client ADSM</A></H2>
+
+<P>Le binaire SCO est divisé en trois fichiers <CODE>tar</CODE>. Positionnez-vous
+à la racine de votre système de fichiers, vérifiez la valeur de umask et
+décompactez-les en tant qu'utilisateur <CODE>root</CODE>. Un script d'installation
+apparaîtra dans votre répertoire <CODE>/tmp</CODE>. Invoquez-le.</P>
+<P>Éditez ensuite <CODE>/usr/adsm/dsm.sys</CODE> et <CODE>/usr/adsm/dsm.opt</CODE>.
+Certaines lignes du fichier <CODE>dsm.sys</CODE> requièrent une attention 
+particulière&nbsp;:
+<DL>
+<DT><B>Servername</B><DD><P>le nom du serveur</P>
+<DT><B>TCPServeraddress</B><DD><P>le nom complet du serveur (FQDN)</P>
+<DT><B>NODename</B><DD><P>le nom de votre station</P>
+</DL>
+
+Vous préciserez dans le fichier <CODE>dsm.opt</CODE>&nbsp;:
+<DL>
+<DT><B>Server</B><DD><P>comme précédemment</P>
+<DT><B>Followsymbolic</B><DD><P>s'il faut suivre les liens symboliques (c'est rarement une
+bonne idée)</P>
+<DT><B>SUbdir</B><DD><P>faut-il sauvegarder les sous-répertoires&nbsp;? (généralement oui)</P>
+<DT><B>domain</B><DD><P>le système de fichiers à archiver</P>
+</DL>
+</P>
+<P>Créez ensuite un fichier <CODE>/etc/mnttab</CODE> à la mode SCO à partir de votre
+<CODE>/etc/fstab</CODE>. Le script Perl suivant, <CODE>fstab2mnttab</CODE>, le fera pour
+vous.
+<BLOCKQUOTE><CODE>
+<HR>
+<PRE>
+#!/usr/bin/perl
+
+$mnttab_struct = "a32 a32 I L";
+
+open(MTAB, "/etc/mtab") || die "Impossible d'ouvrir /etc/mtab: $!\n";
+open(MNTTAB, ">/etc/mnttab") || die "Impossible d'ouvrir /etc/mnttab: $!\n";
+
+while(&lt;MTAB>) {
+    next if /pid/;
+    chop;
+    /^(\S*)\s(\S*)\s(\S*)\s.*$/;
+    $device = $1;
+    $mountpt = $2;
+    $fstype = $3;
+    if($fstype ne "nfs" &amp;&amp; $fstype ne "proc") {
+        $mnttab_rec =
+            pack($mnttab_struct, $device, $mountpt, 0x9d2f, time());
+        syswrite(MNTTAB, $mnttab_rec, 72);
+        print "Entrée créée pour : $device $mountpt $fstype\n";
+    }
+}
+
+close(MNTTAB);
+exit 0;
+</PRE>
+<HR>
+</CODE></BLOCKQUOTE>
+
+Le client ne réclame aucune bibliothèque dynamique&nbsp;: il est lié
+statiquement.</P>
+
+<H2><A NAME="s4">4. Fonctionnement du client</A></H2>
+
+<P>Il existe deux clients. <CODE>dsm</CODE> propose une interface X11 tandis que <CODE>dsmc</CODE>
+reste en ligne de commande. Votre service informatique vous en dira davantage
+à leur sujet. Un script de démarrage du style&nbsp;:
+<PRE>
+dsmc schedule -quiet 2>&amp;1 >/dev/null &amp;
+</PRE>
+
+s'avèrera vraisemblablement nécessaire.</P>
+<H2><A NAME="s5">5. Problèmes identifiés</A></H2>
+
+<P>SCO se révèle malheureusement incapable de supporter les noms de machines
+dépassant les 8 caractères. Si le nom de votre machine dépasse cette limite ou
+qu'il inclut le nom de domaine, vous devrez le préciser dans la ligne
+<CODE>NODename</CODE> du <CODE>/usr/adsm/dsm.sys</CODE>.</P>
+<P>Le recours à la variable DISPLAY requiert de la part de celle-ci qu'elle
+comprenne le nom complet de votre machine, c'est à dire 
+<CODE>DISPLAY=maMachine.monDomaine:0</CODE> au lieu de <CODE>DISPLAY=maMachine:0</CODE>.</P>
+</BODY>
+</HTML>

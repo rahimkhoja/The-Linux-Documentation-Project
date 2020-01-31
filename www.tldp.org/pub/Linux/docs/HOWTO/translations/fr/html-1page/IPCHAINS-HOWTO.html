@@ -1,0 +1,3171 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+<HEAD>
+ <META NAME="GENERATOR" CONTENT="LinuxDoc-Tools 0.9.21">
+ <TITLE>Linux IPCHAINS-HOWTO</TITLE>
+</HEAD>
+<BODY>
+<H1>Linux IPCHAINS-HOWTO</H1>
+
+<H2>Paul Russell, 
+<A HREF="ipchains@rustcorp.com">ipchains@rustcorp.com</A><BR>
+Version française par Arnaud Launay,
+<A HREF="mailto:asl@launay.org">asl@launay.org</A></H2>v1.0.7, 12 mars 1999
+<HR>
+<EM>Ce document décrit l'obtention, l'installation et la configuration du
+logiciel amélioré de chaînes pare-feu IP pour Linux, et donne quelques
+idées sur l'utilisation que vous pouvez en faire.</EM>
+<HR>
+<H2><A NAME="intro"></A> <A NAME="s1">1. Introduction</A></H2>
+
+<P>Ceci est le Linux IPCHAINS-HOWTO&nbsp;; voyez la section 
+<A HREF="#intro-where">Où ?</A> pour le site principal, qui détient la dernière version.
+Vous devriez également lire le Linux NET-3-HOWTO. Les howtos IP-Masquerading,
+PPP-HOWTO, l'Ethernet-HOWTO et le Firewall HOWTO peuvent aussi être
+intéressants à lire (une fois de plus, la FAQ de alt.fan.bigfoot peut
+l'être aussi).</P>
+
+<P>Si le filtrage des paquets vous semble dépassé, lisez la section 
+<A HREF="#intro-why">Pourquoi ?</A>, la section 
+<A HREF="#basics-how">Comment ?</A>, et lisez les titres de la section 
+<A HREF="#core">Chaînes de protection IP</A>.</P>
+
+<P>Si vous vous adaptez en partant d'<CODE>ipfwadm</CODE>, lisez la section 
+<A HREF="#intro">Introduction</A>, la section 
+<A HREF="#basics-how">Comment ?</A>, et les annexes des sections 
+<A HREF="#ipfwadm-diff">Différences entre ipchains et ipfwadm</A> et 
+<A HREF="#upgrade">Utiliser le script `ipfwadm-wrapper'</A>.</P>
+
+<H2><A NAME="ss1.1">1.1 Qu'est ce que c'est ?</A>
+</H2>
+
+<P>Le Linux <CODE>ipchains</CODE> est une réécriture du code de firewalling de l'IPv4
+de Linux (qui avait été principalement emprunté à BSD) et une réécriture
+d'<CODE>ipfwadm</CODE>, lui même réécriture d'<CODE>ipfw</CODE> de BSD, je crois. Il est
+nécessaire pour administrer le filtrage des paquets IP dans les noyaux Linux
+à partir de la version 2.1.102.</P>
+
+<H2><A NAME="intro-why"></A> <A NAME="ss1.2">1.2 Pourquoi ?</A>
+</H2>
+
+<P>L'ancien code de firewalling de Linux ne pouvait gérer les fragments,
+utilisait des compteurs 32 bits (au moins sur Intel), ne permettait pas la
+spécification de protocoles autres que TCP, UDP ou ICMP, ne pouvait faire de
+grands changements atomiquement, ne permettait pas la spécification de
+règles inverses, avait quelques bizarreries, et pouvait être une catastrophe
+à gérer (le rendant propice aux erreurs des utilisateurs).</P>
+
+<H2><A NAME="ss1.3">1.3 Comment ?</A>
+</H2>
+
+<P>Actuellement le code se trouve dans le noyau principal à partir du 2.1.102.
+Pour la série des noyaux 2.0, vous devrez récupérer une correction pour le
+noyau sur une page web. Si votre noyau 2.0 est plus récent que la correction
+récupérée, la correction ancienne devrait fonctionner&nbsp;; cette partie des
+noyaux 2.0 est relativement stable (la correction pour le noyau 2.0.34
+fonctionne bien sur le noyau 2.0.35). Cependant, le correctif 2.0 est
+incompatible avec les correctifs pour l'ipportfw et l'ipautofw, je
+recommande donc de ne pas l'appliquer, à moins que vous n'ayez réellement
+besoin de l'une des fonctionnalités offertes par ipchains.</P>
+
+<H2><A NAME="intro-where"></A> <A NAME="ss1.4">1.4 Où ?</A>
+</H2>
+
+<P>La page officielle est la 
+<A HREF="http://www.rustcorp.com/linux/ipchains">Page des chaînes de filtrage IP de Linux</A>.</P>
+
+<P>Il y a une liste de diffusion pour les rapports d'erreurs, les discussions,
+le développement et l'utilisation. Vous pouvez rejoindre la liste de diffusion
+en envoyant un message contenant le mot ``subscribe'' à ipchains-request de
+rustcorp.com. Pour écrire à la liste utilisez `ipchains' à la place de
+`ipchains-request'.</P>
+
+<H2><A NAME="s2">2. Bases du filtrage de paquets</A></H2>
+
+<H2><A NAME="ss2.1">2.1 Qu'est ce que c'est ?</A>
+</H2>
+
+<P>Tout le trafic circulant dans un réseau est envoyé sous la forme de
+<B>paquets</B>. Par exemple, pour charger ce paquetage (disons qu'il fait 50k)
+vous avez dû recevoir plus ou moins 36 paquets de 1460 octets
+chacun (pour prendre des valeurs au hasard).</P>
+
+<P>Le début de chaque paquet précise où celui-ci va, d'où il vient, le type du
+paquet, et divers autres détails administratifs. Le début de chaque paquet
+est appelé l'<B>entête</B>. Le reste du paquet, contenant les données à
+transmettre, est couramment appelé le <B>corps</B>.</P>
+
+<P>Quelques protocoles, comme le <B>TCP</B>, qui est utilisé pour le trafic web,
+mail et les connexions à distance, utilisent le concept de `connexion' --
+avant que le moindre paquet de données ne soit envoyé, divers paquets
+de configuration (avec des entêtes spéciales) sont échangés en disant `je
+veux me connecter', `OK' et `Merci'. Ensuite les paquets normaux sont
+échangés.</P>
+
+<P>Un filtre de paquet est un logiciel qui regarde l'<EM>entête</EM> des paquets
+lorsque ceux-ci passent, et décide du destin du paquet entier. Il peut
+décider de le <B>refuser</B> (le supprimer comme s'il n'avait jamais été
+reçu), de l'<B>accepter</B> (le laisser circuler) ou de le <B>rejeter</B>
+(effet identique au refus, mais il est précisé à la source que le paquet
+n'a pas été accepté).</P>
+
+<P>Sous Linux, le filtrage des paquets est inclus dans le noyau, et il y a
+diverses choses que nous pouvons faire avec les paquets, mais le principe
+général (regarder les entêtes et décider du destin du paquet) est
+toujours présent.</P>
+
+<H2><A NAME="ss2.2">2.2 Pourquoi ?</A>
+</H2>
+
+<P>Contrôle. Sécurité. Vigilance.</P>
+
+<P>
+<DL>
+<DT><B>Contrôle&nbsp;:</B><DD><P>Lorsque vous utilisez un ordinateur sous Linux pour
+connecter votre réseau interne à un autre réseau (disons, l'Internet) vous
+aurez l'opportunité de permettre certains types de trafics, et d'interdire
+les autres. Par exemple, l'entête d'un paquet contient l'adresse de
+destination du paquet, et vous pouvez ainsi éviter que des paquets aillent
+vers un certain endroit du réseau extérieur. Comme autre exemple,
+j'utilise Netscape pour accéder aux archives de Dilbert. Il y a des
+publicités provenant de doubleclick.net sur la page, et Netscape perd du
+temps en les chargeant gentiment. Dire au filtre des paquets de ne pas
+autoriser la circulation de paquets provenant ou allant vers doubleclick.net
+résoud le problème (il y a cependant de meilleurs moyens pour y parvenir).</P>
+
+<DT><B>Sécurité&nbsp;:</B><DD><P>Lorsque votre machine Linux est le seul rempart entre le
+chaos de l'Internet et votre réseau propre et bien ordonné, il est utile de
+savoir que vous pouvez restreindre ce qui vient sonner à votre porte. Par
+exemple, vous pouvez autoriser tout ce qui sort de votre réseau, mais vous
+pouvez vous inquiéter du fort connu 'Ping of Death' pouvant provenir
+d'intrus extérieurs. Comme autre exemple, vous pouvez interdire aux
+personnes extérieures de se connecter en telnet sur votre machine Linux,
+même si tous vos comptes ont des mots de passe&nbsp;; peut-être désirerez-vous
+(comme la plupart des gens) être un simple observateur sur l'Internet, et
+non un serveur (de bonne volonté ou non) -- simplement en ne laissant personne
+se connecter, le filtrage de paquets rejetant tous les paquets
+entrants utilisés pour créer des connexions.</P>
+
+<DT><B>Vigilance&nbsp;:</B><DD><P>Parfois, une machine mal configurée du réseau local décidera
+d'envoyer des paquets au monde extérieur. Il est sympathique de pouvoir spécifier au
+filtre de paquets de vous informer si quelque chose d'anormal se produit&nbsp;;
+vous pourrez éventuellement y faire quelque chose, ou bien laisser libre cours
+à la simple curiosité.</P>
+</DL>
+</P>
+
+<H2><A NAME="basics-how"></A> <A NAME="ss2.3">2.3 Comment ?</A>
+</H2>
+
+<H3>Un noyau avec le filtrage de paquets</H3>
+
+<P>Vous aurez besoin d'un noyau disposant du nouveau code de chaînes de
+protection IP. Vous pouvez savoir si le noyau que vous utilisez actuellement
+en dispose en cherchant le fichier `/proc/net/ip_fwchains'. Si ce fichier
+existe, alors c'est tout bon.</P>
+
+<P>Sinon, vous devez créer un noyau contenant le code de chaînes de protection IP.
+Tout d'abord, récupérez les sources du noyau que vous désirez. Si vous avez
+un noyau dont le numéro est supérieur ou égal à 2.1.102, vous n'aurez pas
+besoin de le corriger (il se trouve déjà inclus dans le noyau). Autrement,
+appliquez le correctif que vous trouverez sur la page web listée plus haut, et
+utilisez la configuration détaillée ci-dessous. Si vous ne savez pas comment
+le faire, ne paniquez pas -- lisez le Kernel-HOWTO.</P>
+
+
+<P>Les options de configuration que vous devez utiliser pour les <EM>noyaux de série 2.0</EM> sont&nbsp;:</P>
+<P>
+<HR>
+<PRE>
+        CONFIG_EXPERIMENTAL=y
+        CONFIG_FIREWALL=y
+        CONFIG_IP_FIREWALL=y
+        CONFIG_IP_FIREWALL_CHAINS=y
+</PRE>
+<HR>
+</P>
+<P>Pour les séries de <EM>noyaux 2.1</EM> ou <EM>2.2</EM>&nbsp;:
+<HR>
+<PRE>
+        CONFIG_FIREWALL=y
+        CONFIG_IP_FIREWALL=y
+</PRE>
+<HR>
+</P>
+
+<P>L'outil <CODE>ipchains</CODE> parle au noyau et lui dit quels paquets filtrer.
+&Agrave; moins que vous ne soyez un programmeur, ou un curieux invétéré, c'est
+ainsi que vous contrôlerez le filtrage des paquets.</P>
+
+<H3>ipchains</H3>
+
+<P>L'outil <CODE>ipchains</CODE> insère et efface des règles dans la section
+de filtrage de paquets du noyau. Ce qui signifie que quoi que vous
+configuriez, tout sera perdu lors d'un redémarrage&nbsp;; voyez la section 
+<A HREF="#permanent">Rendre les règles permanentes</A> pour savoir comment
+s'assurer que les règles seront restaurées au prochain lancement de Linux.</P>
+
+<P><CODE>ipchains</CODE> remplace <CODE>ipfwadm</CODE>, qui était utilisé par l'ancien
+code pare-feu. Il y a un ensemble de scripts utiles disponibles sur le site
+ftp d'ipchains&nbsp;:</P>
+<P>
+<A HREF="ftp://ftp.rustcorp.com/ipchains/ipchains-scripts-1.1.2.tar.gz">ftp://ftp.rustcorp.com/ipchains/ipchains-scripts-1.1.2.tar.gz</A></P>
+<P>Cette archive contient un script shell appellé <CODE>ipfwadm-wrapper</CODE> qui
+vous autorisera à utiliser le filtrage de paquets comme avant. Vous ne devriez
+probablement pas utiliser ce script à moins que vous ne souhaitiez un moyen
+rapide de mettre à jour un système utilisant <CODE>ipfwadm</CODE> (ce script est
+plus lent, ne vérifie pas les arguments, etc.). Dans ce cas, vous n'avez pas
+non plus besoin de ce howto.</P>
+<P>Voyez l'annexe 
+<A HREF="#ipfwadm-diff">Différences entre ipchains et ipfwadm</A> et l'annexe 
+<A HREF="#upgrade">Utiliser le script `ipfwadm-wrapper'</A> pour des détails supplémentaires concernant
+<CODE>ipfwadm</CODE>.</P>
+
+<H3><A NAME="permanent"></A> Rendre les règles permanentes</H3>
+
+<P>Votre configuration actuelle de pare-feu est sauvée dans le noyau, et sera
+ainsi perdue lors d'un redémarrage. Je vous recommande d'utiliser les scripts
+`ipchains-save' et `ipchains-restore' pour rendre vos règles permanentes. Pour
+ce faire, configurez vos règles, puis utilisez (en tant que
+super-utilisateur)&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains-save > /etc/ipchains.rules
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P>Créez un script comme le suivant&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+#! /bin/sh
+# Script to control packet filtering.
+
+# If no rules, do nothing.
+[ -f /etc/ipchains.rules ] || exit 0
+
+case "$1" in
+    start)
+        echo -n "Turning on packet filtering:"
+        /sbin/ipchains-restore &lt; /etc/ipchains.rules || exit 1
+        echo 1 > /proc/sys/net/ipv4/ip_forward
+        echo "."
+        ;;
+    stop)
+        echo -n "Turning off packet filtering:"
+        echo 0 > /proc/sys/net/ipv4/ip_forward
+        /sbin/ipchains -X
+        /sbin/ipchains -F
+        /sbin/ipchains -P input ACCEPT
+        /sbin/ipchains -P output ACCEPT
+        /sbin/ipchains -P forward ACCEPT
+        echo "."
+        ;;
+    *)
+        echo "Usage: /etc/init.d/packetfilter {start|stop}"
+        exit 1
+        ;;
+esac
+
+exit 0
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P>Assurez vous que ceci est lancé suffisamment tôt dans la procédure de
+lancement. Dans mon cas (Debian 2.1), j'ai créé un lien symbolique appellé
+`S39packetfilter' dans le répertoire `/etc/rcS.d' (il sera ainsi lancé avant
+S40network).</P>
+
+<H2><A NAME="s3">3. Je suis troublé ! Routage, camouflage, redirection de ports, ipautofw...</A></H2>
+
+<P>Ce HOWTO a pour sujet le filtrage de paquets. Ce filtrage permet la prise de décision
+concernant le destin d'un paquet&nbsp;: s'il est autorisé à passer ou non. Cependant,
+Linux étant le joujou pour bidouilleurs qu'il est, vous voudriez probablement
+en savoir un peu plus.</P>
+
+<P>Un des problèmes est que le même outil ("ipchains") est utilisé pour contrôler
+à la fois le camouflage et le cache transparent, alors que ce sont des notions
+séparées du filtrage de paquets (l'implémentation actuelle de Linux les
+brouille tous les trois de façon inhabituelle, laissant l'impression qu'ils sont
+très proches).</P>
+
+<P>Le camouflage et le cachage sont recouverts par des HOWTOs séparés, et les
+possibilités de redirection automatique et de redirection de ports sont
+contrôlées par des outils séparés, mais puisque de nombreuses personnes
+continuent à me harceler à leur propos, je vais ajouter un ensemble de
+scénarios classiques en indiquant les moments où chacun doit être utilisé. Les
+mérites de la sécurité de chacun de ces scénarios ne seront néanmoins pas
+discutés ici.</P>
+
+<H2><A NAME="ss3.1">3.1 Le guide du camouflage en 3 lignes par Rusty</A>
+</H2>
+
+<P>Ces lignes présument que votre interface <B>externe</B> est appellée "ppp0".
+Utilisez ifconfig pour le vérifier, et ajustez selon votre goût.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -P forward DENY
+# ipchains -A forward -i ppp0 -j MASQ
+# echo 1 > /proc/sys/net/ipv4/ip_forward
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H2><A NAME="ss3.2">3.2 Publicité gratuite&nbsp;: le zèle de WatchGuard</A>
+</H2>
+
+<P>Vous pouvez acheter des pare-feu tout faits. Un excellent est le FireBox de
+WatchGuard. C'est excellent parce que je l'apprécie, parce qu'il est sécurisé,
+basé sur Linux, et parce qu'ils financent la maintenance d'ipchains ainsi que
+du nouveau code pare-feu (prévu pour le 2.3). En bref, WatchGuard me paye à
+manger lorsque je travaille pour vous. Donc, je vous prierai de prendre leur
+travail en compte.</P>
+<P>
+<A HREF="http://www.watchguard.com">http://www.watchguard.com</A></P>
+
+
+<H2><A NAME="ss3.3">3.3 Configurations classiques de type pare-feu</A>
+</H2>
+
+<P>Vous êtes petiteboite.com. Vous avez un réseau interne, et une connexion
+intermittente (PPP) simple à l'Internet (firewall.petiteboite.com a pour IP
+1.2.3.4). Vous êtes en Ethernet sur votre réseau local, et votre machine
+personnelle s'appelle "mamachine".</P>
+
+<P>Cette section illustrera les différents arrangements classiques. Lisez
+attentivement, car ils sont tous subtilement différents.</P>
+
+<H3>Réseaux privés&nbsp;: caches traditionnels</H3>
+
+<P>Dans ce scénario, les paquets venant d'un réseau privé ne traversent jamais
+l'Internet, et vice versa. Les adresses IP du réseau privé doivent être
+assignées en utilisant les adresses privées réservées par la RFC 1597 (càd
+10.*.*.*, 172.16.*.* ou 192.168.*.*).</P>
+
+<P>La seule méthode pour que les choses soient connectés à l'Internet est en se
+connectant au pare-feu, qui est la seule machine sur les deux réseaux qui
+sont connectés plus loin. Vous lancez un programme (sur le pare-feu) appellé
+un proxy pour ce faire (il y a des proxy (caches) pour le FTP, l'accès web,
+telnet, RealAudio, les News Usenet et autres services). Voyez le Firewall
+HOWTO.</P>
+
+<P>Tous les services auxquels vous voulez que l'Internet puisse avoir accès
+doivent être sur le pare-feu (mais voyez 
+<A HREF="#limited-services">Services internes limités</A> plus bas).</P>
+
+<P>Exemple&nbsp;: autoriser l'accès web d'un réseau privé vers l'Internet.
+<OL>
+<LI>On a assigné les adresses 192.168.1.* au réseau privé, avec mamachine
+étant 192.168.1.100, et l'interface Ethernet du pare-feu étant assignée à
+192.168.1.1.
+</LI>
+<LI>Un cache web (comme "squid") est installé et configuré sur le pare-feu,
+disons tournant sur le port 8080.
+</LI>
+<LI>Netscape sur le réseau privé est configuré pour utiliser le pare-feu
+port 8080 comme cache.
+</LI>
+<LI>Le DNS n'a pas besoin d'être configuré sur le réseau privé.
+</LI>
+<LI>Le DNS doit être configuré sur le pare-feu.
+</LI>
+<LI>Le réseau privé n'a pas besoin de disposer de route par défaut
+(passerelle).</LI>
+</OL>
+</P>
+
+<P>Netscape sur mamachine lit http://slashdot.org.
+<OL>
+<LI>Netscape se connecte sur le port 8080 du pare-feu, en utilisant le port
+1050 de mamachine. Il demande la page web de "http://slashdot.org".
+</LI>
+<LI>Le cache recherche le nom "slashdot.org", et obtient 207.218.152.131. Il
+ouvre alors une connexion sur cette adresse IP (en utilisant le port 1025 de
+l'interface externe du pare-feu), et demande la page au serveur web (port 80).
+</LI>
+<LI>En recevant la page web par sa connexion au serveur web, le pare-feu
+copie les données vers la connexion de Netscape.
+</LI>
+<LI>Netscape affiche la page.</LI>
+</OL>
+</P>
+<P>C'est-à-dire que du point de vue de slashdot.org, la connexion est réalisée
+par 1.2.3.4 (interface PPP du pare-feu), port 1025, vers 207.218.152.131
+(slashdot.org) port 80. Du point de vue de mamachine, la connexion est faite
+de 192.168.1.100 (mamachine) port 1050, vers 192.168.1.1 (interface Ethernet
+du pare-feu), port 8080.</P>
+
+<H3>Réseaux privés&nbsp;: caches transparents</H3>
+
+<P>Dans ce scénario, les paquets venant du réseau privé ne traversent jamais
+l'Internet, et vice versa. Les adresses IP du réseau privé doivent être
+assignées en utilisant les adresses privées réservées par la RFC 1597 (càd
+10.*.*.*, 172.16.*.* ou 192.168.*.*).</P>
+
+<P>La seule méthode pour que les choses soient connectées à l'Internet est en se
+connectant au pare-feu, qui est la seule machine sur les deux réseaux, qui
+sont connectés plus loin. Vous lancez un programme (sur le pare-feu) appellé
+un cache transparent pour ce faire&nbsp;; le noyau envoie les paquets sortants au
+cache transparent au lieu de les envoyer plus loin (càd qu'il rend bâtard le
+routage).</P>
+
+<P>Le cachage transparent signifie que les clients n'ont pas besoin de savoir
+qu'il y a un proxy dans l'histoire.</P>
+
+<P>Tous les services que l'Internet peut utiliser doivent être sur le pare-feu
+(mais voyez 
+<A HREF="#limited-services">Services internes limités</A>
+plus bas).</P>
+
+<P>Exemple&nbsp;: autoriser l'accès web du réseau privé vers l'Internet.
+<OL>
+<LI>On a assigné les adresses 192.168.1.* au réseau privé, avec mamachine
+étant 192.168.1.100, et l'interface Ethernet du pare-feu étant assignée à
+192.168.1.1.
+</LI>
+<LI>Un proxy web transparent (je présume qu'il existe des correctifs pour
+squid lui permettant d'opérer de cette façon, sinon, essayez "transproxy") est
+installé et configuré sur le pare-feu, disons tournant sur le port 8080.
+</LI>
+<LI>On dit au noyau de rediriger les connexions sur le port 80 du proxy, en
+utilisant ipchains.
+</LI>
+<LI>Netscape, sur le réseau privé, est configuré pour se connecter
+directement.
+</LI>
+<LI>Le DNS doit être configuré sur le réseau privé (càd que vous devez faire
+tourner un serveur DNS de la même manière que le proxy sur le pare-feu).
+</LI>
+<LI>La route par défaut (passerelle) doit être configuré sur le réseau
+privé, pour envoyer les paquets au pare-feu.</LI>
+</OL>
+</P>
+
+<P>Netscape sur mamachine lit http://slashdot.org.
+<OL>
+<LI>Netscape recherche le nom "slashdot.org", et obtient 207.218.152.131. Il
+ouvre alors une connexion vers cette adresse IP, en utilisant le port local
+1050, et demande la page au serveur web (port 80).
+</LI>
+<LI>Comme les paquets venant de mamachine (port 1050) et allant sur
+slashdot.org (port 80) passent par le pare-feu, ils sont redirigés sur le
+proxy transparent en attente sur le port 8080. Le cache transparent ouvre
+alors une connexion (en utilisant le port local 1025) vers 207.218.152.131
+port 80 (vers lequel les paquets de départ allaient).
+</LI>
+<LI>Alors que le cache reçoit la page web par sa connexion avec le serveur
+web, il copie les données vers la connexion avec Netscape.
+</LI>
+<LI>Netscape affiche la page.</LI>
+</OL>
+</P>
+<P>C'est à dire que du point de vue de slashdot.org, la connexion est réalisée par
+1.2.3.4 (interface PPP du pare-feu) port 1025 vers 207.218.152.131
+(slashdot.org) port 80. Du point de vue de mamachine, la connexion est faite à
+partir de 192.168.1.100 (mamachine) port 1050, vers
+207.218.152.131(slashdot.org) port 80, mais il parle en fait au proxy
+transparent.</P>
+
+<H3>Réseaux privés&nbsp;: camouflage</H3>
+
+<P>Dans ce scénario, les paquets venant du réseau privé ne traversent jamais
+l'Internet sans traitement spécial, et vice versa. Les adresses IP du réseau
+privé doivent être assignées en utilisant les adresses privées réservées par
+la RFC 1597 (càd 10.*.*.*, 172.16.*.* ou 192.168.*.*).</P>
+
+<P>Au lieu d'utiliser un cache, nous utilisons une spécificité spéciale du noyau
+nommée "camouflage" (masquerading). Le camouflage réécrit les paquets
+lorsqu'ils passent par le pare-feu, ce qui fait qu'ils semblent toujours venir
+du pare-feu lui-même. Il réécrit ensuite les réponses afin qu'elles semblent
+venir du destinataire originel.</P>
+
+<P>Le camouflage dispose de modules séparés afin de gérer les protocoles
+"étranges", comme FTP, RealAudio, Quake, etc. Pour les protocoles vraiment
+difficiles à gérer, la spécificité de "redirection automatique" (auto
+forwarding) peut en gérer quelques-uns en configurant automatiquement la
+redirection de ports pour un ensemble donné de ports&nbsp;: voyez "ipportfw" (noyaux
+2.0) ou "ipmasqadm" (noyaux 2.1 et supérieurs).</P>
+
+<P>Tous les services auxquels vous voulez que l'Internet puisse avoir accès
+doivent être sur le pare-feu (mais voyez 
+<A HREF="#limited-services">Services internes limités</A> plus bas).</P>
+
+<P>Exemple&nbsp;: autoriser l'accès web du réseau privé sur l'Internet.
+<OL>
+<LI>On a assigné les adresses 192.168.1.* au réseau privé, avec mamachine
+étant 192.168.1.100, et l'interface Ethernet du pare-feu étant assignée à
+192.168.1.1.
+</LI>
+<LI>Le pare-feu est configuré pour camoufler tous les paquets venant du
+réseau privé et allant sur le port 80 d'un hôte sur Internet.
+</LI>
+<LI>Netscape est configuré pour se connecter directement.
+</LI>
+<LI>Le DNS doit être configuré correctement sur le réseau privé.
+</LI>
+<LI>Le pare-feu doit être la route par défaut (passerelle) du réseau privé.</LI>
+</OL>
+</P>
+<P>Netscape sur mamachine lit http://slashdot.org.
+<OL>
+<LI>Netscape recherche le nom "slashdot.org", et obtient 207.218.152.131. Il
+ouvre alors une connexion vers cette adresse IP, en utilisant le port local
+1050, et demande la page au serveur web (port 80).
+</LI>
+<LI>Comme les paquets venant de mamachine (port 1050) et allant sur
+slashdot.org (port 80) passent par le pare-feu, ils sont réécrits pour venir
+de l'interface PPP du pare-feu, port 65000. Le pare-feu a une adresse Internet
+valide (1.2.3.4), donc les paquets venant de slashdot.org sont routés
+correctement.
+</LI>
+<LI>Lorsque les paquets venant de slashdot.org (port 80) sur
+firewall.petiteboite.com (port 65000) arrivent, ils sont réécrits pour aller
+sur mamachine, port 1050. La véritable magie du camouflage se trouve ici&nbsp;: il se
+souvient des paquets sortants réécrits afin de pouvoir réécrire les paquets
+entrants qui en sont la réponse.
+</LI>
+<LI>Netscape affiche la page.</LI>
+</OL>
+</P>
+<P>C'est à dire que du point de vue de slashdot.org, la connexion est réalisée de
+1.2.3.4 (interface PPP du pare-feu), port 65000 vers 207.218.152.131
+(slashdot.org) port 80. Du point de vue de mamachine, la connexion est faite
+entre 192.168.1.100 (mamachine) port 1050, et 207.218.152.131 (slashdot.org)
+port 80.</P>
+
+<H3>Réseaux publics</H3>
+
+<P>Dans ce scénario, votre réseau personnel fait partie de l'Internet&nbsp;: les
+paquets peuvent passer sans avoir à changer de réseau. Les adresses IP du
+réseau interne doivent être assignées en utilisant un bloc d'adresses IP, de
+manière à ce que le reste du réseau sache comment vous envoyer des paquets.
+Ceci implique une connexion permanente.</P>
+
+<P>Dans ce rôle, le filtrage de paquets est utilisé pour restreindre les paquets
+qui peuvent être redirigés entre votre réseau et le reste de l'Internet, càd
+pour restreindre le reste de l'Internet à accéder uniquement au serveur web
+qui se trouve en interne.</P>
+
+<P>Exemple&nbsp;: autoriser l'accès web du réseau privé vers l'Internet.
+<OL>
+<LI>Votre réseau interne dispose du bloc d'adresses IP que vous avez
+enregistré, disons 1.2.3.*.
+</LI>
+<LI>Le pare-feu est configuré pour autoriser tout le trafic.
+</LI>
+<LI>Netscape est configuré pour se connecter directement.
+</LI>
+<LI>Le DNS doit être configuré correctement sur votre réseau.
+</LI>
+<LI>Le pare-feu doit être la route par défaut (passerelle) pour le réseau
+privé.</LI>
+</OL>
+</P>
+<P>Netscape sur mamachine lit http://slashdot.org.
+<OL>
+<LI>Netscape recherche le nom "slashdot.org", et obtient 207.218.152.131. Il
+ouvre alors une connexion vers cette adresse IP, en utilisant le port local
+1050, et demande la page au serveur web, port 80.
+</LI>
+<LI>Les paquets passent par votre pare-feu, comme ils passent par d'autres
+routeurs entre vous et slashdot.org.
+</LI>
+<LI>Netscape affiche la page.</LI>
+</OL>
+</P>
+<P>C'est à dire qu'il n'y a qu'une seule connexion&nbsp;: à partir de 1.2.3.100
+(mamachine) port 1050, vers 207.218.152.131 (slashdot.org) port 80.</P>
+
+<H3><A NAME="limited-services"></A> Services internes limités</H3>
+
+<P>Il y a quelques trucs que vous pouvez utiliser pour autoriser l'Internet à
+accéder à vos services internes, plutôt que de faire tourner vos services
+internes sur le pare-feu. Ils fonctionneront soit avec un proxy, soit avec une
+approche type camouflage pour les connexions externes.</P>
+
+<P>L'approche la plus simple est de faire tourner un "redirecteur", qui est un
+cache de pauvre, attendant une connexion sur un port donné, et ouvrant une
+connexion sur un hôte et un port interne fixé, et copiant les données entre
+les deux connexions. Un exemple de ceci est le programme "redir". Du point de
+vue de l'Internet, la connexion est faite sur votre pare-feu. Du point de vue
+de votre serveur interne, la connexion est faite par l'interface interne du
+pare-feu sur le serveur.</P>
+
+<P>Une autre approche (qui nécessite un noyau 2.0 corrigé pour ipportfw, ou un
+noyau 2.1 ou supérieur) est d'utiliser la redirection des ports du noyau. Il
+effectue le même travail que "redir" d'une manière différente&nbsp;: le noyau
+réécrit les paquets lorsqu'ils passent, en changeant leur adresse de
+destination et le port pour les faire pointer sur un port et un hôte interne.
+Du point de vue de l'Internet, la connexion est faite sur votre pare-feu. Du
+point de vue de votre serveur interne, une connexion directe est réalisée entre
+l'hôte Internet et votre serveur.</P>
+
+<H2><A NAME="ss3.4">3.4 Pour plus d'informations sur le camouflage</A>
+</H2>
+
+<P>David Ranch a écrit un excellent howto tout neuf sur le camouflage, qui
+en grande partie recouvre ce howto. Vous pouvez le trouver sur 
+<A HREF="http://www.ecst.csuchico.edu/~dranch/LINUX/index-LINUX.html">http://www.ecst.csuchico.edu/~dranch/LINUX/index-LINUX.html</A></P>
+
+<P>J'espère pouvoir bientôt le trouver hébergé sous les auspices du LDP (Linux
+Documentation Project), sur 
+<A HREF="http://www.metalab.unc.edu/LDP">http://www.metalab.unc.edu/LDP</A>.</P>
+
+<P>La page officielle du camouflage se trouve sur 
+<A HREF="http://ipmasq.cjb.net">http://ipmasq.cjb.net</A>.</P>
+
+<H2><A NAME="core"></A> <A NAME="s4">4. Chaînes de protection IP</A></H2>
+
+<P>Cette section décrit tout ce que vous avez réellement besoin de savoir pour
+construire un filtre de paquets adapté à vos besoins.</P>
+
+<H2><A NAME="ss4.1">4.1 Comment les paquets traversent les filtres</A>
+</H2>
+
+<P>Le noyau commence avec trois listes de règles&nbsp;: ces listes sont appellées
+<B>chaînes de protection</B> ou juste <B>chaînes</B>. Ces trois chaînes sont
+appellées <B>input</B> (entrée), <B>output</B> (sortie) et <B>forward</B>
+(transmission). Lorsqu'un paquet arrive (disons, par une carte
+Ethernet), le noyau utilise la chaîne <CODE>input</CODE> pour décider de son destin.
+S'il survit à ce passage, alors le noyau décide où envoyer le paquet par la
+suite (ceci est appelé <B>routage</B>). S'il est destiné à une autre machine,
+il consulte alors la chaîne de <CODE>transmission</CODE>. Enfin, juste avant que le
+paquet ne ressorte, le noyau consulte la chaîne de <CODE>sortie</CODE>.</P>
+
+<P>Une chaîne est une vérification de <B>règles</B>. Chaque règle dit `si
+l'entête de ce paquet ressemble à ceci, alors voilà quoi faire de ce
+paquet'. Si la règle ne vérifie pas le paquet, alors la règle suivante dans
+la chaîne est consultée. Enfin, s'il n'y a plus de règles à consulter, alors
+le noyau regarde la chaîne <B>police</B> pour décider ce qu'il doit faire.
+Dans un système orienté sécurité, cette police dit généralement au
+noyau de rejeter ou de refuser le paquet.</P>
+
+<P>Pour les fans de l'art ASCII, ceci montre le chemin complet d'un paquet
+arrivant à une machine.</P>
+<P>
+<PRE>
+        -----------------------------------------------------------------------------
+        |           ACCEPTER/                               interface lo |
+        v           REDIRIGER                 _________                  |
+--> S --> V --> ______ --> D --> ~~~~~~~~ -->| Chaîne  |----> _______ -->
+    o     a    |chaîne|    e    {Décision}   |transfert|     |Chaîne |ACCEPTER
+    m     l    |entrée|    m    {Routage }   |_________| --->|sortie |
+    m     i    |______|    a     ~~~~~~~~         |      | ->|_______|
+    e     d       |        s        |             |      | |     |
+    |     i       |        q        |            NON/    | |     |
+    |     t       v        u        v           REJET    | |     v
+    |     é      NON/      e    Processus                | |    NON/
+    |     |     REJET      r      Local                  | |   REJET
+    |     v                |        ---------------------- |
+    v    NON               \ ------------------------------/
+   NON
+</PRE>
+</P>
+<P>Voici une description point par point de chaque partie&nbsp;:</P>
+<P>
+<DL>
+<DT><B>Somme (checksum)&nbsp;:</B><DD><P>C'est un test vérifiant si le paquet n'a pas été
+corrompu d'une manière ou d'une autre. S'il l'a été, il est refusé.</P>
+
+<DT><B>Validité (sanity)&nbsp;:</B><DD><P>Il y a en fait un de ces tests sanitaires avant
+chaque chaîne de protection, mais les chaînes d'entrée sont les plus
+importantes. Quelques paquets malformés peuvent rendre confus le code de
+vérification des règles, et ceux-ci sont refusés ici (un message est envoyé au
+syslog si ceci arrive).</P>
+
+<DT><B>Chaîne d'entrée (input chain)&nbsp;:</B><DD><P>C'est la première chaîne de protection qui
+teste le paquet. Si le verdict de la chaîne n'est ni <CODE>DENY</CODE> ni <CODE>REJECT</CODE>,
+le paquet continue son chemin.</P>
+
+<DT><B>Demasquerade&nbsp;:</B><DD><P>Si le paquet est une réponse à un paquet précédemment
+masqué, il est démasqué, et envoyé directement à la chaîne de <CODE>sortie</CODE>.
+Si vous n'utilisez pas le masquage IP, vous pouvez mentalement supprimer
+ceci du diagramme.</P>
+
+<DT><B>Décision routage (Routing decision)&nbsp;:</B><DD><P>Le champ de destination est examiné
+par le code de routage, pour décider si le paquet doit aller vers un processus
+local (voir processus local plus bas) ou transmis à une machine distante (voyez
+les chaînes de renvoi plus bas).</P>
+
+<DT><B>Processus local (Local process)&nbsp;:</B><DD><P>Un processus tournant sur la machine peut
+recevoir des paquets après l'étape de décision de routage, et peut envoyer des
+paquets (qui passent par l'étape de décision de routage, puis traversent la
+chaîne de sortie).</P>
+
+<DT><B>Interface lo&nbsp;:</B><DD><P>Si les paquets venant d'un processus local sont destinés à
+un autre processus local, alors ils passeront par la chaîne de sortie en
+utilisant l'interface lo, puis reviendront par la chaîne d'entrée en utilisant
+la même interface. L'interface lo est généralement nommée interface loopback.</P>
+
+<DT><B>local&nbsp;:</B><DD><P>Si le paquet n'a pas été créé par un processus local, alors la
+chaîne de transmission est vérifiée, sinon le paquet se dirige vers la chaîne
+de sortie.</P>
+
+<DT><B>forward chain&nbsp;:</B><DD><P>Cette chaîne est traversée par tout paquet qui tente de
+passer par cette machine vers une autre.</P>
+
+<DT><B>output chain&nbsp;:</B><DD><P>Cette chaîne est traversée par tous les paquets juste
+avant qu'ils ne soient envoyés à l'extérieur.</P>
+</DL>
+</P>
+
+<H3>Utiliser ipchains</H3>
+
+<P>Tout d'abord, vérifiez que vous avez la version d'ipchains à laquelle se
+réfère ce document&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+$ ipchains --version
+ipchains 1.3.9, 17-Mar-1999
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Notez que je recommande l'utilisation du 1.3.4 (qui ne dispose pas des options
+longues comme `--sport'), ou du 1.3.8 et suivants&nbsp;; ils sont en effet très
+stables.</P>
+
+<P>ipchains dispose d'une page de manuel plutôt bien détaillée (<CODE>man
+ipchains</CODE>), et si vous avez besoin de plus de détails en particulier, vous
+pouvez consulter l'interface de programmation (<CODE>man 4 ipfw</CODE>), ou le
+fichier <CODE>net/ipv4/ip_fw.c</CODE> dans les sources des noyaux 2.1.x, qui est
+(bien évidemment) la référence.</P>
+
+<P>Il y a également une carte de référence rapide par Scott Bronson dans le
+paquetage source, aux formats PostScript (TM) a4 et US letter.</P>
+
+<P>Il y a plusieurs choses différentes que vous pouvez faire avec
+<CODE>ipchains</CODE>. Tout d'abord les opérations servant à gérer les chaînes
+entières. Vous commencez avec trois chaînes intégrées <CODE>input</CODE>,
+<CODE>output</CODE> et <CODE>forward</CODE> que vous ne pouvez effacer.</P>
+<P>
+<OL>
+<LI> Créer une nouvelle chaîne (-N)&nbsp;;</LI>
+<LI> Supprimer une chaîne vide (-X)&nbsp;;</LI>
+<LI> Changer la police d'une chaîne intégrée (-P)&nbsp;;</LI>
+<LI> Lister les règles d'une chaîne (-L)&nbsp;;</LI>
+<LI> Supprimer les règles d'une chaîne (-F)&nbsp;;</LI>
+<LI> Mettre à zéro les compteurs de paquets et d'octets sur toutes les
+règles d'une chaîne (-Z).</LI>
+</OL>
+</P>
+<P>Il y a plusieurs moyens pour manipuler les règles à l'intérieur d'une
+chaîne&nbsp;:</P>
+<P>
+<OL>
+<LI> Ajouter une nouvelle règle à une chaîne (-A)&nbsp;;</LI>
+<LI> Insérer une nouvelle règle à une position quelconque de la chaîne
+(-I)&nbsp;;</LI>
+<LI> Remplacer une règle à une position quelconque de la chaîne (-R)&nbsp;;</LI>
+<LI> Supprimer une règle à une position quelconque de la chaîne (-D)&nbsp;;</LI>
+<LI> Supprimer la première règle vérifiée dans la chaîne (-D).</LI>
+</OL>
+</P>
+<P>Il y a quelques opérations pour le masquage, qui se trouvent dans
+<CODE>ipchains</CODE> dans l'attente d'un bon endroit pour les mettre&nbsp;:</P>
+<P>
+<OL>
+<LI> Lister les connexions masquées actuelles (-M -L)&nbsp;;</LI>
+<LI> Configurer les valeurs de timeout (-M -S) (mais voyez
+id="no-timeout" name="Je ne peux pas modifier les temps d'attente du
+camouflage !">).</LI>
+</OL>
+</P>
+<P>La fonction finale (et peut-être la plus utile) vous permet de vérifier ce
+qui arriverait à un paquet donné s'il avait à traverser une chaîne donnée.</P>
+
+<H3>Opérations sur une règle simple</H3>
+
+<P>Ceci est le B.A.-Ba d'ipchains&nbsp;; manipuler des règles. Plus généralement,
+vous utiliserez probablement les commandes d'ajout (-A) et de suppression
+(-D). Les autres (-I pour l'insertion et -R pour le remplacement) sont des
+simples extensions de ces concepts.</P>
+
+<P>Chaque règle spéficie un ensemble de conditions que le paquet doit suivre,
+et ce qu'il faut faire s'il les suit (une "destination"). Par exemple, vous pouvez
+vouloir refuser tous les paquets ICMP venant de l'adresse IP 127.0.0.1.
+Donc, dans ce cas nos conditions sont que le protocole doit être ICMP et que
+l'adresse source doit être 127.0.0.1. Notre destination est "DENY" (rejet).</P>
+
+<P>127.0.0.1 est l'interface "loopback", que vous avez même si vous n'avez de
+connexion réseau réelle. Vous pouvez utiliser le programme "ping" pour
+générer de tels paquets (il envoie simplement un paquet ICMP de type 8 (requête
+d'écho) à qui tous les hôtes coopératifs doivent obligeamment répondre avec
+un paquet ICMP de type 0 (réponse à un écho)). Ceci le rend utile pour les
+tests.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ping -c 1 127.0.0.1
+PING 127.0.0.1 (127.0.0.1): 56 data bytes
+64 bytes from 127.0.0.1: icmp_seq=0 ttl=64 time=0.2 ms
+
+--- 127.0.0.1 ping statistics ---
+1 packets transmitted, 1 packets received, 0% packet loss
+round-trip min/avg/max = 0.2/0.2/0.2 ms
+# ipchains -A input -s 127.0.0.1 -p icmp -j DENY
+# ping -c 1 127.0.0.1
+PING 127.0.0.1 (127.0.0.1): 56 data bytes
+
+--- 127.0.0.1 ping statistics ---
+1 packets transmitted, 0 packets received, 100% packet loss
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P>Vous pouvez voir ici que le premier ping réussit (le "-c 1" dit à ping de
+n'envoyer qu'un seul paquet).</P>
+
+<P>Puis nous ajoutons (-A) à la chaîne d'entrée ("input"), une règle spécifiant
+que tous les paquets provenant de 127.0.0.1 ("-s 127.0.0.1") avec le
+protocole ICMP ("-p ICMP") doivent être refusés ("-j DENY").</P>
+
+<P>Ensuite nous testons notre règle, en utilisant le second ping. Il y aura une
+pause avant que le programme ne se termine, attendant une réponse qui ne
+viendra jamais.</P>
+
+<P>Nous pouvons supprimer la règle avec l'un des deux moyens. Tout d'abord,
+puisque nous savons que c'est la seule règle de la chaîne d'entrée, nous
+pouvons utiliser une suppression numérotée, comme dans&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+        # ipchains -D input 1
+        #
+</PRE>
+</CODE></BLOCKQUOTE>
+
+Pour supprimer la règle numéro 1 de la chaîne d'entrée.</P>
+
+<P>La deuxième possibilité est de copier la commande -A, mais en remplaçant le
+-A par -D. C'est utile lorsque vous avez une chaîne complexe de règles et
+que vous ne voulez pas avoir à les compter afin de savoir que c'est la règle
+37 que vous voulez supprimer. Dans ce cas, nous pouvons utiliser&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+        # ipchains -D input -s 127.0.0.1 -p icmp -j DENY
+        #
+</PRE>
+</CODE></BLOCKQUOTE>
+
+La syntaxe de -D doit avoir exactement les mêmes options que la commande -A
+(ou -I ou -R). S'il y a des règles multiples identiques dans la même chaîne,
+seule la première sera supprimée.</P>
+
+<H3>Spécifications du filtrage</H3>
+
+<P>Nous avons vu l'utilisation de "-p" pour spécifier le protocole, et de "-s" pour
+spécifier l'adresse souce, mais il y a d'autres options que nous pouvons
+utiliser pour spécifier les caractéristiques des paquets. Ce qui suit en est
+une description exhaustive.</P>
+
+<H3>Spécifier les adresses IP source et destination</H3>
+
+<P>Les adresses IP source (-s) et destination (-d) peuvent être spécifiées de
+quatre façons différentes. La façon la plus classique est d'utiliser le nom
+complet, comme "localhost" ou "www.linuxhq.com". La deuxième méthode est de
+spécifier l'adresse IP, comme "127.0.0.1".</P>
+
+<P>Les deux autres méthodes permettent la spécification d'un groupe
+d'adresses IP, comme "199.95.207.0/24" ou "199.95.207.0/255.255.255.0". 
+Toutes deux spécifient toutes les adresses IP de 192.95.207.0 à 192.95.207.255,
+incluse&nbsp;; les chiffres suivant le "/" indiquent quelles parties de l'adresse
+IP sont significatives. "/32" ou "/255.255.255.255" sont les défauts
+(vérifient toutes les adresses IP). Pour ne spécifier aucune adresse IP,
+"/0" peut être utilisé, par exemple&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+        # ipchains -A input -s 0/0 -j DENY
+        #
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P>Ceci est rarement utilisé, car l'effet produit par cette ligne de commande
+est le même que celui obtenu en ne spécifiant pas l'option "-s".</P>
+
+<H3>Spécifier l'inversion</H3>
+
+<P>De nombreuses options, incluant les options "-s" et "-d" peuvent avoir leurs
+propres arguments précédés par "!" (prononcé "non") pour ne vérifier que les
+adresses n'étant PAS équivalentes à celles données. Par exemple, "-s !
+localhost" vérifiera tout paquet ne provenant PAS de localhost.</P>
+
+<H3>Spécifier le protocole</H3>
+
+<P>Le protocole peut être spécifié en utilisant l'option "-p". Le protocole peut
+être soit un nombre (si vous connaissez les valeurs numériques des protocoles
+pour IP), soit le nom des cas spéciaux parmis "TCP", "UDP" ou "ICMP". La casse
+n'est pas prise en compte, donc "tcp" fonctionne aussi bien que "TCP".</P>
+
+<P>Le nom du protocole peut être préfixé par un "!", pour l'inverser, comme dans
+"-p ! TCP".</P>
+
+<H3>Spécifier les ports UDP et TCP</H3>
+
+<P>Pour les cas spéciaux où un protocole TCP ou UDP est spécifié, il peut y avoir
+un argument supplémentaire indiquant le port TCP ou UDP, ou un intervalle
+(inclusif) de ports (mais voyez 
+<A HREF="#handling-fragments">Utiliser les fragments</A> plus bas). Un intervalle est représenté en utilisant le
+caractère ":", par exemple "6000:6010", qui couvre 11 ports, du 6000 au 6010,
+de manière inclusive. Si la borne inférieure est omise, alors elle se met par
+défaut à 0. Si la borne supérieure est omise, elle est considérée par défaut
+comme étant 65535. Ainsi, pour spécifier les connexions TCP venant des ports
+inférieurs à 1024, la syntaxe pourrait être "-p TCP -s 0.0.0.0/0&nbsp;:1023". Les
+numéros de ports peuvent être spécifiés par leur nom, par exemple "www".</P>
+
+<P>Notez que la spécification du port peut être précédée par un "!", qui
+l'inverse. Ainsi, pour spécifier tous les paquets TCP, SAUF un paquet WWW, vous
+pourriez spécifier
+<PRE>
+-p TCP -d 0.0.0.0/0 ! www
+</PRE>
+</P>
+<P>Il est important de réaliser que spécifier</P>
+<P>
+<PRE>
+-p TCP -d ! 192.168.1.1 www
+</PRE>
+</P>
+<P>est très différent de
+<PRE>
+-p TCP -d 192.168.1.1 ! www
+</PRE>
+</P>
+<P>La première ligne spécifie tout paquet TCP dirigé vers le port WWW de
+n'importe quelle machine sauf 192.168.1.1. La seconde spécifie toute
+connexion TCP vers tout port de 192.168.1.1 sauf le port WWW.</P>
+
+<P>Enfin, le cas suivant spécifie tout, sauf le port WWW et la machine
+192.168.1.1&nbsp;:
+<PRE>
+-p TCP -d ! 192.168.1.1 ! www
+</PRE>
+</P>
+
+<H3>Spécifier les types et codes ICMP</H3>
+
+<P>ICMP permet aussi un argument optionnel, mais comme l'ICMP ne dispose pas de
+ports (ICMP a un <B>type</B> et un <B>code</B>), ils ont une signification
+différente.</P>
+
+<P>Vous pouvez les spécifier par les noms ICMP (utilisez <CODE>ipchains -h icmp</CODE>
+pour lister les noms disponibles) après l'option "-s", ou en tant que type et
+code ICMP numérique, où le type suit l'option "-s" et le code suit l'option
+"-d".</P>
+
+<P>Les noms ICMP sont relativement longs&nbsp;: vous avez uniquement besoin de
+suffisamment de lettres pour rendre chaque nom distinct des autres.</P>
+
+<P>Voici un petit résumé de quelques-uns des paquets ICMP les plus communs&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+Numéro  Nom                     Utilisé par
+
+0       echo-reply              ping
+3       destination-unreachable Tout trafic TCP/UDP
+5       redirect                Routage, si pas de démon de routage
+8       echo-request            ping
+11      time-exceeded           traceroute
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P>Notez que les noms ICMP ne peuvent être précédés de "!" pour le moment.</P>
+
+<P>NE PAS, SURTOUT NE PAS bloquer tous les paquets ICMP de type 3&nbsp;! (voir 
+<A HREF="#ICMP">Paquets ICMP</A> plus bas).</P>
+
+<H3>Spécifier une interface</H3>
+
+<P>L'option "-i" spécifie le nom d'une <B>interface</B> à vérifier. Une interface
+est le périphérique physique d'où vient le paquet, ou bien par où sort ce
+paquet. Vous pouvez utiliser la commande <CODE>ifconfig</CODE> pour lister les
+interfaces qui sont "up" (càd en fonctionnement).</P>
+
+<P>L'interface pour les paquets entrants (ie. les paquets traversant la chaîne
+d'<CODE>entrée</CODE>) est considérée comme étant l'interface d'où les paquets
+proviennent. Logiquement, l'interface des paquets sortants (les paquets
+traversant la chaîne de <CODE>sortie</CODE>) est l'interface où ils vont. L'interface
+pour les paquets traversant la chaîne de <CODE>retransmission</CODE> est également
+l'interface par laquelle ils sortiront&nbsp;; une décision plutôt arbitraire à mon
+sens.</P>
+
+<P>Il est parfaitement autorisé de spécifier une interface qui n'existe pas au
+moment de la spécification&nbsp;; la règle ne vérifiera rien jusqu'à ce que
+l'interface soit mise en place. Ceci est extrêmement utile pour les connexions
+ppp intermittentes (habituellement les interfaces du type <CODE>ppp0</CODE>) et autres.</P>
+
+<P>En tant que cas spécial, un nom d'interface se finissant par un "+" vérifiera
+toutes les interfaces (qu'elles existent à ce moment ou non) qui commencent
+par cette chaîne. Par exemple, pour spécifier une règle qui vérifiera toutes
+les interfaces PPP, l'option <CODE>-i ppp+</CODE> pourrait être utilisée.</P>
+
+<P>Le nom d'interface peut être précédé par un "!" pour vérifier un paquet qui ne
+vérifie PAS l'(les) interface(s) spécifiée(s).</P>
+
+<H3>Spécifier uniquement des paquets TCP SYN</H3>
+
+<P>Il est parfois utile d'autoriser des connexions TCP dans une direction, mais
+pas dans l'autre. Par exemple, vous pouvez vouloir autoriser les connexions
+vers un serveur WWW externe, mais pas les connexions venant de ce serveur.</P>
+
+<P>L'approche naïve serait de bloquer les paquets TCP venant du serveur.
+Malheureusement, les connexions TCP utilisent des paquets circulant dans les
+deux sens pour fonctionner.</P>
+
+<P>La solution est de bloquer uniquement les paquets utilisés pour la demande
+d'une connexion. Ces paquets sont nommés paquets <B>SYN</B> (ok, techniquement
+ce sont des paquets avec le drapeau SYN mis, et les drapeaux FIN et ACK
+supprimés, mais nous les appellerons des paquets SYN). En interdisant
+seulement ces paquets, nous pouvons stopper toute demande de connexion dans
+l'oeuf.</P>
+
+<P>L'option "-y" est utilisée pour celà&nbsp;: elle est valide seulement pour les règles
+qui spécifient TCP comme leur protocole. Par exemple, pour spécifier une
+demande de connexion TCP venant de 192.168.1.1&nbsp;:
+<PRE>
+-p TCP -s 192.168.1.1 -y
+</PRE>
+</P>
+
+<P>Une fois de plus, ce drapeau peut être inversé en le faisant précéder par un
+"!", qui vérifie tout paquet autre que ceux d'initialisation de connexion.</P>
+
+<H3><A NAME="handling-fragments"></A> Utiliser les fragments</H3>
+
+<P>Parfois, un paquet est trop large pour rentrer dans le câble en une seule
+fois. Lorsque ceci arrive, le paquet est divisé en <B>fragments</B>, et envoyé
+en plusieurs paquets. Le receveur réassemble les fragments pour reconstruire
+le paquet en entier.</P>
+
+<P>Le problème avec les fragments se situe dans certaines des spécifications
+listées ci-dessus (en particulier, le port source, le port de destination, le
+type et le code ICMP, ou le drapeau TCP SYN), qui demandent au noyau de jeter
+un regard sur le début du paquet, qui est contenu seulement dans le premier
+fragment.</P>
+
+<P>Si votre machine est la seule connexion vers un réseau extérieur, vous pouvez
+demander à votre noyau Linux de réassembler tous les fragments qui passent par
+lui, en compilant le noyau avec l'option <CODE>IP: always defragment</CODE> mise à
+"Y". Ceci évite proprement la plupart des problèmes.</P>
+
+<P>D'autre part, il est important de comprendre comment les fragments sont
+traités par les règles de filtrage. Toute règle de filtrage qui demande
+des informations dont nous ne disposons pas ne vérifiera <EM>rien</EM>. Ceci
+signifie que le premier fragment est traité comme tout autre paquet. Le
+deuxième fragment et les suivants ne le seront pas. Ainsi, une règle <CODE>-p TCP
+-s 192.168.1.1 www</CODE> (spécifiant un port source de "www" ne vérifiera jamais un
+fragment (autre que le premier fragment). La règle opposée <CODE>-p TCP -s
+192.168.1.1 ! www</CODE> ne fonctionnera pas non plus.</P>
+
+<P>Cependant, vous pouvez spécifier une règle spéciale pour le deuxième fragment
+et les suivants, en utilisant l'option "-f". &Eacute;videmment, il est illégal
+de spécifier un port TCP ou UDP, un type ou un code ICMP, ou un drapeau TCP
+SYN dans une règle de fragment.</P>
+
+<P>Il est également autorisé de spécifier une règle qui ne s'applique <EM>pas</EM>
+au deuxième fragment et aux suivants, en plaçant un "!" avant le "-f".</P>
+
+<P>Habituellement, il est considéré comme sûr de laisser passer le deuxième
+fragment et les suivants, puisque le filtrage s'effectuera sur le premier
+fragment, et préviendra donc le réassemblage sur la machine cible. Cependant,
+des bogues, connus, permettent de crasher des machines en envoyant de simples
+fragments. &Agrave; vous de voir.</P>
+
+<P>&Agrave; noter pour les gourous réseau&nbsp;: les paquets malformés (TCP, UDP et
+paquets ICMP trop courts pour que le code pare-feu puisse lire les ports ou
+les types et codes ICMP) sont également traités comme des fragments. Seuls les
+fragments TCP débutant en position 8 sont supprimés explicitement par le code
+pare-feu (un message doit apparaître dans le syslog si celà arrive).</P>
+
+<P>Par exemple, la règle suivante supprimera tout fragment allant sur
+192.168.1.1&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ 
+# ipchains -A output -f -d 192.168.1.1 -j DENY
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H3>Effets de bord du filtrage</H3>
+
+<P>OK, maintenant nous connaissons tous les moyens pour vérifier un paquet en
+utilisant une règle. Si un paquet vérifie une règle, les choses suivantes
+arrivent&nbsp;:</P>
+<P>
+<OL>
+<LI> Le compteur d'octets de cette règle est augmenté de la taille de ce
+paquet (entête et autres)&nbsp;;
+</LI>
+<LI> Le compteur de paquets de cette règle est incrémenté&nbsp;;
+</LI>
+<LI> Si la règle le demande, le paquet est enregistré&nbsp;;
+</LI>
+<LI> Si la règle le demande, le champ "Type Of Service" du paquet est
+modifié&nbsp;;
+</LI>
+<LI> Si la règle le demande, le paquet est marqué (sauf dans la série des
+noyaux 2.0)&nbsp;;
+</LI>
+<LI> La destination de la règle est examinée afin de décider ce que nous ferons
+ensuite du paquet.</LI>
+</OL>
+</P>
+
+<P>Pour la diversité, je détaillerai ceux-ci en ordre d'importance.</P>
+
+<H3><A NAME="target-spec"></A> Spécifier une destination</H3>
+
+<P>Une <B>destination</B> dit au noyau ce qu'il doit faire d'un paquet qui vérifie une
+règle. ipchains utilise "-j" (penser à "jump-to") pour la spécification de la
+destination. Le nom de la cible doit comporter moins de 8 caractères, et la
+casse intervient&nbsp;: "RETOUR" et "retour" sont totalement différents.</P>
+
+<P>Le cas le plus simple est lorsqu'il n'y a pas de destination spécifiée. Ce type de
+règle (souvent appellée règle de "comptage") est utile pour simplement compter
+un certain type de paquet. Que cette règle soit vérifiée ou non, le noyau
+examine simplement la règle suivante dans la chaîne. Par exemple, pour compter
+le nombre de paquets venant de 192.168.1.1, nous pouvons faire ceci&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -A input -s 192.168.1.1
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>(En utilisant "ipchains -L -v" nous pouvons voir les compteurs de paquets et
+d'octets associés à chaque règle).</P>
+
+<P>Il y a six destinations spéciales. Les trois premières, <CODE>ACCEPT</CODE>, <CODE>REJECT</CODE> et
+<CODE>DENY</CODE> sont relativement simples. <CODE>ACCEPT</CODE> autorise le passage du
+paquet. <CODE>DENY</CODE> supprime le paquet comme s'il n'avait jamais été reçu.
+<CODE>REJECT</CODE> supprime le paquet, mais (si ce n'est pas un paquet ICMP) génère
+une réponse ICMP vers la source pour lui dire que la destination n'est pas
+accessible.</P>
+
+<P>La suivante, <CODE>MASQ</CODE> dit au noyau de camoufler le paquet. Pour que ceci
+fonctionne, votre noyau doit être compilé avec le camouflage IP intégré. Pour
+les détails sur ceci, voyez le Masquerading-HOWTO et l'annexe 
+<A HREF="#ipfwadm-diff">Différences entre ipchains et ipfwadm</A>. Cette destination
+est valide uniquement pour les paquets qui traversent la chaîne <CODE>forward</CODE>.</P>
+
+<P>L'autre destination majeure spéciale est <CODE>REDIRECT</CODE> qui demande au noyau
+d'envoyer un paquet vers un port local au lieu de là où il était destiné. Ceci
+peut être spécifié uniquement pour les règles spécifiant TCP ou UDP en tant
+que protocole. Optionnellement, un port (nom ou numéro) peut être spécifié
+après "-j REDIRECT" qui redirigera la paquet vers ce port particulier, même si
+celui-ci était dirigé vers un autre port. Cette destination est valide uniquement
+pour les paquets traversant la chaîne <CODE>input</CODE>.</P>
+
+<P>La dernière destination spéciale est la <CODE>RETURN</CODE> qui est identique à une
+terminaison immédiate de la chaîne (voir 
+<A HREF="#policy">Choisir une police</A> plus bas).</P>
+
+<P>Toute autre destination indique une chaîne définie par l'utilisateur (décrite dans
+<A HREF="#chain-ops">Opérations sur une chaîne entière</A> plus bas). Le
+paquet traversera tout d'abord les règles de cette chaîne. Si cette chaîne ne
+décide pas du destin du paquet, lorsque la traversée de cette chaîne sera
+achevée, la traversée reprendra sur la règle suivante de la chaîne courante.</P>
+
+<P>Il est temps de faire encore un peu d'art ASCII. Considérons deux (étranges)
+chaînes&nbsp;: <CODE>input</CODE> (la chaîne intégrée) et <CODE>Test</CODE> (une chaîne définie par
+l'utilisateur).</P>
+<P>
+<PRE>
+              `input'                          `Test'
+        -----------------------------    -----------------------------
+        | Règle1: -p ICMP -j REJECT |    | Règle1: -s 192.168.1.1    |
+        |---------------------------|    |---------------------------|
+        | Règle2: -p TCP -j Test    |    | Règle2: -d 192.168.1.1    |
+        |---------------------------|    -----------------------------
+        | Règle3: -p UDP -j DENY    |
+        -----------------------------
+</PRE>
+</P>
+
+<P>Considérons un paquet TCP venant de 192.168.1.1, allant vers 1.2.3.4. Il
+pénètre dans la chaîne <CODE>input</CODE>, et est testé par la Règle1 - pas de
+correspondance. La Règle2 correspond, et sa destination est <CODE>Test</CODE>, donc la règle
+suivante à examiner est le début de <CODE>Test</CODE>. La Règle1 de <CODE>Test</CODE>
+correspond, mais ne spécifie pas de destination, donc la règle suivante est examinée
+(Règle2). Elle ne correspond pas, nous avons donc atteint la fin de la chaîne.
+Nous retournons alors à la chaîne <CODE>input</CODE>, dont nous avons juste examiné la
+Règle2, et nous examinons alors la Règle3, qui ne correspond pas non plus.</P>
+
+<P>Le chemin suivi par le paquet est donc le suivant&nbsp;:
+<PRE>
+                                v    __________________________
+         `entrée'               |   /    `Test'                v
+        ------------------------|--/    -----------------------|----
+        | Règle1                | /|    | Règle1               |   |
+        |-----------------------|/-|    |----------------------|---|
+        | Règle2                /  |    | Règle2               |   |
+        |--------------------------|    -----------------------v----
+        | Règle3                /--+---------------------------/
+        ------------------------|---
+                                v
+</PRE>
+</P>
+
+<P>Voyez la section 
+<A HREF="#organisation">Comment organiser vos règles pare-feu</A> pour les moyens d'utiliser efficacement les chaînes définies par
+l'utilisateur.</P>
+
+<H3>Enregistrement des paquets</H3>
+
+<P>C'est un effet de bord que la vérification d'une règle peut avoir&nbsp;; vous pouvez
+enregistrer les paquets vérifiés en utilisant l'option "-l". Vous n'aurez
+généralement pas besoin de ceci pour les paquets habituels, mais ce peut être
+une option très utile si vous désirez être tenu au courant des événements
+exceptionnels.</P>
+
+<P>Le noyau enregistre cette information de la manière suivante&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+Packet log: input DENY eth0 PROTO=17 192.168.2.1:53 192.168.1.1:1025
+  L=34 S=0x00 I=18 F=0x0000 T=254
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P>Ce message d'information est prévu pour être concis, et contient des
+informations techniques qui ne sont utiles qu'aux gourous réseau, mais qui
+peuvent néanmoins être intéressantes pour le commun des mortels. Il se
+décompose de la façon suivante&nbsp;:</P>
+<P>
+<OL>
+<LI> `input' est la chaîne qui contenait la règle correspondant au paquet,
+et qui a causé l'apparition du message.
+</LI>
+<LI> `DENY' est ce que la règle a dit au paquet de faire. Si ceci est un `-'
+alors la règle n'a pas du tout affecté le paquet (une règle de comptage).
+</LI>
+<LI> `eth0' est le nom de l'interface. Puisque ceci était la chaîne
+d'entrée, celà signifie que le paquet vient de `eth0'.
+</LI>
+<LI> `PROTO=17' signifie que le paquet était de protocole 17. Une liste des
+numéros de protocoles est donnée dans `/etc/protocols'. Les plus communs sont
+1 (ICMP), 6 (TCP) et 17 (UDP).
+</LI>
+<LI> `192.168.2.1' signifie que l'adresse IP source du paquet était
+192.168.2.1.
+</LI>
+<LI> `:53' signifie que le port source était le port 53. En regardant dans
+`/etc/services' on voit que ceci est le port `domain' (càd que c'est
+probablement une réponse DNS). Pour UDP et TCP, ce numéro est le port source.
+Pour ICMP, c'est le type ICMP. Pour les autres, ce sera 65535.
+</LI>
+<LI> `192.168.1.1' est l'adresse IP de destination.
+</LI>
+<LI> `:1025' signifie que le port de destination était 1025. Pour UDP et
+TCP, ce numéro est le port de destination. Pour ICMP, il s'agit du code ICMP.
+Pour les autres, ce sera 65535.
+</LI>
+<LI> `L=34' signifie que le paquet avait une longueur totale de 34 octets.
+</LI>
+<LI> `S=0x00' est le champ "Type Of Service" (divisez par 4 pour obtenir le
+Type of Service utilisé par ipchains).
+</LI>
+<LI> `I=18' est l'identificateur de l'IP.
+</LI>
+<LI> `F=0x0000' est l'offset du fragment 16 bits, avec les options. Une
+valeur débutant par `0x4' ou `0x5' signifie que le bit "Don't Fragment" (ne
+pas fragmenter) est mis. `0x2' ou `0x3' signifie que le bit "More Fragments"
+(des fragments suivent) est mis&nbsp;; attendez vous à recevoir plus de fragments
+après. Le reste du nombre est le décalage de ce fragment, divisé par 8.
+</LI>
+<LI> `T=254' est la durée de vie du paquet. On soustrait 1 à cette valeur à
+chaque saut (hop), et on débute généralement à 15 ou 255.
+</LI>
+<LI> `(#5)' il peut y avoir un numéro entre parenthèses sur les noyaux les
+plus récents (peut-être après le 2.2.9). Il s'agit du numéro de la règle qui a
+causé l'enregistrement du paquet.
+</LI>
+</OL>
+</P>
+
+<P>Sur les systèmes Linux standards, la sortie du noyau est capturée par klogd
+(démon d'information du noyau) qui le repasse à syslogd (démon d'information
+du système). Le fichier `/etc/syslog.conf' contrôle le comportement de
+syslogd, en spécifiant une destination pour chaque "partie" (dans notre cas,
+la partie est le "noyau") et un "niveau" (pour ipchains, le niveau utilisé est
+"info").</P>
+
+<P>Par exemple, mon /etc/syslog.conf (Debian) contient deux lignes qui vérifient
+`kern.info'&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+kern.*                          -/var/log/kern.log
+*.=info;*.=notice;*.=warn;\
+        auth,authpriv.none;\
+        cron,daemon.none;\
+        mail,news.none          -/var/log/messages
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P>Ceci signifie que les messages sont dupliqués dans `/var/log/kern.log' et
+`/var/log/messages'. Pour plus de détails, voyez `man syslog.conf'.</P>
+
+<H3>Manipuler le type de service</H3>
+
+<P>Il y a quatre bits utilisés par eux-mêmes dans l'entête IP, appelés les bits
+de <B>Type of Service</B> (TOS). Ceux-ci ont pour effet de modifier la manière
+dont les paquets sont traités&nbsp;: les quatres bits sont "Minimum Delay", "Maximum
+Throughput", "Maximum Reliability" et "Minimum Cost". Un seul de ces bits est
+autorisé à être placé. Rob van Nieuwkerk, l'auteur du code de gestion du TOS,
+les décrit comme suit&nbsp;:</P>
+<P>
+<BLOCKQUOTE>
+Tout spécialement, le "Minimum Delay" est important pour moi. Je le mets pour
+les paquets "interactifs" dans mon routeur principal (Linux). Je suis derrière
+une connexion modem 33,6k. Linux rend les paquets prioritaires en 3 queues. De
+cette façon, j'obtiens des performances interactives acceptables tout en
+faisant de gros transferts de fichiers en même temps. (Celà pourrait même être
+encore mieux s'il n'y avait pas de grosse queue dans le pilote série, mais le
+temps de latence est maintenu en dessous des 1,5 secondes pour l'instant).
+</BLOCKQUOTE>
+</P>
+
+<P>Note&nbsp;: bien entendu, vous n'avez aucun contrôle sur les paquets arrivants&nbsp;; vous
+pouvez seulement contrôler la priorité des paquets qui quittent votre machine.
+Pour négocier les priorités de chaque côté, un protocole comme RSVP (dont je
+ne connais rien) doit être utilisé.</P>
+
+<P>L'utilisation la plus commune est de placer les connexions telnet et contrôle
+du ftp en "Minimum Delay" et les données FTP en "Maximum Throughput". Ceci peut
+être fait de la manière suivante&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -A output -p tcp -d 0.0.0.0/0 telnet -t 0x01 0x10
+ipchains -A output -p tcp -d 0.0.0.0/0 ftp -t 0x01 0x10
+ipchains -A output -p tcp -s 0.0.0.0/0 ftp-data -t 0x01 0x08
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>L'option "-t" prend deux paramètres supplémentaires, tous les deux en
+hexadécimal. Ceci permet un contrôle complexe des bits du TOS&nbsp;: le premier
+masque est ANDé avec le TOS actuel du paquet, et ensuite le
+deuxième masque est XORé avec lui. Si celà est trop confus, utilisez
+simplement le tableau suivant&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+Nom du TOS              Valeur          Utilisations typiques
+
+Minimum Delay           0x01 0x10       ftp, telnet
+Maximum Throughput      0x01 0x08       ftp-data
+Maximum Reliability     0x01 0x04       snmp
+Minimum Cost            0x01 0x02       nntp
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P>Andi Kleen revient sur ce point pour ce qui suit (modérément édité pour la
+postérité)&nbsp;:
+<BLOCKQUOTE>
+Peut-être serait-il utile d'ajouter une référence au paramète txqueuelen de
+ifconfig dans la discussion sur les bits TOS. La longueur par défaut de la
+queue d'un périphérique est réglée pour les cartes ethernet, sur les modems
+elle est trop longue et rend le fonctionnement de la planification 3 bandes (qui
+place la queue en fonction du TOS) sous-optimal. C'est donc une bonne idée de
+le configurer avec une valeur comprise entre 4 et 10 sur un modem ou un lien
+RNIS b simple&nbsp;: sur les périphériques rapide une queue plus longue est
+nécessaire. C'est un problème des 2.0 et 2.1, mais dans le 2.1 c'est une
+option de ifconfig (dans les nettools récents), alors que dans le 2.0 il
+nécessite une modification des sources des pilotes du périphérique pour le
+changer.
+</BLOCKQUOTE>
+</P>
+<P>Ainsi, pour voir les bénéfices maximum des changements de TOS pour les
+liaisons modem PPP, ajoutez un `ifconfig $1 txqueuelen' dans votre script
+/etc/ppp/ip-up. Le nombre à utiliser dépend de la vitesse du modem et de la
+taille du tampon du modem&nbsp;; voici à nouveau les idées d'Andi&nbsp;:</P>
+<P>
+<BLOCKQUOTE>
+La meilleure valeur pour une configuration donnée nécessite de
+l'expérimentation. Si les queues sont trop courtes sur le routeur, alors les
+paquets sauteront. Bien sûr, on peut toujours gagner même sans changer le TOS,
+c'est juste que le changement du TOS aide à gagner les bénéfices sur les
+programmes non coopératifs (mais tous les programmes Linux standards sont
+coopératifs).
+</BLOCKQUOTE>
+</P>
+
+<H3>Marquage d'un paquet</H3>
+
+<P>Ceci permet des interactions complexes et puissantes avec la nouvelle
+implémentation de Quality of Service d'Alexey Kuznetsov, ainsi que de la
+redirection basée sur le marquage dans la dernière série de noyaux 2.1. Des
+détails supplémentaires vont arriver puisque nous l'avons dans la main. Cette
+option est toutefois ignorée dans la série des noyaux 2.0.</P>
+
+<H3><A NAME="chain-ops"></A> Opérations sur une chaîne entière</H3>
+
+<P>Une des options les plus utiles d'ipchains est la possibilité de regrouper des
+règles dans des chaînes. Vous pouvez appeller les chaînes de la manière qui
+vous plaît, tant que les noms ne sont pas ceux des chaînes intégrées
+(<CODE>input</CODE>, <CODE>output</CODE> et <CODE>forward</CODE>) ou des destinations ((<CODE>MASQ</CODE>,
+<CODE>REDIRECT</CODE>, <CODE>ACCEPT</CODE>, <CODE>DENY</CODE>, <CODE>REJECT</CODE> ou <CODE>RETURN</CODE>). Je suggère
+d'éviter complètement les noms en majuscules, car je pourrais les utiliser pour
+des extensions futures. Le nom de la chaîne ne doit pas dépasser 8 caractères.</P>
+
+<H3>Créer une nouvelle chaîne</H3>
+
+<P>Créons une nouvelle chaîne. &Eacute;tant un type imaginatif, je l'appellerai
+<CODE>test</CODE>.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -N test
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>C'est aussi simple. Maintenant vous pouvez y rajouter des règles, comme
+détaillé ci-dessus.</P>
+
+<H3>Supprimer une chaîne</H3>
+
+<P>La suppression d'une chaîne est tout aussi simple.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -X test
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P>Pourquoi "-X"&nbsp;? Eh bien, toutes les bonnes lettres étaient déjà prises.</P>
+
+<P>Il y a quelques restrictions à la suppression des chaînes&nbsp;: elles doivent être
+vides (voir 
+<A HREF="#flushing">Vider une chaîne</A> plus bas) et elles ne
+doivent pas être la destination d'une quelconque règle. Vous ne pouvez pas supprimer
+les chaînes intégrées.</P>
+
+<H3><A NAME="flushing"></A> Vider une chaîne</H3>
+
+<P>Il y a un moyen simple de vider toutes les règles d'une chaîne, en utilisant
+la commande "-F".</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -F forward
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Si vous ne spécifiez pas de chaîne, alors <EM>toutes</EM> les chaînes seront
+vidées.</P>
+
+<H3>Afficher une chaîne</H3>
+
+<P>Vous pouvez afficher toutes les règles d'une chaîne en utilisant la commande
+"-L".</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -L input
+Chain input (refcnt = 1): (policy ACCEPT)
+target     prot opt    source                destination           ports
+ACCEPT     icmp -----  anywhere              anywhere              any
+# ipchains -L test
+Chain test (refcnt = 0):
+target     prot opt    source                destination           ports
+DENY       icmp -----  localnet/24           anywhere              any
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>La "refcnt" listée pour <CODE>test</CODE> est le nombre de règles qui ont <CODE>test</CODE>
+comme destination. Ceci doit être égal à zéro (et la chaîne doit être vide) avant
+que cette chaîne ne puisse être supprimée.</P>
+
+<P>Si le nom de la chaîne est omis, toutes les chaînes sont listées, même les
+chaînes vides.</P>
+
+<P>Il y a trois options qui peuvent accompagner "-L". L'option "-n" (numérique)
+est très utile et empêche <CODE>ipchains</CODE> d'essayer de vérifier les adresses IP,
+ce qui (si vous utilisez DNS comme la plupart des gens) causera de longs
+délais si votre DNS n'est pas configuré proprement, ou si vous filtrez les
+requêtes DNS. Ceci affichera également les ports par leur numéro plutôt que
+par leur nom.</P>
+
+<P>L'option "-v" vous montrera tous les détails des règles, comme les compteurs
+de paquets et d'octets, les masques de TOS, l'interface, et les marques de
+paquets. Autrement, ces valeurs seront omises. Par exemple&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -v -L input
+Chain input (refcnt = 1): (policy ACCEPT)
+ pkts bytes target prot opt   tosa tosx ifname  mark  source    destination  ports
+   10   840 ACCEPT icmp ----- 0xFF 0x00 lo            anywhere  anywhere     any
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Notez que les compteurs de paquets et d'octets sont affichés en utilisant les
+suffixes "K", "M" ou "G" pour 1000, 1.000.000 et 1.000.000.000,
+respectivement. En utilisant également l'option "-x" (développe les nombres),
+ipchains affichera les nombres en entier, quelque soit leur taille.</P>
+
+<H3>Remise à zéro des compteurs</H3>
+
+<P>Il est parfois utile de pouvoir remettre à zéro les compteurs. Ceci peut être
+fait par l'option "-Z" (compteurs à Zéro). Par exemple&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -v -L input
+Chain input (refcnt = 1): (policy ACCEPT)
+ pkts bytes target prot opt   tosa tosx ifname  mark  source    destination  ports
+   10   840 ACCEPT icmp ----- 0xFF 0x00 lo            anywhere  anywhere     any
+# ipchains -Z input
+# ipchains -v -L input
+Chain input (refcnt = 1): (policy ACCEPT)
+ pkts bytes target prot opt   tosa tosx ifname  mark  source      destination   ports
+    0     0 ACCEPT icmp ----- 0xFF 0x00 lo            anywhere    anywhere      any
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Le problème de cette approche est que parfois vous voudrez connaître les
+valeurs du compteur tout de suite après la remise à zéro. Dans l'exemple
+ci-dessus, quelques paquets peuvent passer entre les commandes "-L" et "-Z".
+Pour cette raison, vous pouvez utiliser le "-L" et le "-Z" <EM>ensemble</EM>, pour
+remettre à zéro les compteurs tout en les lisant. Malheureusement, si vous
+faîtes ceci, vous ne pouvez opérer sur une seule chaîne&nbsp;: vous devrez lister et
+remettre à zéro toutes les chaînes en une seule fois.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -L -v -Z
+Chain input (policy ACCEPT):
+ pkts bytes target prot opt   tosa tosx ifname  mark  source      destination   ports
+   10   840 ACCEPT icmp ----- 0xFF 0x00 lo            anywhere    anywhere      any
+
+Chain forward (refcnt = 1): (policy ACCEPT)
+Chain output (refcnt = 1): (policy ACCEPT)
+Chain test (refcnt = 0):
+    0     0 DENY   icmp ----- 0xFF 0x00  ppp0         localnet/24 anywhere      any
+# ipchains -L -v
+Chain input (policy ACCEPT):
+ pkts bytes target prot opt   tosa tosx ifname  mark  source      destination   ports
+   10   840 ACCEPT icmp ----- 0xFF 0x00 lo            anywhere    anywhere      any
+
+Chain forward (refcnt = 1): (policy ACCEPT)
+Chain output (refcnt = 1): (policy ACCEPT)
+Chain test (refcnt = 0):
+    0     0 DENY   icmp ----- 0xFF 0x00 ppp0          localnet/24 anywhere     any
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H3><A NAME="policy"></A> Choisir une police</H3>
+
+<P>Nous avons disserté sur ce qui se passe lorsqu'un paquet atteint la fin de la
+chaîne intégrée, lorsque nous avons discuté sur la manière dont un paquet
+parcourait les chaînes dans 
+<A HREF="#target-spec">Spécifier une destination</A>
+plus haut. Dans ce cas, la <B>police</B> de la chaîne détermine le destin du
+paquet. Seules les chaînes intégrées (<CODE>input</CODE>, <CODE>output</CODE> et <CODE>forward</CODE>)
+ont des polices, car si un paquet atteint la fin d'une chaîne définie par
+l'utilisateur, le paquet revient sur la chaîne précédente.</P>
+
+<P>La police peut être une des quatre premières destinations spéciales&nbsp;: <CODE>ACCEPT</CODE>,
+<CODE>DENY</CODE>, <CODE>REJECT</CODE> ou <CODE>MASQ</CODE>. <CODE>MASQ</CODE> est la seule destination valide pour la
+chaîne "forward".</P>
+
+<P>Il est également important de noter qu'une destination <CODE>RETURN</CODE> dans une règle de
+l'une des chaînes intégrées est utile pour expliciter la destination de la chaîne
+lorsqu'un paquet correspond à la règle.</P>
+
+<H3>Opérations sur le camouflage</H3>
+
+<P>Il y a plusieurs paramètres que vous pouvez modifier pour le camouflage IP.
+Ils sont intégrés avec <CODE>ipchains</CODE> car il n'est pas évident d'écrire un
+outil séparé pour eux (bien que ceci devrait changer).</P>
+
+<P>La commande du camouflage IP est "-M", et peut être combinée avec "-L" pour
+lister les connexions actuellement camouflées, ou avec "-S" pour configurer
+les paramètres du camouflage.</P>
+
+<P>La commande "-L" peut être accompagnée par "-n" (montre des nombres à la place
+des noms de machines et de ports) ou "-v" (affiche les deltas dans les
+séquences de nombres pour la connexion camouflée, au cas où vous vous
+demanderiez).</P>
+
+<P>La commande "-S" doit être suivie par trois valeurs de fin d'attente, toutes
+en secondes&nbsp;: pour les sessions TCP, pour les sessions TCP précédées d'un
+paquet FIN, et pour les paquets UDP. Si vous ne voulez pas changer l'une de
+ces valeurs, donnez-lui simplement une valeur de "0".</P>
+
+<P>Les valeurs par défaut sont listées dans "/usr/src/linux/include/net/ip_masq.h",
+actuellement 15 minutes, 2 minutes et 5 minutes, respectivement.</P>
+
+<P>La valeur changée le plus souvent est la première, pour le FTP (voir 
+<A HREF="#ftp">Cauchemars du FTP</A> plus bas).</P>
+
+<P>Notez que les problèmes avec la mise en place de temps de fin d'attente sont
+listés dans 
+<A HREF="#no-timeout">Je n'arrive pas à configurer mes temps d'attente !</A>.</P>
+
+<H3>Vérifier un paquet</H3>
+
+<P>Parfois, vous voulez savoir ce qui arrive lorsqu'un certain paquet entre dans
+votre machine, par exemple pour déboguer votre chaîne pare-feu.
+<CODE>ipchains</CODE> dispose de la commande "-C" pour autoriser celà, en utilisant
+exactement les mêmes routines que celles que le noyau utilise pour vérifier
+les vrais paquets.</P>
+
+<P>Vous spécifiez sur quelle chaîne le paquet doit être testé en mettant son nom
+après l'argument "-C". Même si le noyau commence toujours par traverser les
+chaînes <CODE>input</CODE>, <CODE>output</CODE> ou <CODE>forward</CODE>, vous êtes autorisé à
+commencer en traversant n'importe quelle chaîne pour tester.</P>
+
+<P>Les détails du "paquet" sont spécifiés en utilisant la même syntaxe que celle
+utilisée pour spécifier les règles pare-feu. En particulier, un protocole
+("-p"), une adresse source ("-s"), une adresse de destination ("-d") et une
+interface ("-i") sont nécessaires. Si le protocole est TCP ou UDP, alors une
+source unique et une destination unique doivent être spécifiées, et un type et
+un code ICMP doivent être spécifiés pour le protocole ICMP (à moins que
+l'option "-f" soit spécifiée pour indiquer une règle de fragment, auquel cas
+ces options sont illégales).</P>
+
+<P>Si le protocole est TCP (et que l'option "-f" n'est pas spécifiée), l'option
+"-y' doit être explicitée, afin d'indiquer que le paquet test doit être
+configuré avec le bit SYN.</P>
+
+<P>Voici un exemple de test d'un paquet TCP SYN venant de 192.168.1.1, port
+60000, et allant sur 192.168.1.2, port www, arrivant de l'interface eth0 et
+entrant dans la chaîne "input" (il s'agit d'une initialisation classique d'une
+connexion WWW)&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -C input -p tcp -y -i eth0 -s 192.168.1.1 60000 -d 192.168.1.2 www
+packet accepted
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H3>Voir ce qui arrive avec des règles multiples précisées en une seule fois</H3>
+
+<P>Parfois, une simple ligne de commande peut affecter de multiples règles. Ceci
+se fait par deux méthodes. Premièrement, si vous spécifiez un nom de machine
+qui correspond (en utilisant DNS) à de multiples adresses IP, <CODE>ipchains</CODE>
+agira comme si vous aviez tapé de multiples commandes avec chaque combinaison
+d'adresses.</P>
+
+<P>Ainsi, si le nom de machine "www.foo.com" correspond à trois adresses IP, et
+si le nom de machine "www.bar.com" correspond à deux adresses IP, alors la
+commande "ipchains -A input -j reject -s www.bar.com -d www.foo.com" ajoutera
+six règles à la chaîne <CODE>input</CODE>.</P>
+
+<P>L'autre méthode pour avoir <CODE>ipchains</CODE> réalisant de multiples actions est
+d'utiliser l'option bidirectionnelle ("-b"). Cette option fait agir
+<CODE>ipchains</CODE> comme si vous aviez tapé la commande deux fois, la deuxième fois
+avec les arguments "-s" et "-d" inversés. Ainsi, pour éviter la transmission
+soit de, soit vers 192.168.1.1, vous pourriez utiliser la commande&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -b -A forward -j reject -s 192.168.1.1
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Personnellement, je n'aime pas beaucoup l'option "-b"&nbsp;; si vous préférez la
+convivialité, voyez 
+<A HREF="#ipchains-save">Utiliser ipchains-save</A>
+plus bas.</P>
+
+<P>L'option -b peut être utilisée avec les commandes insérer ("-I"), supprimer
+("-D") (mais pas avec la variation qui prend un numéro de règle), ajouter
+("-A") et vérifier ("-C").</P>
+
+<P>Une autre option utile est "-v" (bruyant) qui imprime exactement ce que
+<CODE>ipchains</CODE> fait avec vos commandes. Ceci est utile si vous traitez avec des
+commandes qui peuvent affecter de multiples règles. Par exemple, nous devons
+ici vérifier le comportement de fragments entre 192.168.1.1 et 192.168.1.2.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -v -b -C input -p tcp -f -s 192.168.1.1 -d 192.168.1.2 -i lo
+  tcp opt   ---f- tos 0xFF 0x00  via lo    192.168.1.1  -> 192.168.1.2    * ->   *
+packet accepted
+  tcp opt   ---f- tos 0xFF 0x00  via lo    192.168.1.2  -> 192.168.1.1    * ->   *
+packet accepted
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H2><A NAME="ss4.2">4.2 Exemples utiles</A>
+</H2>
+
+<P>J'ai une connexion intermittente en PPP (<CODE>-i ppp0</CODE>). Je récupère les news
+(<CODE>-p TCP -s news.virtual.net.au nntp</CODE>) et le courrier (<CODE>-p TCP -s
+mail.virtual.net.au pop-3</CODE>) à chaque fois que je me connecte. J'utilise la
+méthode ftp de Debian pour mettre ma machine à jour régulièrement (<CODE>-p TCP
+-y -s ftp.debian.org.au ftp-data</CODE>). Je visionne le web au travers du proxy de
+mon FAI (Fournisseur d'Accès Internet) lorsque je suis en ligne (<CODE>-p TCP -d
+proxy.virtual.net.au 8080</CODE>), mais je déteste les publicités de doubleclick.net
+des Archives de Dilbert (<CODE>-p TCP -y -d 199.95.207.0/24</CODE> et <CODE>-p TCP -y
+-d 199.95.208.0/24</CODE>).</P>
+
+<P>J'autorise les gens à essayer le ftp sur ma machine lorsque je suis en
+ligne (<CODE>-p TCP -d $LOCALIP ftp</CODE>), mais je n'autorise personne de
+l'extérieur à prétendre avoir une adresse IP sur mon réseau interne (<CODE>-s
+192.168.1.0/24</CODE>). Ceci est communément appelé IP spoofing, et il y a un
+meilleur moyen de se protéger dans les noyaux 2.1.x et suivants&nbsp;: voir 
+<A HREF="#antispoof">Comment mettre en place la protection contre l'IP spoof ?</A>.</P>
+
+<P>Cette configuration est relativement simple, car il n'y a pour l'instant
+aucune autre machine sur mon réseau interne.</P>
+
+<P>Je ne veux pas que des processus locaux (ie. Netscape, lynx, etc.) se
+connectent à doubleclick.net&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -A output -d 199.95.207.0/24 -j REJECT
+# ipchains -A output -d 199.95.208.0/24 -j REJECT
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Maintenant je désire changer les priorités des divers paquets sortants (il n'y
+a pas vraiment d'intérêt à le faire pour les paquets entrants). Puisqu'il y a
+un certain nombre de ces règles, il y a intérêt à les mettre ensemble dans une
+seule chaîne, nommée <CODE>ppp-out</CODE>.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -N ppp-out
+# ipchains -A output -i ppp0 -j ppp-out
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Délai minimal pour le trafic web et telnet&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -A ppp-out -p TCP -d proxy.virtual.net.au 8080 -t 0x01 0x10
+# ipchains -A ppp-out -p TCP -d 0.0.0.0 telnet -t 0x01 0x10
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Coût faible pour les données ftp, nntp et pop-3&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -A ppp-out -p TCP -d 0.0.0.0/0 ftp-data -t 0x01 0x02
+# ipchains -A ppp-out -p TCP -d 0.0.0.0/0 nntp -t 0x01 0x02
+# ipchains -A ppp-out -p TCP -d 0.0.0.0/0 pop-3 -t 0x01 0x02
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Il y a quelques restrictions sur les paquets venant de l'interface ppp0&nbsp;;
+créons une chaîne nommée "ppp-in"&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -N ppp-in
+# ipchains -A input -i ppp0 -j ppp-in
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Maintenant, aucun des paquets venant de <CODE>ppp0</CODE> ne doit prétendre avoir une
+adresse source de la forme 192.168.1.*, donc nous les enregistrons et les
+interdisons&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -A ppp-in -s 192.168.1.0/24 -l -j DENY
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>J'autorise l'entrée des paquets UDP pour le DNS (je fais tourner un serveur de
+nom cache qui renvoie toutes les demandes sur 203.29.16.1, donc je m'attend à
+des réponses DNS venant uniquement de là), l'entrée du ftp, et le retour des
+données ftp (ftp-data) uniquement (ce qui doit être uniquement entre un port
+strictement supérieur à 1023, et pas sur les ports X11 autour de 6000).</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -A ppp-in -p UDP -s 203.29.16.1 -d $LOCALIP dns -j ACCEPT
+# ipchains -A ppp-in -p TCP -s 0.0.0.0/0 ftp-data -d $LOCALIP 1024:5999 -j ACCEPT
+# ipchains -A ppp-in -p TCP -s 0.0.0.0/0 ftp-data -d $LOCALIP 6010: -j ACCEPT
+# ipchains -A ppp-in -p TCP -d $LOCALIP ftp -j ACCEPT
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Enfin, les paquets local vers local sont OK&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -A input -i lo -j ACCEPT
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Maintenant, ma police par défaut sur la chaîne <CODE>input</CODE> est <CODE>DENY</CODE>, ce
+qui fait que tout le reste disparaît&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -P input DENY
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>NOTE&nbsp;: Je ne configurerais pas mes chaînes dans cet ordre, car des paquets
+pourraient passer durant la configuration. Le moyen le plus sûr est
+généralement de configurer la police à DENY tout d'abord, et ensuite d'insérer
+les règles. Bien sûr, si vos règles ont besoin d'effectuer des demandes DNS
+pour résoudre des noms de machines, vous pourriez avoir des problèmes.</P>
+
+<H3><A NAME="ipchains-save"></A> Utiliser ipchains-save</H3>
+
+<P>Configurer des chaînes pare-feu de la manière exacte dont vous le
+voulez, et se rappeller ensuite des commandes que vous avez utilisé pour le
+faire la fois suivante est insupportable.</P>
+
+<P>Donc, <CODE>ipchains-save</CODE> est un script qui lit votre configuration actuelle
+des chaînes et la sauve dans un fichier. Pour le moment, je conserverais le
+suspens en ce qui concerne l'utilité de <CODE>ipchains-restore</CODE>.</P>
+
+<P><CODE>ipchains-save</CODE> peut sauver une chaîne seule, ou toutes les chaînes (si
+aucun nom de chaîne n'a été spécifié). La seule option actuellement autorisée
+est le "-v" qui affiche les règles (vers stderr) lorsqu'elles sont sauvées. La
+police de la chaîne est aussi sauvée pour les chaînes <CODE>input</CODE>, <CODE>output</CODE>
+et <CODE>forward</CODE>.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains-save > my_firewall
+Saving `input'.
+Saving `output'.
+Saving `forward'.
+Saving `ppp-in'.
+Saving `ppp-out'.
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H3>Utiliser ipchains-restore</H3>
+
+<P><CODE>ipchains-restore</CODE> remet les chaînes que vous avez sauvé avec
+<CODE>ipchains-save</CODE>. Il peut prendre deux options&nbsp;: "-v" qui décrit chaque règle
+lorsqu'elle est ajoutée, et "-f" qui force le nettoyage des chaînes définies
+par l'utilisateur si elles existent, comme décrit plus bas.</P>
+
+<P>Si une chaîne définie par l'utilisateur est trouvée à l'entrée,
+<CODE>ipchains-restore</CODE> vérifie que cette chaîne existe déjà. Si elle existe,
+alors vous serez interrogé pour savoir si la chaîne doit être nettoyée
+(suppression de toutes les règles) ou si la restauration de la chaîne doit
+être sautée. Si vous spécifiez "-f" sur la ligne de commande, vous ne serez
+pas interrogé&nbsp;; la chaîne sera nettoyée.</P>
+
+<P>Par exemple&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains-restore &lt; my_firewall
+Restoring `input'.
+Restoring `output'.
+Restoring `forward'.
+Restoring `ppp-in'.
+Chain `ppp-in' already exists. Skip or flush? [S/f]? s
+Skipping `ppp-in'.
+Restoring `ppp-out'.
+Chain `ppp-out' already exists. Skip or flush? [S/f]? f
+Flushing `ppp-out'.
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H2><A NAME="s5">5. Divers</A></H2>
+
+<P>Cette section contient toutes les informations et les questions fréquemment
+posées que je ne pouvais faire entrer dans la structure ci-dessus.</P>
+
+<H2><A NAME="organisation"></A> <A NAME="ss5.1">5.1 Comment organiser vos règles pare-feu</A>
+</H2>
+
+<P>Cette question nécessite un peu de réflexion. Vous pouvez tenter de les
+organiser pour optimiser la vitesse (minimiser le nombre de vérifications de
+règles pour la plupart des paquets) ou pour augmenter la maniabilité.</P>
+
+<P>Si vous avez une connexion intermittente, disons une connexion PPP, vous
+pouvez configurer la première règle de la chaîne d'entrée pour être `-i ppp0
+-j DENY' au lancement, puis avoir quelque chose comme ceci dans votre script
+<CODE>ip-up</CODE>&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# Re-crée la chaîne "ppp-in"
+ipchains-restore -f &lt; ppp-in.firewall
+
+# Remplace la règle DENY par un saut vers la chaîne se chargeant du ppp
+ipchains -R input 1 -i ppp0 -j ppp-in
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Votre script <CODE>ip-down</CODE> pourrait ressembler à ça&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -R input 1 -i ppp0 -j DENY
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+
+<H2><A NAME="ss5.2">5.2 Ce qu'il ne faut pas filtrer</A>
+</H2>
+
+<P>Il y a un certain nombre de choses auxquelles vous devez faire attention avant
+de commencer à filtrer quelque chose que vous n'auriez pas voulu filtrer.</P>
+
+<H3><A NAME="ICMP"></A> Les paquets ICMP</H3>
+
+<P>Les paquets ICMP sont utilisés (entre autres choses) pour indiquer des
+problèmes aux autres protocoles (comme TCP et UDP). Les paquets
+"destination-unreachable" (destination non accessible) en particulier.
+Le bloquage de ces paquets signifie
+que vous n'obtiendrez jamais les erreurs "Host unreachable" ou "No route to
+host"&nbsp;; toute connexion attendra une réponse qui ne viendra jamais. C'est
+irritant, mais rarement fatal.</P>
+
+<P>Un problème plus inquiétant est le rôle des paquets ICMP dans la découverte
+MTU. Toutes les bonnes implémentations de TCP (y compris celle de Linux)
+utilisent la recherche MTU pour tenter de trouver quel est le plus grand paquet
+qui peut atteindre une destination sans être fragmenté (la fragmentation
+diminue les performances, principalement lorsque des fragments occasionnels
+sont perdus). La recherche MTU fonctionne en envoyant des paquets avec le bit
+"Don't Fragment" mis, et en envoyant ensuite des paquets plus petits s'il
+reçoit un paquet ICMP indiquant "Fragmentation needed but
+DF set" (`fragmentation-needed'). C'est un paquet de type
+"destination-unreachable", et s'il n'est jamais reçu, l'hôte local ne réduira
+pas le MTU, et les performances seront abyssales ou inexistantes.</P>
+
+<P>Notez qu'il est commun de bloquer tous les messages ICMP de redirection (type
+5)&nbsp;; ils peuvent être utilisés pour manipuler le routage (bien que les piles IP
+bien conçues disposent de gardes-fou), et sont donc souvent considérés comme
+quelques peu risqués.</P>
+
+<H3>Connexions TCP au DNS (serveur de nom)</H3>
+
+<P>Si vous tentez de bloquer toutes les connexions TCP sortantes, rappellez vous
+que le DNS n'utilise pas toujours UDP&nbsp;; si la réponse du serveur dépasse les
+512 octets, le client utilise une connexion TCP (allant toujours sur le port
+numéro 53) pour obtenir les données.</P>
+
+<P>Ceci peut être un piège car le DNS fonctionnera "en gros" si vous interdisez
+de tels transferts TCP&nbsp;; vous pouvez expérimenter des délais longs et étranges,
+et d'autres problèmes liés au DNS si vous le faites.</P>
+
+<P>Si les demandes de votre DNS sont toujours dirigées vers les mêmes sources
+externes (soit directement en utilisant la ligne <CODE>nameserver</CODE> dans
+<CODE>/etc/resolv.conf</CODE> ou en utilisant un serveur de noms cache en mode de
+redirection), alors vous n'aurez besoin d'autoriser que les connexions du
+port <CODE>domain</CODE> sur ce serveur de nom à partir du port local <CODE>domain</CODE>
+(si vous utilisez un serveur de nom cache) ou d'un port élevé (&gt; 1023) si
+vous utilisez <CODE>/etc/resolv.conf</CODE>.</P>
+
+<H3><A NAME="ftp"></A> Cauchemars du FTP</H3>
+
+<P>L'autre problème classique du filtrage de paquets est celui posé par le FTP.
+Le FTP a deux <B>modes</B>&nbsp;; le mode traditionnel est appelé <B>mode actif</B> et le
+plus récent est appelé <B>mode passif</B>. Les navigateurs web utilisent souvent
+le mode passif par défaut, mais les programmes de ftp en ligne de commmande
+utilisent en général par défaut le mode actif.</P>
+
+<P>En mode actif, lorsque l'hôte distant désire envoyer un fichier (ou même les
+résultats d'une commande <CODE>ls</CODE> ou <CODE>dir</CODE>), il essaye d'ouvrir une
+connexion TCP sur la machine locale. Celà signifie que vous ne pouvez filtrez
+ces connexions TCP sans supprimer le FTP actif.</P>
+
+<P>Si vous avez comme option l'utilisation du mode passif, alors tout va bien&nbsp;; le
+mode passif fait passer les connexions de données du client au serveur, même
+pour les données arrivantes. Autrement, il est recommendé de n'autoriser que
+les connexions TCP vers les ports supérieurs à 1024 et de les interdire entre
+6000 et 6010 (6000 est utilisé par X-Windows).</P>
+
+<H2><A NAME="ss5.3">5.3 Filtrer le ping de la mort (Ping of Death)</A>
+</H2>
+
+<P>Les machines Linux sont maintenant immunisées du fameux <B>Ping of Death</B>,
+qui implique l'envoi de paquets ICMP illégalement grands qui font déborder les
+buffers de la pile TCP du récepteur et causent de gros dégâts.</P>
+
+<P>Si vous voulez protéger des machines qui peuvent être vulnérables, vos pouvez
+simplement bloquer les fragments ICMP. Les paquets ICMP normaux ne sont pas
+assez gros pour nécessiter la fragmentation, et vous ne casserez rien à part
+les gros pings. J'ai entendu parler (non confirmé) de rapports comme quoi
+quelques systèmes ont seulement besoin du dernier fragment d'un paquet ICMP
+déformé pour les corrompre, donc bloquer seulement le premier fragment n'est
+pas recommandé.</P>
+
+<P>Même si tous les programmes exploitant cette erreur que j'ai vu
+utilisent l'ICMP, il n'y a pas de raisons qu'un fragment TCP ou UDP (ou
+d'un protocole inconnu) ne puisse être utilisé pour cette attaque, donc le
+bloquage des fragments ICMP est seulement une solution temporaire.</P>
+
+<H2><A NAME="ss5.4">5.4 Filtrer teardrop et bonk</A>
+</H2>
+
+<P>Teardrop et Bonk sont deux attaques (principalement contre les machines sous
+Microsoft Windows NT) qui reposent sur des fragments superposés. Avoir votre
+routeur Linux défragmenter, ou interdisant tous les fragments vers vos
+machines vulnérables sont d'autres options.</P>
+
+<H2><A NAME="ss5.5">5.5 Filtrer les bombes à fragments</A>
+</H2>
+
+<P>Quelques piles TCP moins fiables sont connues pour avoir des problèmes à gérer
+de larges ensembles de fragments de paquets lorsqu'elles ne reçoivent pas tous
+les fragments. Linux n'a pas ce problème. Vous pouvez filtrer les fragments
+(ce qui peut casser les utilisations légitimes) ou compiler votre noyau avec
+l'option "IP: always defragment" mise sur "Y" (seulement si votre machine
+Linux est la seule route possible pour ces paquets).</P>
+
+<H2><A NAME="ss5.6">5.6 Changer les règles pare-feu</A>
+</H2>
+
+<P>Il y a quelques problèmes de temps qui sont impliqués dans la modification des
+règles pare-feu. Si vous n'y faites pas attention, vous pouvez laisser entrer
+des paquets lorsque vous avez fait la moitié de vos changements. Une approche
+simpliste serait de faire la suite&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -I input 1 -j DENY
+# ipchains -I output 1 -j DENY
+# ipchains -I forward 1 -j DENY
+
+... Mise en place des changements ...
+
+# ipchains -D input 1
+# ipchains -D output 1
+# ipchains -D forward 1
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P>Ceci supprime tous les paquets pour la durée des changements.</P>
+
+<P>Si vos changements sont restreints à une chaîne simple, vous pouvez créer une
+nouvelle chaîne avec les nouvelles règles, et ensuite remplacer ("-R") la
+règle qui pointait sur la vieille chaîne par une qui pointe sur la nouvelle
+chaîne&nbsp;; ensuite, vous pouvez supprimer la vieille chaîne. Le remplacement se
+fera à vitesse atomique.</P>
+
+<H2><A NAME="antispoof"></A> <A NAME="ss5.7">5.7 Comment mettre en place la protection contre l'IP spoof ?</A>
+</H2>
+
+<P>L'IP spoofing est une technique dans laquelle un hôte envoie des paquets qui
+prétendent venir d'un autre hôte. Puisque le filtrage des paquets prend ses
+décisions sur la base de cette adresse source, l'IP spoofing est utilisé pour
+abuser les filtres de paquets. Elle est également utilisée pour cacher
+l'identité d'un attaquant utilisant les techniques SYN, Teardrop, Ping of
+Death et autres dérivés (ne vous inquiétez si vous ne savez pas ce que c'est).</P>
+
+<P>Le meilleur moyen de se protéger de l'IP spoofing est la vérification de
+l'adresse source, et il est réalisé par le code de routage, et non par le
+pare-feu et autres.<BR>
+Cherchez un fichier nommé <CODE>/proc/sys/net/ipv4/conf/all/rp_filter</CODE>.
+S'il existe, alors l'activation de la
+vérification de l'adresse source à chaque lancement est la bonne solution pour
+vous. Pour se faire, insérez les lignes suivantes quelque part dans vos
+scripts d'initialisation, avant l'initialisation des interfaces réseau&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# This is the best method: turn on Source Address Verification and get
+# spoof protection on all current and future interfaces.
+if [ -e /proc/sys/net/ipv4/conf/all/rp_filter ]; then
+  echo -n "Setting up IP spoofing protection..."
+  for f in /proc/sys/net/ipv4/conf/*/rp_filter; do
+      echo 1 > $f
+  done
+  echo "done."
+else
+  echo PROBLEMS SETTING UP IP SPOOFING PROTECTION.  BE WORRIED.
+  echo "CONTROL-D will exit from this shell and continue system startup."
+  echo
+  # Start a single user shell on the console
+  /sbin/sulogin $CONSOLE
+fi
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Si vous ne pouvez faire ceci, vous pouvez insérer manuellement les règles pour
+protéger chaque interface. Ceci nécessite la connaissance de chaque interface.
+La série des noyaux 2.1 et supérieurs rejette automatiquement les paquets qui
+prétendent venir des adresses 127.* (réservées pour l'interface de loopback,
+<CODE>lo</CODE>).</P>
+
+<P>Par exemple, disons que vous avez trois interfaces, <CODE>eth0</CODE>, <CODE>eth1</CODE> et
+<CODE>ppp0</CODE>. Nous pouvons utiliser <CODE>ifconfig</CODE> pour nous donner les adresses
+et les masques de réseau de chaque interface. Disons que <CODE>eth0</CODE> est
+rattachée à un réseau 192.168.1.0 avec le masque de sous-réseau 255.255.255.0,
+<CODE>eth1</CODE> est raccordée à un réseau 10.0.0.0 avec le masque de sous-réseau
+255.0.0.0, et <CODE>ppp0</CODE> connectée à l'Internet (où toutes les adresses sauf
+les adresses IP privées réservées sont autorisées), nous insérerions les
+règles suivantes&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -A input -i eth0 -s ! 192.168.1.0/255.255.255.0 -j DENY
+# ipchains -A input -i ! eth0 -s 192.168.1.0/255.255.255.0 -j DENY
+# ipchains -A input -i eth1 -s ! 10.0.0.0/255.0.0.0 -j DENY
+# ipchains -A input -i ! eth1 -s 10.0.0.0/255.0.0.0 -j DENY
+# 
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Cette approche n'est pas aussi bonne que l'approche par vérification de
+l'adresse source, parce que si votre réseau change, vous devrez changer vos
+règles pare-feu pour être à jour.</P>
+
+<P>Si vous utilisez un noyau de série 2.0, vous pouvez également vouloir protéger
+l'interface loopback, en utilisant une règle telle que&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -A input -i ! lo -s 127.0.0.0/255.0.0.0 -j DENY
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H2><A NAME="ss5.8">5.8 Projets avancés</A>
+</H2>
+
+<P>Il y a une bibliothèque dans l'espace utilisateur que j'ai écrit et qui est
+inclue avec la distribution source, nommée "libfw". Elle utilise la capacité
+de IP Chains 1.3 et suivants pour copier un paquet vers l'espace utilisateur
+(via l'option du noyau IP_FIREWALL_NETLINK).</P>
+
+<P>La valeur "mark" peut être utilisée pour spécifier les paramètres de
+Qualité de Service pour les paquets, ou pour spécifier comment les paquets
+doivent être renvoyés. Je ne l'ai cependant jamais utilisée, mais si vous
+voulez écrire sur ce sujet, contactez moi.</P>
+
+<P>Des choses comme le <B>stateful inspection</B> (je préfère le terme "pare-feu
+dynamique") peuvent être implémentées dans l'espace utilisateur en utilisant
+cette bibliothèque. D'autres idées géniales peuvent être le contrôle des
+paquets sur une base "par utilisateur" en faisant une demande sur un démon
+résidant dans l'espace utilisateur. Ceci devrait être relativement simple.</P>
+
+<H3>SPF&nbsp;: Stateful Packet Filtering</H3>
+
+<P>
+<A HREF="ftp://ftp.interlinx.bc.ca/pub/spf">ftp://ftp.interlinx.bc.ca/pub/spf</A> est le site du projet SPF de Brian
+Murrell, qui permet le suivi de connexion dans l'espace utilisateur. Ceci
+ajoute une dose significative de sécurité pour les sites à faible bande
+passante.</P>
+
+<P>Il y a peu de documentation pour le moment, mais voici un message que Brian a
+envoyé à la liste de diffusion en répondant à quelques questions&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+
+> Je présume qu'il fait exactement ce que je veux~: installer une règle de
+> "retour" temporaire pour laisser entrer des paquets en réponse à une
+> requête extérieure.
+
+Yup, c'est exactement ce à quoi il sert. Plus il comprendra de protocoles,
+plus il obtiendra de règles de retour exactes. Pour l'instant il supporte
+(de mémoire, excusez les erreurs ou les omissions) le FTP (à la fois actif et
+passif, intérieur et extérieur), un peu de RealAudio, de traceroute, d'ICMP et
+d'un ICQ basique (transmission des serveurs ICQ, connexions TCP directes, mais
+hélas la seconde connexion directe TCP pour des trucs comme le transfert de
+fichiers, etc., ne sont pas encore présentes)
+
+> S'agit-il d'un remplaçant pour ipchains ou d'un ajout~?
+
+C'est un ajout. Pensez à ipchains comme étant le moteur pour autoriser et
+empêcher les paquets de traverser une machine Linux. SPF est le pilote, gérant
+et surveillant constamment le traffic et disant à ipchains comment changer ses
+polices pour refléter les changements dans les schémas du traffic.
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H3>Modification des données ftp par Michael Hasenstein</H3>
+
+<P>Michael Hasenstein de SuSE a codé un correctif pour le noyau qui ajoute le
+suivi des connexions ftp à ipchains. Celui-ci peut être trouvé sur 
+<A HREF="http://www.csn.tu-chemnitz.de/~mha/patch.ftp-data-2.gz">http://www.csn.tu-chemnitz.de/~mha/patch.ftp-data-2.gz</A></P>
+
+<H2><A NAME="ss5.9">5.9 Extensions futures</A>
+</H2>
+
+<P>Les codes de pare-feu et de NAT sont en cours de remise à jour pour le 2.3. Les
+plans et les discussions sont disponibles sur l'archive de netdev, et sur la
+liste ipchains-dev. Ces
+extensions doivent nettoyer de nombreux problèmes d'utilisation (réellement,
+la mise en place du pare-feu et le camouflage ne devrait pas être <EM>aussi
+dur</EM>, et devrait autoriser une croissance pour un pare-feu beaucoup plus
+flexible).</P>
+
+<H2><A NAME="s6">6. Problèmes classiques</A></H2>
+
+<H2><A NAME="ss6.1">6.1 ipchains -L est gelé !</A>
+</H2>
+
+<P>Vous bloquez probablement les demandes DNS&nbsp;; il finira probablement par
+stopper. Essayez d'utiliser l'option "-n" (numérique) d'ipchains, qui
+supprimera la recherche des noms.</P>
+
+<H2><A NAME="ss6.2">6.2 Le camouflage/redirection ne fonctionne pas !</A>
+</H2>
+
+<P>Vérifiez si la redirection de paquets est activée (dans les noyaux récent,
+elle est désactivée par défaut ce qui signifie que les paquets ne tentent
+jamais de traverser la chaîne "forward"). Vous pouvez changer ce défaut (en
+tant que super-utilisateur) en tapant</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# echo 1 > /proc/sys/net/ipv4/ip_forward
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Si ceci marche pour vous, vous pouvez le mettre quelque part dans vos scripts
+de lancement, de manière à ce que la redirection soit activée à chaque fois&nbsp;;
+vous devrez toutefois configurer votre pare-feu avant le lancement de cette
+commande, autrement il peut y avoir passage de paquets.</P>
+
+<H2><A NAME="ss6.3">6.3 -j REDIR ne marche pas !</A>
+</H2>
+
+<P>Vous devez autoriser la retransmission des paquets (voir plus haut) pour que
+celle-ci fonctionne&nbsp;; sinon le code de routage supprime le paquet. Ainsi, si
+vous utilisez juste la redirection sans avoir de transmission, vous devez y
+faire attention.</P>
+
+<P>Notez que REDIR (dans la chaîne d'entrée) n'affecte pas les connexions d'un
+processus local.</P>
+
+
+<H2><A NAME="ss6.4">6.4 Les interfaces joker ne fonctionnent pas !</A>
+</H2>
+
+<P>Il y avait une erreur dans les versions 2.1.102 et 2.1.103 du noyau (et dans
+quelques anciens correctifs que j'avais sorti) qui faisait planter les
+commandes ipchains utilisant une interface joker (comme <CODE>-i ppp+</CODE>).</P>
+
+<P>Cette erreur a été corrigée dans les noyaux récents, et dans le correctif
+2.0.34 du site web. Vous pouvez aussi le corriger à la main dans les sources
+du noyau en changeant la ligne 63 de include/linux/ip_fw.h&nbsp;:</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+#define IP_FW_F_MASK    0x002F  /* All possible flag bits mask   */
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<P>Ceci doit en fait être "0x003F". Corrigez et recompilez le noyau.</P>
+
+<H2><A NAME="ss6.5">6.5 TOS ne fonctionne pas !</A>
+</H2>
+
+<P>C'est de ma faute&nbsp;: la configuration du champ Type of Service ne change pas le
+Type of Service dans les noyaux 2.1.102 à 2.1.111. Ce problème a été corrigé
+dans le 2.1.112.</P>
+
+<H2><A NAME="ss6.6">6.6 ipautofw et ipportfw ne fonctionnent pas !</A>
+</H2>
+
+<P>Pour les 2.0.x, c'est vrai&nbsp;; je n'ai pas le temps de créer et de maintenir un
+correctif de taille gigantesque pour ipchains et ipautofw/ipportfw.</P>
+
+<P>Pour les 2.1.x, récupérez ipmasqadm de Juan Ciarlante sur
+<PRE>
+&lt;url url="http://juanjox.linuxhq.com/"
+        name="http://juanjox.linuxhq.com/">
+</PRE>
+
+et utilisez-le exactement de la manière dont vous auriez utilisé <CODE>ipautofw</CODE>
+ou <CODE>ipportfw</CODE>, à part qu'à la place de <CODE>ipportfw</CODE> vous devez taper
+<CODE>ipmasqadm portfw</CODE>, et à la place de <CODE>ipautofw</CODE> vous devez taper
+<CODE>ipmasqadm autofw</CODE>.</P>
+
+<H2><A NAME="ss6.7">6.7 XosView ne marche pas !</A>
+</H2>
+
+<P>Mettez à jour à la version 1.6.0 ou supérieure, qui ne nécessite pas de règle
+pare-feu pour les noyaux 2.1.x. Il semblerait être à nouveau cassé dans le
+1.6.1&nbsp;; veuillez voir l'auteur (ce n'est pas de ma faute&nbsp;!).</P>
+
+<H2><A NAME="ss6.8">6.8 Erreur de segmentation avec -j REDIRECT !</A>
+</H2>
+
+<P>C'était une erreur dans ipchains version 1.3.3. Veuillez mettre à jour.</P>
+
+
+<H2><A NAME="no-timeout"></A> <A NAME="ss6.9">6.9 Je ne peux pas modifier les temps d'attente du camouflage !</A>
+</H2>
+
+<P>C'est vrai (pour les noyaux 2.1.x) jusqu'au et incluant le 2.1.112. Ceci est
+pour le moment vigoureusement traqué, et au moment où vous lirez ce document
+il se pourrait que ce soit résolu. Ma page web contiendra un correctif lorsqu'il
+sera disponible.</P>
+
+<H2><A NAME="ss6.10">6.10 Je veux firewaller IPX !</A>
+</H2>
+
+<P>Ainsi qu'un certain nombre d'autres personnes, il semble. Mon code couvre
+seulement IP, malheureusement. Du bon côté, tout est là pour pouvoir
+firewaller IPX&nbsp;! Vous devrez juste écrire le code&nbsp;; je vous aiderai joyeusement
+là où ce sera possible.</P>
+
+<H2><A NAME="s7">7. Un exemple sérieux</A></H2>
+
+<P>Cet exemple est extrait du tutorial donné par Michael Neuling et moi-même en
+mars 1999 lors du LinuxWorld&nbsp;; ce n'est pas le seul moyen de régler le problème
+donné, mais c'est probablement le plus simple. J'espère que vous le jugerez
+informatif.</P>
+
+<H2><A NAME="ss7.1">7.1 L'arrangement</A>
+</H2>
+
+<P>
+<UL>
+<LI>Un réseau interne camouflé (sous divers systèmes d'exploitation), que nous
+appellerons "BON"&nbsp;;
+</LI>
+<LI>des serveurs exposés dans un réseau séparé (nommé "ZDM" pour Zone
+Démilitarisée)&nbsp;;
+</LI>
+<LI>une connexion PPP à l'Internet (nommé "MAUVAIS").</LI>
+</UL>
+</P>
+
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+   Réseau externe (MAUVAIS)
+           |
+           |
+       ppp0|
+    ---------------
+    | 192.84.219.1|             Réseau des serveurs (ZDM)
+    |             |eth0
+    |             |----------------------------------------------
+    |             |192.84.219.250 |             |              |
+    |             |               |             |              |
+    |192.168.1.250|               |             |              |
+    ---------------          --------       -------        -------
+           | eth1            | SMTP |       | DNS |        | WWW |
+           |                 --------       -------        -------
+           |              192.84.219.128  192.84.219.129  192.84.218.130
+           |
+   Réseau Interne (BON)
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H2><A NAME="ss7.2">7.2 Buts</A>
+</H2>
+
+<P>Sur la machine filtrant les paquets&nbsp;:
+<DL>
+<DT><B>PING tout réseau</B><DD><P>Très utile si la machine est hors-service.</P>
+<DT><B>TRACEROUTE tout réseau</B><DD><P>Une fois de plus, utile pour les diagnostics.</P>
+<DT><B>Accès au DNS</B><DD><P>Pour rendre ping et DNS plus utile.</P>
+</DL>
+</P>
+
+<P>&Agrave; l'intérieur de la Zone Démilitarisée&nbsp;:</P>
+
+<P>Serveur mail
+<UL>
+<LI>SMTP vers l'extérieur</LI>
+<LI>Accepte le SMTP de l'intérieur et de l'extérieur</LI>
+<LI>Accepte le POP3 de l'intérieur</LI>
+</UL>
+</P>
+<P>Serveur de nom
+<UL>
+<LI>Envoi de requêtes DNS vers l'extérieur</LI>
+<LI>Accepte les requêtes DNS de l'intérieur, l'extérieur, et du filtre de paquets</LI>
+</UL>
+</P>
+<P>Serveur web
+<UL>
+<LI>Accepte les requêtes HTTP de l'intérieur et de l'extérieur</LI>
+<LI>Accès rsync de l'intérieur</LI>
+</UL>
+</P>
+
+<P>En interne&nbsp;:
+<DL>
+<DT><B>Autorise WWW, ftp, traceroute et ssh vers l'extérieur</B><DD><P>Ce sont des services standards à autoriser&nbsp;: on autorise parfois
+les machines internes à tout faire, mais ici nous serons plus restrictifs.</P>
+<DT><B>Autorise le SMTP vers le serveur mail</B><DD><P>Bien entendu, nous voulons qu'il leur soit possible d'envoyer du courrier vers
+l'extérieur.</P>
+<DT><B>Autorise le POP3 vers le serveur mail</B><DD><P>C'est ainsi qu'ils lisent leur courrier.</P>
+<DT><B>Autorise les requêtes DNS vers le serveur de nom</B><DD><P>Ils doivent pouvoir rechercher des noms externes pour le web, le ftp,
+traceroute ou ssh.</P>
+<DT><B>Autorise rsync vers le serveur web</B><DD><P>C'est ainsi qu'ils synchronisent le serveur web externe avec l'interne.</P>
+<DT><B>Autorise les requêtes WWW vers le serveur web</B><DD><P>Bien entendu, nous voulons qu'ils puissent se connecteur au serveur web
+externe.</P>
+<DT><B>Autorise le ping vers le filtre de paquets</B><DD><P>Il est courtois de l'autoriser&nbsp;; ils peuvent ainsi tester si le pare-feu est
+coupé (ainsi nous ne serons pas tenus responsables si un site extérieur est
+coupé).</P>
+</DL>
+</P>
+
+<H2><A NAME="ss7.3">7.3 Avant le filtrage des paquets</A>
+</H2>
+
+<P>
+<UL>
+<LI>Protection anti-spoofing
+
+<P>Puisque nous n'avons pas de routage asymétrique, nous pouvons simplement
+mettre en marche l'anti-spoofing pour toutes les interfaces.</P>
+
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# for f in /proc/sys/net/ipv4/conf/*/rp_filter; do echo 1 > $f; done
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+</LI>
+<LI>Mettre en place des règles de filtrage en interdiction (DENY) totale&nbsp;:
+
+<P>Nous autorisons tout de même le traffic local, mais nous interdisons tout le
+reste.</P>
+
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# ipchains -A input -i ! lo -j DENY
+# ipchains -A output -i ! lo -j DENY
+# ipchains -A forward -j DENY
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+</LI>
+<LI>Configurer les interfaces
+
+<P>Ceci est généralement réalisé par les scripts de lancement. Faîtes bien
+attention à ce que les règles ci-dessus soient insérées avant que les
+interfaces ne soient configurées, afin de prévenir le passage de paquets avant
+l'insertion des règles.</P>
+
+</LI>
+<LI>Insertion des modules de camouflage par protocole
+<P>Nous devons insérer le module de camouflage du FTP, ainsi le ftp passif et
+actif fonctionnera `uniquement' du réseau interne.</P>
+
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+# insmod ip_masq_ftp
+#
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+</LI>
+</UL>
+</P>
+
+<H2><A NAME="ss7.4">7.4 Filtrage de paquets pour les paquets traversants</A>
+</H2>
+
+<P>Avec le camouflage, il vaut mieux filtrer la chaîne de retransmission.</P>
+
+<P>Cassez la chaîne de retransmission en plusieurs chaînes utilisateurs dépendant
+des interfaces sources/destination&nbsp;; ceci ramène le problème à des problèmes
+plus gérables.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -N bon-zdm
+ipchains -N mauvais-zdm
+ipchains -N bon-mauvais
+ipchains -N zdm-bon
+ipchains -N zdm-mauvais
+ipchains -N mauvais-bon
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+<P>ACCEPTer les codes standards d'erreur ICMP est un fait classique, nous lui
+créons donc une chaîne.</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -N icmp-acc
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H3>Configurer les sauts de la chaîne de transmission</H3>
+
+<P>Malheureusement, nous connaissons seulement (dans la chaîne de transmission)
+quelle est l'interface externe. Ainsi, pour se représenter de quelle interface
+vient le paquet, nous utilisons l'adresse source (l'anti-spoofing évite les
+problèmes liés aux adresses).</P>
+
+<P>Notez que nous enregistrons tout ce qui ne vérifie aucune de ces règles
+(cependant, ceci ne devrait jamais arriver).</P>
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -A forward -s 192.168.1.0/24 -i eth0 -j bon-zdm
+ipchains -A forward -s 192.168.1.0/24 -i ppp0 -j bon-mauvais
+ipchains -A forward -s 192.84.219.0/24 -i ppp0 -j zdm-mauvais
+ipchains -A forward -s 192.84.219.0/24 -i eth1 -j zdm-bon
+ipchains -A forward -i eth0 -j mauvais-zdm
+ipchains -A forward -i eth1 -j mauvais-bon
+ipchains -A forward -j DENY -l
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H3>Définir la chaîne icmp-acc</H3>
+
+<P>Les paquets correspondant à l'une des erreurs ICMP sont acceptés, sinon le
+contrôle les rendra à la chaîne appellante.</P>
+
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -A icmp-acc -p icmp --icmp-type destination-unreachable -j ACCEPT
+ipchains -A icmp-acc -p icmp --icmp-type source-quench -j ACCEPT
+ipchains -A icmp-acc -p icmp --icmp-type time-exceeded -j ACCEPT
+ipchains -A icmp-acc -p icmp --icmp-type parameter-problem -j ACCEPT
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H3>Bon (interne) vers ZDM (serveurs)</H3>
+
+<P>Restrictions internes&nbsp;:
+<UL>
+<LI>Autorise WWW, ftp, traceroute, ssh vers l'extérieur</LI>
+<LI><B>Autorise le SMTP vers le serveur mail</B></LI>
+<LI><B>Autorise le POP3 vers le serveur mail</B></LI>
+<LI><B>Autorise les requêtes DNS vers le serveur de nom</B></LI>
+<LI><B>Autorise le rsync vers le serveur web</B></LI>
+<LI><B>Autorise le WWW vers le serveur web</B></LI>
+<LI>Autorise le ping vers le filtre de paquets</LI>
+</UL>
+</P>
+<P>On pourrait utiliser le camouflage du réseau interne vers la ZDM, mais ici
+nous ne le ferons pas. Puisque personne du réseau interne ne devrait tenter de
+choses démoniaques, nous enregistrons les paquets qui sont interdits.</P>
+
+<P>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -A bon-zdm -p tcp -d 192.84.219.128 smtp -j ACCEPT
+ipchains -A bon-zdm -p tcp -d 192.84.219.128 pop-3 -j ACCEPT
+ipchains -A bon-zdm -p udp -d 192.84.219.129 domain -j ACCEPT
+ipchains -A bon-zdm -p tcp -d 192.84.219.129 domain -j ACCEPT
+ipchains -A bon-zdm -p tcp -d 192.84.218.130 www -j ACCEPT
+ipchains -A bon-zdm -p tcp -d 192.84.218.130 rsync -j ACCEPT
+ipchains -A bon-zdm -p icmp -j icmp-acc
+ipchains -A bon-zdm -j DENY -l
+</PRE>
+</CODE></BLOCKQUOTE>
+</P>
+
+<H3>Mauvais (extérieur) vers ZDM (serveurs)</H3>
+
+<P>
+<UL>
+<LI>Restrictions de la ZDM&nbsp;:
+<UL>
+<LI>Serveur mail&nbsp;:
+<UL>
+<LI><B>SMTP vers l'extérieur</B></LI>
+<LI><B>Accepte le SMTP venant</B> de l'intérieur et <B>extérieur</B></LI>
+<LI>Accepte le POP3 de l'intérieur</LI>
+</UL>
+</LI>
+<LI>Serveur de noms&nbsp;:
+<UL>
+<LI><B>Envoi de requêtes DNS vers l'extérieur</B></LI>
+<LI><B>Accepte le DNS venant</B> de l'intérieur, <B>extérieur</B> et du filtre
+de paquets</LI>
+</UL>
+</LI>
+<LI>Serveur web&nbsp;:
+<UL>
+<LI><B>Accepte les requêtes HTTP venant de</B> l'intérieur et de <B>l'extérieur</B></LI>
+<LI>Accès rsync de l'intérieur</LI>
+</UL>
+</LI>
+</UL>
+
+</LI>
+<LI>Les trucs à autoriser du réseau extérieur vers la ZDM
+<UL>
+<LI>N'enregistre pas les violations, elles peuvent arriver.</LI>
+</UL>
+
+
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -A mauvais-zdm -p tcp -d 192.84.219.128 smtp -j ACCEPT
+ipchains -A mauvais-zdm -p udp -d 192.84.219.129 domain -j ACCEPT
+ipchains -A mauvais-zdm -p tcp -d 192.84.219.129 domain -j ACCEPT
+ipchains -A mauvais-zdm -p tcp -d 192.84.218.130 www -j ACCEPT
+ipchains -A mauvais-zdm -p icmp -j icmp-acc
+ipchains -A mauvais-zdm -j DENY
+</PRE>
+</CODE></BLOCKQUOTE>
+</LI>
+</UL>
+</P>
+
+<H3>Bon (intérieur) vers Mauvais (extérieur).</H3>
+
+<P>
+<UL>
+<LI>Restrictions internes&nbsp;:
+<UL>
+<LI> <B>Autorise le WWW, ftp, traceroute, ssh vers l'extérieur</B></LI>
+<LI> Autorise SMTP vers le serveur mail</LI>
+<LI> Autorise POP-3 vers le serveur mail</LI>
+<LI> Autorise DNS vers le serveur de nom</LI>
+<LI> Autorise rsync vers le serveur web</LI>
+<LI> Autorise WWW vers le serveur web</LI>
+<LI> Autorise ping vers le filtre de paquets</LI>
+</UL>
+</LI>
+<LI>Un grand nombre de gens autorisent tout venant de l'intérieur vers les
+réseaux extérieurs, puis ajoutent des restrictions. Nous sommes fascistes.
+<UL>
+<LI> Enregistre les violations.</LI>
+<LI> Le ftp passif est géré par le module de camouflage.</LI>
+</UL>
+
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -A bon-mauvais -p tcp --dport www -j MASQ
+ipchains -A bon-mauvais -p tcp --dport ssh -j MASQ
+ipchains -A bon-mauvais -p udp --dport 33434:33500 -j MASQ
+ipchains -A bon-mauvais -p tcp --dport ftp --j MASQ
+ipchains -A bon-mauvais -p icmp --icmp-type ping -j MASQ
+ipchains -A bon-mauvais -j REJECT -l
+</PRE>
+</CODE></BLOCKQUOTE>
+</LI>
+</UL>
+</P>
+
+<H3>ZDM vers Bon (intérieur)</H3>
+
+
+<P>
+<UL>
+<LI>Restrictions internes&nbsp;:
+<UL>
+<LI> Autorise WWW, ftp, traceroute, ssh vers l'extérieur</LI>
+<LI> <B>Autorise SMTP vers le serveur mail</B></LI>
+<LI> <B>Autorise POP3 vers le serveur mail</B></LI>
+<LI> <B>Autorise DNS vers le serveur de noms</B></LI>
+<LI> <B>Autorise rsync vers le serveur web</B></LI>
+<LI> <B>Autorise WWW vers le serveur web</B></LI>
+<LI> Autorise ping vers le filtre de paquets</LI>
+</UL>
+
+</LI>
+<LI>Si nous camouflions le réseau intérieur de la ZDM, nous refuserions
+simplement les paquets venant d'un autre moyen. Tel quel, il autorise
+uniquement les paquets qui peuvent provenir d'une connexion pré-établie.
+
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -A zdm-bon -p tcp ! -y -s 192.84.219.128 smtp -j ACCEPT
+ipchains -A zdm-bon -p udp -s 192.84.219.129 domain -j ACCEPT
+ipchains -A zdm-bon -p tcp ! -y -s 192.84.219.129 domain -j ACCEPT
+ipchains -A zdm-bon -p tcp ! -y -s 192.84.218.130 www -j ACCEPT
+ipchains -A zdm-bon -p tcp ! -y -s 192.84.218.130 rsync -j ACCEPT
+ipchains -A zdm-bon -p icmp -j icmp-acc
+ipchains -A zdm-mauvais -j DENY -l
+</PRE>
+</CODE></BLOCKQUOTE>
+</LI>
+</UL>
+</P>
+
+<H3>ZDM vers Mauvais (extérieur)</H3>
+
+
+<P>
+<UL>
+<LI>Restrictions de la ZDM&nbsp;:
+<UL>
+<LI>Serveur mail
+<UL>
+<LI> <B>SMTP vers l'extérieur</B></LI>
+<LI> <B>Accepte SMTP venant de</B> l'intérieur et de <B>l'extérieur</B></LI>
+<LI> Accepte POP3 venant de l'intérieur</LI>
+</UL>
+
+</LI>
+<LI>Serveur de noms
+<UL>
+<LI> <B>Envoi de requêtes DNS vers l'extérieur</B></LI>
+<LI> <B>Accepte le DNS de</B> l'intérieur, <B>l'extérieur</B> et du
+filtre de paquets</LI>
+</UL>
+
+</LI>
+<LI>Serveur web
+<UL>
+<LI><B>Accepte HTTP venant de</B> l'intérieur et de <B>l'extérieur</B></LI>
+<LI>Accès rsync de l'intérieur</LI>
+</UL>
+</LI>
+</UL>
+
+</LI>
+<LI>
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -A zdm-mauvais -p tcp -s 192.84.219.128 smtp -j ACCEPT
+ipchains -A zdm-mauvais -p udp -s 192.84.219.129 domain -j ACCEPT
+ipchains -A zdm-mauvais -p tcp -s 192.84.219.129 domain -j ACCEPT
+ipchains -A zdm-mauvais -p tcp ! -y -s 192.84.218.130 www -j ACCEPT
+ipchains -A zdm-mauvais -p icmp -j icmp-acc
+ipchains -A zdm-mauvais -j DENY -l
+</PRE>
+</CODE></BLOCKQUOTE>
+</LI>
+</UL>
+</P>
+
+<H3>Mauvais (extérieur) vers Bon (intérieur)</H3>
+
+
+<P>
+<UL>
+<LI>Nous n'autorisons rien (de non camouflé) à passer du réseau extérieur vers
+le réseau intérieur.
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -A mauvais-bon -j REJECT
+</PRE>
+</CODE></BLOCKQUOTE>
+</LI>
+</UL>
+</P>
+
+<H3>Filtrage de paquets pour la machine Linux elle-même</H3>
+
+
+<P>
+<UL>
+<LI>Si nous désirons utiliser le filtrage de paquets sur les paquets
+arrivant sur la machine elle-même, nous devons filtrer la chaîne d'entrée.
+Nous créons une chaîne pour chaque interface de destination&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -N mauvais-if
+ipchains -N zdm-if
+ipchains -N bon-if
+</PRE>
+</CODE></BLOCKQUOTE>
+
+</LI>
+<LI>Créons les sauts vers elles&nbsp;:
+
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -A input -d 192.84.219.1 -j mauvais-if
+ipchains -A input -d 192.84.219.250 -j zdm-if
+ipchains -A input -d 192.168.1.250 -j bon-if
+</PRE>
+</CODE></BLOCKQUOTE>
+</LI>
+</UL>
+</P>
+
+<H3>Interface Mauvais (extérieur)</H3>
+
+
+<P>
+<UL>
+<LI>Machine de filtrage des paquets&nbsp;:
+<UL>
+<LI> <B>PING tous les réseaux</B></LI>
+<LI> <B>TRACEROUTE tous les réseaux</B></LI>
+<LI> Accès DNS</LI>
+</UL>
+
+</LI>
+<LI>L'interface extérieure reçoit aussi des réponses aux paquets camouflés, 
+les erreurs ICMP leur correspondant et les réponses PING.
+
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -A mauvais-if -i ! ppp0 -j DENY -l
+ipchains -A mauvais-if -p TCP --dport 61000:65096 -j ACCEPT
+ipchains -A mauvais-if -p UDP --dport 61000:65096 -j ACCEPT
+ipchains -A mauvais-if -p ICMP --icmp-type pong -j ACCEPT
+ipchains -A mauvais-if -j icmp-acc
+ipchains -A mauvais-if -j DENY
+</PRE>
+</CODE></BLOCKQUOTE>
+</LI>
+</UL>
+</P>
+
+<H3>Interface ZDM</H3>
+
+
+<P>
+<UL>
+<LI>Restrictions du filtre de paquets&nbsp;:
+<UL>
+<LI> <B>PING tous les réseaux</B></LI>
+<LI> <B>TRACEROUTE tous les réseaux</B></LI>
+<LI> <B>Accès DNS</B></LI>
+</UL>
+
+</LI>
+<LI>L'interface ZDM reçoit les réponses DNS, ping et les erreurs ICMP
+
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -A zdm-if -i ! eth0 -j DENY
+ipchains -A zdm-if -p TCP ! -y -s 192.84.219.129 53 -j ACCEPT
+ipchains -A zdm-if -p UDP -s 192.84.219.129 53 -j ACCEPT
+ipchains -A zdm-if -p ICMP --icmp-type pong -j ACCEPT
+ipchains -A zdm-if -j icmp-acc
+ipchains -A zdm-if -j DENY -l
+</PRE>
+</CODE></BLOCKQUOTE>
+</LI>
+</UL>
+</P>
+
+<H3>Interface Bon (intérieur)</H3>
+
+
+<P>
+<UL>
+<LI>Restrictions du filtre de paquets
+<UL>
+<LI> <B>PING tous les réseaux</B></LI>
+<LI> <B>TRACEROUTE tous les réseaux</B></LI>
+<LI> <B>Accès DNS</B></LI>
+</UL>
+
+</LI>
+<LI>Restrictions intérieures&nbsp;:
+<UL>
+<LI> Autorise WWW, ftp, traceroute, ssh vers l'extérieur </LI>
+<LI> Autorise SMTP vers le serveur mail</LI>
+<LI> Autorise POP3 vers le serveur mail</LI>
+<LI> Autorise DNS vers le serveur de noms</LI>
+<LI> Autorise rsync vers le serveur web</LI>
+<LI> Autorise WWW vers le serveur web</LI>
+<LI> <B>Autorise ping vers le filtre de paquets</B></LI>
+</UL>
+
+</LI>
+<LI>L'interface intérieure reçoit les pings, les réponses ping et les erreurs
+ICMP.
+
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -A bon-if -i ! eth1 -j DENY
+ipchains -A bon-if -p ICMP --icmp-type ping -j ACCEPT
+ipchains -A bon-if -p ICMP --icmp-type pong -j ACCEPT
+ipchains -A bon-if -j icmp-acc
+ipchains -A bon-if -j DENY -l
+</PRE>
+</CODE></BLOCKQUOTE>
+</LI>
+</UL>
+</P>
+
+<H2><A NAME="ss7.5">7.5 Finalement</A>
+</H2>
+
+<P>
+<UL>
+<LI>Supprime les règles de bloquage&nbsp;:
+<BLOCKQUOTE><CODE>
+<PRE>
+ipchains -D input 1
+ipchains -D forward 1
+ipchains -D output 1
+</PRE>
+</CODE></BLOCKQUOTE>
+</LI>
+</UL>
+</P>
+
+<H2><A NAME="ipfwadm-diff"></A> <A NAME="s8">8. Annexe&nbsp;: différences entre ipchains et ipfwadm</A></H2>
+
+<P>Quelques-uns de ces changements sont le résultat de changements du noyau, et
+quelques autres sont un résultat des différences entre <CODE>ipchains</CODE> et
+<CODE>ipfwadm</CODE>.</P>
+
+<P>
+<OL>
+<LI>De nombreux arguments ont été modifiés&nbsp;: les majuscules indiquent
+dorénavant une commande, et les minuscules indiquent une option.
+</LI>
+<LI>Les chaînes arbitraires sont supportées, ainsi même les chaînes
+intégrées ont des noms complets plutôt que des options (càd, "input" à la
+place de "-I").
+</LI>
+<LI>L'option "-k" a sauté&nbsp;: utilisez "! -y".
+</LI>
+<LI>L'option "-b" insère/ajoute/supprime actuellement deux règles, plutôt
+qu'une règle "bidirectionnelle" simple.
+</LI>
+<LI>L'option "-b" peut être passée à "-C" pour effectuer deux vérifications
+(une dans chaque direction).
+</LI>
+<LI>L'option "-x" de "-l" a été remplacée par "-v".
+</LI>
+<LI>Les ports sources et destinations multiples ne sont plus supportés.
+Heureusement, la possibilité d'employer un intervalle de port aura le même
+effet.
+</LI>
+<LI>Les interfaces peuvent seulement être spécifiées par leur nom (pas par
+leurs adresses). L'ancienne sémantique a été silencieusement changée dans la
+série des noyaux 2.1, de toute manière.
+</LI>
+<LI>Les fragments sont examinés, mais pas automatiquement autorisés.
+</LI>
+<LI>On s'est débarrassé des chaînes de comptage explicites.
+</LI>
+<LI>On peut écrire des règles qui porteront uniquement sur certains
+protocoles IP.
+</LI>
+<LI>L'ancien comportement de vérification de SYN et ACK (qui était
+auparavant ignoré pour les paquets non TCP) a changé&nbsp;; l'option SYN n'est plus
+valide pour les règles non spécifiques au TCP.
+</LI>
+<LI>Les compteurs sont maintenant de 64 bits sur les machines 32 bits, et non
+plus 32 bits.
+</LI>
+<LI>L'inversion des options est dorénavant supportée.
+</LI>
+<LI>Les codes ICMP sont maintenant supportés.
+</LI>
+<LI>Les interfaces joker sont maintenant supportées.
+</LI>
+<LI>Les manipulations de TOS sont maintenant vérifiées&nbsp;: l'ancien code du
+noyau les stoppait silencieusement pour vous en manipulant (illégalement) le
+bit TOS "Must Be Zero"&nbsp;; ipchains retourne maintenant une erreur si vous
+essayez, de même que pour d'autres cas illégaux.</LI>
+</OL>
+</P>
+
+<H2><A NAME="ss8.1">8.1 Guide de référence rapide</A>
+</H2>
+
+<P>[ Dans l'ensemble, les arguments des commandes sont en MAJUSCULES, et les
+options des arguments sont en minuscules ]</P>
+
+<P>Une chose à noter, le camouflage est spécifié par "-j MASQ"&nbsp;; ceci est
+complètement différent de "-j ACCEPT", et n'est pas traité comme un effet de
+bord, au contraire d'<CODE>ipfwadm</CODE>.</P>
+
+<P>
+<PRE>
+===========================================================================
+| ipfwadm      | ipchains              | Notes
+---------------------------------------------------------------------------
+| -A [both]    | -N acct               | Crée une chaîne "acct"
+|              |&amp; -I 1 input -j acct   | ayant des paquets entrants et
+|              |&amp; -I 1 output -j acct  | sortants qui la traversent. 
+|              |&amp; acct                 |
+---------------------------------------------------------------------------
+| -A in        | input                 | Une règle sans destination
+---------------------------------------------------------------------------
+| -A out       | output                | Une règle sans destination
+---------------------------------------------------------------------------
+| -F           | forward               | Utilise ça comme [chaîne].
+---------------------------------------------------------------------------
+| -I           | input                 | Utilise ça comme [chaîne].
+---------------------------------------------------------------------------
+| -O           | output                | Utilise ça comme [chaîne].
+---------------------------------------------------------------------------
+| -M -l        | -M -L                 |
+---------------------------------------------------------------------------
+| -M -s        | -M -S                 |
+---------------------------------------------------------------------------
+| -a policy    | -A [chain] -j POLICY  | (voir -r et -m).
+---------------------------------------------------------------------------
+| -d policy    | -D [chain] -j POLICY  | (voir -r et -m).
+---------------------------------------------------------------------------
+| -i policy    | -I 1 [chain] -j POLICY| (voir -r et -m).
+---------------------------------------------------------------------------
+| -l           | -L                    |
+---------------------------------------------------------------------------
+| -z           | -Z                    |
+---------------------------------------------------------------------------
+| -f           | -F                    |
+---------------------------------------------------------------------------
+| -p           | -P                    |
+---------------------------------------------------------------------------
+| -c           | -C                    |
+---------------------------------------------------------------------------
+| -P           | -p                    |
+---------------------------------------------------------------------------
+| -S           | -s                    | Prend seulement un port ou un
+|              |                       | intervalle, pas de multiples.
+---------------------------------------------------------------------------
+| -D           | -d                    | Prend seulement un port ou un
+|              |                       | intervalle, pas de multiples.
+---------------------------------------------------------------------------
+| -V           | &lt;none>                | Utilise -i [nom].
+---------------------------------------------------------------------------
+| -W           | -i                    |
+---------------------------------------------------------------------------
+| -b           | -b                    | Dorénavant crée deux règles.
+---------------------------------------------------------------------------
+| -e           | -v                    |
+---------------------------------------------------------------------------
+| -k           | ! -y                  | Ne fonctionne pas à moins que
+|              |                       | -p tcp ne soit également spécifié.
+---------------------------------------------------------------------------
+| -m           | -j MASQ               |
+---------------------------------------------------------------------------
+| -n           | -n                    |
+---------------------------------------------------------------------------
+| -o           | -l                    |
+---------------------------------------------------------------------------
+| -r [redirpt] | -j REDIRECT [redirpt] |
+---------------------------------------------------------------------------
+| -t           | -t                    |
+---------------------------------------------------------------------------
+| -v           | -v                    |
+---------------------------------------------------------------------------
+| -x           | -x                    |
+---------------------------------------------------------------------------
+| -y           | -y                    | Ne fonctionne pas à moins que
+|              |                       | -p tcp ne soit également spécifié.
+---------------------------------------------------------------------------
+</PRE>
+</P>
+
+<H2><A NAME="ss8.2">8.2 Exemples de commandes ipfwadm traduites</A>
+</H2>
+
+<P>Ancienne commande&nbsp;: ipfwadm -F -p deny</P>
+<P>Nouvelle commande&nbsp;: ipchains -P forward DENY</P>
+
+<P>Ancienne commande&nbsp;: ipfwadm -F -a m -S 192.168.0.0/24 -D 0.0.0.0/0</P>
+<P>Nouvelle commande&nbsp;: ipchains -A forward -j MASQ -s 192.168.0.0/24 -d 0.0.0.0/0</P>
+
+<P>Ancienne commande&nbsp;: ipfwadm -I -a accept -V 10.1.2.1 -S 10.0.0.0/8 -D 0.0.0.0/0</P>
+<P>Nouvelle commande&nbsp;: ipchains -A input -j ACCEPT -i eth0 -s 10.0.0.0/8 -d 0.0.0.0/0</P>
+<P>(Notez qu'il n'y a pas d'équivalent pour la spécification des interfaces par
+leur adresse&nbsp;: utilisez le nom de l'interface. Sur cette machine, 10.1.2.1
+correspond à eth0).</P>
+
+<H2><A NAME="upgrade"></A> <A NAME="s9">9. Annexe&nbsp;: utiliser le script ipfwadm-wrapper</A></H2>
+
+<P>Le script shell <CODE>ipfwadm-wrapper</CODE> doit être un remplacement d'<CODE>ipfwadm</CODE>
+pour la compatibilité descendante avec ipfwadm 2.3a.</P>
+
+<P>La seule option qu'il ne peut vraiment pas supporter est l'option "-V".
+Lorsqu'elle est utilisée, un avertissement est affiché. Si l'option "-W" est
+également utilisée, l'option "-V" est ignorée. Autrement, le script essaye de
+trouver le nom de l'interface associée à cette adresse, en utilisant
+<CODE>ifconfig</CODE>. Si ça ne marche pas (comme pour une interface désactivée),
+alors il sortira avec un message d'erreur.</P>
+
+<P>Cet avertissement peut être supprimé soit en changeant le "-V" pour un "-W",
+ou en dirigeant la sortie standard du script vers /dev/null.</P>
+
+<P>Si vous trouvez des erreurs dans ce script, ou une modification entre les
+effets du vrai ipfwadm et de ce script, <EM>veuillez</EM> me rapporter le
+problème&nbsp;: envoyez un courrier à ipchains@rustcorp.com avec le sujet
+"BUG-REPORT". Veuillez lister la version d'<CODE>ipfwadm</CODE> (<CODE>ipfwadm -h</CODE>),
+votre version d'<CODE>ipchains</CODE> (<CODE>ipchains --version</CODE>), la version du script
+d'emballage (<CODE>ipfwadm-wrapper --version</CODE>). Envoyez moi également la sortie
+de <CODE>ipchains-save</CODE>. Merci d'avance.</P>
+
+<P>Le mélange d'<CODE>ipchains</CODE> avec le script <CODE>ipfwadm-wrapper</CODE> se fait à votre
+propre péril.</P>
+
+<H2><A NAME="s10">10. Annexe&nbsp;: remerciements</A></H2>
+
+<P>Un grand merci à Michael Neuling, qui a écrit la pré-version du code d'IP
+chains en travaillant pour moi. Des excuses publiques pour avoir rejeté son
+idée de cache des résultats, qu'Alan Cox a proposé plus tard et que j'ai
+finalement commencé à implémenter, ayant vu l'erreur de mon côté.</P>
+
+<P>Merci à Alan Cox pour son support technique par email 24h/24, et pour ses
+encouragements.</P>
+
+<P>Merci à tous les auteurs du code d'ipfw et d'ipfwadm, spécialement Jos Vos.
+Rester aux chevilles des géants et tout ça... Ceci s'applique également à
+Linux Torvalds et à tous les bricoleurs du noyau et de l'espace utilisateur.</P>
+
+<P>Merci aux beta testeurs, chasseurs d'erreurs diligents, surtout Jordan
+Mendelson, Shaw Carruthers, Kevin Moule, Dr. Liviu Daia, Helmut Adams, Franck
+Sicard, Kevin Littlejohn, Matt Kemner, John D. Hardin, Alexey
+Kuznetsov, Leos Bitto, Jim Kunzman, Gerard Gerritsen, Serge Sivkov,
+Andrew Burgess, Steve Schmidtke, Richard Offer, Bernhard Weisshuhn,
+Larry Auton, Ambrose Li, Pavel Krauz, Steve Chadsey, Francesco
+Potorti` et Alain Knaff.</P>
+
+</BODY>
+</HTML>

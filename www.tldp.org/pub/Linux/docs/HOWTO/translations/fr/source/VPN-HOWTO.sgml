@@ -1,0 +1,1349 @@
+<!doctype linuxdoc system>
+<article>
+        <title>VPN HOWTO</title>
+	<author>Matthew D. Wilson, <url url="mailto:matthew@shinythings.com" name="matthew@shinythings.com">
+		Traduction française de Nicolas Prigent <url url="mailto:prigentn@thmulti.com" name="prigentn@thmulti.com">
+	</author>
+	<date>v 1.0, Dec 1999</date>
+	<abstract>
+		Ce HOWTO décrit la manière de mettre en place un Réseau Privé Virtuel (Virtual Private Network) avec Linux.
+	</abstract>
+
+	<toc>
+
+	<sect>Introduction<label id="Introduction">
+		<sect1>Pourquoi ai-je écrit ce HOWTO
+			<p>
+				Je travaille chez Real Network, et nous avions besoin d'un VPN. C'était mon
+				premier véritable projet, et j'en ai réellement appris plus au sujet de Linux
+				grâce à cela qu'avec n'importe quelle autre tâche. Je me suis servi de 
+				l'expérience ainsi acquise pour rédiger ce document, pour partager avec 
+				d'autres ce que j'avais appris, pour qu'ils puissent eux aussi réaliser de super
+				trucs avec Linux.
+			</p>
+		<sect1>Remerciements
+			<p>
+				Je voudrais tout d'abord et surtout remercier mon épouse Julie, sans qui je ne 
+				serais pas où j'en suis actuellement. Je voudrais aussi remercier Arpad Magosanyi, 
+				l'auteur du premier VPN mini-howto et de pty-redir, l'utilitaire qui a rendu tout
+				cela possible. Jerry, Rod, Glen, Mark V., Mark W., et David, vous êtes trop fort
+				les mecs. Merci pour votre aide.
+			</p>
+		<sect1>Format de ce document
+			<p>
+				Ce document est divisé en 5 sections.
+			</p><p>
+				<descrip>
+					<p><tag>Section 1: Introduction</tag>Cette section</p>
+					<p><tag>Section 2: Théorie</tag>La théorie à la base des VPNs. Qu'est-ce qu'un VPN, et comment fonctionne-t-il. Lisez cette partie si vous êtes néophyte en matière de VPN.</p>
+					<p><tag>Section 3: Serveur</tag>Cette section décrit la mise en place d'un serveur de VPN.
+					<p><tag>Section 4: Client</tag>Cette section décrit la mise en place d'un client de VPN.
+					<p><tag>Section 5: Implémentation</tag>Une implémentation de VPN décrite pas à pas.
+					<p><tag>Section 6: Addenda</tag>D'autres éléments d'information qui pourraient vous être utiles.
+				</descrip>
+			</p>
+		<sect1>Copyright et Avertissements
+			<p>
+				Copyright (c) Matthew Wilson. Ce document ne peut être distribué qu'en accord avec
+				les termes et les conditions de la licence LDP que vous trouverez a l'adresse <url
+				url="http://www.linuxdoc.org/COPYRIGHT.html"
+				name="http://www.linuxdoc.org/COPYRIGHT.html">, excepté le fait que ce document ne doit
+				pas être distribué sous une forme altérée sans le consentement de son auteur.
+			</p>
+			<p>
+				Ni l'auteur, ni le traducteur n'assument une quelconque responsabilité pour quoi que 
+				ce soit pouvant advenir suite a l'utilisation de ce document, ni ne fournissent une 
+				quelconque garantie, implicite ou explicite. Si vous cassez quelque chose, nous ne sommes
+				en rien responsable. Souvenez vous que ce que vous allez faire ici pourrait créer d'énormes
+				trous de sécurité sur votre réseau. Vous aurez été prévenus.
+			</p>
+		<sect1>Histoire de ce document
+			<p>
+				Le VPN mini-HOWTO original a été écrit par <url
+				url="mag@bunuel.tii.matav.hu" name="Arpad Magosanyi"> en 1997. Il m'a depuis autorisé
+				à reprendre le document, et à l'étendre jusqu'à en faire un HOWTO complet.
+				Rien de ceci n'aurait été possible sans le document original. Merci encore Arpad. :)
+			</p><p>
+				La version 1.0 de ce HOWTO a été terminée le 10 décembre 1999.
+			</p>
+		<sect1>Documents associés
+			<p>
+				<itemize>
+					<item><url url="/HOWTO/Networking-Overview-HOWTO.html" name="Networking Overview HOWTO">
+					<item><url url="/HOWTO/NET3-4-HOWTO.html" name="Networking HOWTO">
+					<item><url url="/HOWTO/VPN-Masquerade-HOWTO.html" name="VPN-Masquerade HOWTO">
+				</itemize>
+			</p>
+
+	<sect>Théorie
+		<sect1>Qu'est-ce qu'un VPN?  
+			<p>
+				VPN est l'acronyme de Virtual Private Network, ou réseau privé virtuel. Un VPN 
+				utilise l'Internet comme mécanisme de transport, en maintenant la sécurité des
+				données sur le VPN.
+			</p>
+			<sect2>Mais c'est quoi, en vrai, un VPN?
+				<p>
+					Et bien il y a plusieurs réponses à cette question. Cela dépends vraiment
+					de l'apparence du réseau. En général, on dispose d'un réseau principal 
+					unique, avec des noeuds distants qui utilisent le VPN pour gagner un 
+					accès complet au réseau central. Les noeuds distants sont généralement 
+					des bureaux éloignés, ou des employés travaillant à partir de chez eux.
+					Il est aussi possible de relier deux réseaux plus petits (ou même plus
+					grands!) pour former un seul réseau encore plus grand.
+				</p>
+			<sect2>Alors, ça marche comment?
+				<p>
+					Pour simplifier, pour réaliser un VPN, vous créez un tunnel sécurisé 
+					entre deux réseaux et l'utilisez pour router les datagrammes IP.
+					Au cas ou vous seriez déjà perdu, vous devriez lire
+					<url
+					url="http://www.linuxdoc.org/HOWTO/Networking-Overview-HOWTO.html"
+					name="Le Linux Networking Overview HOWTO"> pour vous informer au 
+					sujet des réseaux sous Linux.
+				</p>
+				<p>
+					Prière de ne pas m'en vouloir, mes schémas ASCII mériterait un peu 
+					plus de travail.
+				</p>
+				<p>
+<verb>
+                                 \          \
+                 ---------       /          /      ---------
+   Réseau ______| Routeur |______\ Internet \_____| Routeur |______ Réseau
+   Distant      | Client  |      /          /     | Serveur |       Privé
+                 ---------       \          \      ---------
+                                 /          /
+
+
+                         Routeur Client
+               ----------------------------------------------------
+              |   /->    10.0.0.0/255.0.0.0   \                    |
+  Réseau      |  |-->  172.16.0.0/255.240.0.0  |--> Tunnel >---\   |
+  Distant >---|--|--> 192.168.0.0/255.255.0.0 /                 |--|----> Internet
+ 192.168.12.0 |  |                                              |  |
+              |   \-----> 0.0.0.0/0.0.0.0 --> Masquarade IP >--/   |
+               ----------------------------------------------------
+
+
+                        Routeur Serveur
+             ----------------------------------------------------
+            |                   /->    10.0.0.0/255.0.0.0    \   |
+            |   /--> Tunnel >--|-->  172.16.0.0/255.240.0.0   |--|----> Réseau
+Internet >--|--|                \--> 192.168.0.0/255.255.0.0 /   |      Privé
+            |  |                                                 |     172.16.0.0/12
+            |   \-----> 0.0.0.0/0.0.0.0 -----> /dev/null         |    192.168.0.0/16
+             ----------------------------------------------------
+</verb>
+				</p>
+				<p>
+					Le diagramme ci-dessus montre comment le réseau peut être mis en place.
+					Si vous ne savez pas ce qu'est la masquarade IP, vous ne devriez 
+					probablement pas être ici. Allez lire
+					<url url="/HOWTO/Networking-Overview-HOWTO.html"
+					name="Le Linux Networking Overview HOWTO"> et revenez une fois informé.
+				</p>
+				<p>
+					Le routeur client est une machine Linux tenant le rôle de passerelle/firewall
+					pour le réseau distant. Comme vous pouvez le voir, le réseau distant utilise
+					le réseau local 192.168.12.0. Pour plus de simplicité dans le diagramme, j'ai
+					laissé les informations de routage sur les routeurs. L'idée de base est de 
+					router le trafic destiné aux réseaux privés (10.0.0.0, 172.16.0.0, et
+					192.168.0.0) via le tunnel. L'installation montrée ici est une manière de le
+					faire. C'est à dire qu'alors que le réseau distant peut voir le réseau privé, 
+					le réseau privé ne peut pas nécessairement voir le réseau distant. Pour que
+					ceci arrive, il faut spécifier que les routes sont bidirectionnelles.
+				</p>
+				<p>
+					Vous devriez aussi remarquer sur le schéma que tout le trafic sortant du
+					routeur client apparaît comme en provenant, c'est à dire qu'il porte toujours
+					la même adresse IP. Vous pouvez router les valeurs véritables de l'intérieur
+					de votre réseau, mais cela induit une grande diversité de problèmes de sécurité.
+				</p>
+		<sect1>SSH et PPP
+			<p>
+				Le système que je décris pour implémenter un VPN utilise SSH et PPP. Schématiquement, 
+				je me sers de ssh pour créer une connexion protégée par tunnel, puis utilise pppd pour y
+				démarrer le trafic TCP/IP. C'est ainsi que le tunnel est mis en place.
+			</p>
+			<p>
+				Le véritable truc pour faire fonctionner ssh et pppd ensemble correctement
+				est l'utilitaire écrit par Arpad Magosanyi qui permet la redirection de l'entrée
+				et de la sortie standard vers un pseudo tty. Ceci permets à pppd de parler 
+				au travers de ssh comme s'il s'agissait d'une liaison série. Du côté du serveur,
+				pppd est lancé comme interpreteur de commande utilisateur dans la session ssh,
+				complétant le lien.
+				Après cela, tout ce qu'il reste a faire est de réaliser le routage.
+			</p>
+		<sect1>Systèmes VPN alternatifs
+			<p>
+				Il y a bien sur d'autres moyens de mettre en place un VPN, dont voici quelques
+				exemples.
+			<sect2>PPTP
+				<p>
+					PPTP est un protocole Microsoft pour les VPN. Il est supporté sous Linux,
+					mais est connu pour avoir de nombreux problèmes de sécurité. Je ne décris
+					pas ici la manière de l'utiliser, étant donné que ce thème est couvert par
+					<url
+					url="http://www.linuxdoc.org/HOWTO/VPN-Masquerade-HOWTO.html"
+					name="Linux VPN Masquerade HOWTO">.
+				</p>
+			<sect2>IPSec
+				<p>
+					IPSec est un ensemble de protocoles différents de SSH. Franchement, je n'en 
+					connais pas énormément à son sujet. De fait, si quelqu'un veut m'aider d'une
+					description, je lui en serais très reconnaissant. Encore une fois, je ne décris
+					pas comment l'utiliser étant donné que le <url
+					url="http://www.linuxdoc.org/HOWTO/VPN-Masquerade-HOWTO.html"
+					name="Linux VPN Masquerade HOWTO"> couvre le sujet.
+				</p>
+			<sect2>CIPE
+				<p>
+					CIPE est un système de chiffrement au niveau noyau probablement mieux  
+					adapté aux dispositifs d'entreprise. Vous pourrez en savoir plus sur<url
+					url="http://sites.inka.de/sites/bigred/devel/cipe.html" name="la page de
+					CIPE">. J'envisage de m'y intéresser plus sérieusement, et aurais donc
+					peut être plus d'informations à son sujet bientôt.
+				</p>
+			
+	<sect>Le serveur
+		<p>
+			Cette section explique comment mettre en place l'aspect serveur des choses. 
+			J'ai placé cette section en premier, étant donné que sans serveur, un client
+			est assez inutile.
+		</p>
+		<sect1>La sécurité - garder les gens dehors
+			<p>
+				La sécurité est un aspect très important des VPNs. C'est pour ça que vous êtes
+				en train d'en monter un, non? Vous devez garder ces quelques choses à l'esprit 
+				en mettant en place votre serveur.
+			</p>
+			<sect2>Préparez vos démons
+				<p>
+					Etant donné que ce serveur va être des deux côtés du firewall et qu'il 
+					va être mis en place pour transmettre le trafic sur votre réseau, c'est 
+					une bonne idée de sécuriser la machine autant que possible. Vous pourrez
+					en apprendre plus sur la sécurité Linux dans 
+					<url url="/HOWTO/Security-HOWTO.html" name="Linux Security HOWTO">. 
+					Pour ma part, j'ai tué tous les services, excepté sshd et un serveur web
+					Roxen. J'utilise ce dernier pour télécharger quelques fichiers (mes scripts, 
+					etc.) pour permettre à d'autres machines d'accéder au VPN. Je n'utilise pas
+					de serveur FTP étant donné qu'il est plus dur d'en sécuriser un que de 
+					rendre quelques fichiers disponibles sur un serveur web. De plus, j'ai
+					seulement besoin de pouvoir récupérer des fichiers. Si vous souhaitez réellement
+					exécuter des serveurs différents sur votre passerelle, vous pourriez
+					vouloir envisager de restreindre leur accès aux machines situées sur
+					votre réseau privé.
+				</p>
+			<sect2>Ne pas autoriser de mots de passe
+				<p>
+					Effectivement, cela semble assez stupide, mais ça a retenu votre attention non?
+					Non, vous n'utilisez pas de mots de passe, vous les désactivez complètement.
+					Toute l'authentification nécessaire sur cette machine devrait être faite
+					via le système d'authentification à clé publique de ssh. Ainsi, seul les 
+					entités dotées de clés peuvent entrer, et il est pratiquement impossible
+					de se rappeler d'une clé binaire de 530 caractères.
+				</p><p>
+					Alors, comment faites-vous ça? Il faut éditer le fichier /etc/passwd. 
+					Le second champ contient soit le résumé cryptographique (hash) du mot
+					de passe, ou un 'x' prévenant le système d'authentification qu'il faut regarder
+					dans le fichier /etc/shadow. Vous devez changer ce champ en '*'. Ainsi
+					le système d'authentification est informé qu'il n'y a pas de mot de passe, 
+					et qu'aucun ne devrait être autorisé.
+				</p>
+				<p><label id="passwd">
+					Voila à quoi ressemble un fichier /etc/passwd classique:
+<verb>
+...
+nobody:x:65534:100:nobody:/dev/null:
+mwilson:x:1000:100:Matthew Wilson,,,:/home/mwilson:/bin/bash
+joe:*:504:101:Joe Mode (home),,,:/home/vpn-users:/usr/sbin/pppd
+bill:*:504:101:Bill Smith (home),,,:/home/vpn-users:/usr/sbin/pppd
+frank:*:504:101:Frank Jones (home),,,:/home/vpn-users:/usr/sbin/pppd
+...
+</verb>
+					Remarquez que j'ai fait plus qu'éditer simplement le second champ.
+					J'en dirais plus sur les autres champs par la suite.
+				</p>
+			
+		<sect1>Accès des utilisateur - les laisser rentrer
+			<p>
+				L'accès des utilisateurs est réalisé via le schéma d'authentification de ssh.
+				Comme je l'ai indiqué précédemment, c'est ainsi que les utilisateurs peuvent
+				accéder au système, tout en maintenant un haut niveau de sécurité. Si vous
+				n'êtes pas familier de ssh, jetez un oeuil à <url
+				url="http://www.ssh.org/" name="http://www.ssh.org/"> Remarquez que j'utilise
+				la version 1 de ssh, pas la version 2. Il y a une grande différence, 
+				particulièrement sur le fait que la version 1 est libre, contrairement
+				à la version 2.
+			</p>
+			<sect2>Configurer <tt>sshd</tt>
+				<p>
+					Vous aurez besoin de configurer sshd. Les options suivantes devraient
+					être présentes. L'idée est de désactiver l'authentification par mot de
+					passe, et les authentifications par rhosts. Les options suivantes devraient
+					être présentes dans votre fichier <tt>/etc/sshd_config</tt>. 
+				</p><p>
+<verb>
+PermitRootLogin yes
+IgnoreRhosts yes
+StrictModes yes
+QuietMode no
+CheckMail no
+IdleTimeout 3d
+X11Forwarding no
+PrintMotd no
+KeepAlive yes
+RhostsAuthentication no
+RhostsRSAAuthentication no
+RSAAuthentication yes
+PasswordAuthentication no
+PermitEmptyPasswords no
+UseLogin no
+</verb>
+				</p>
+		<sect1>Restreindre les possibilités des utilisateurs
+			<p>
+				Maintenant que vous maintenez les méchants à l'extérieur et ne laissez entrer que
+				les gentils, vous pourriez avoir besoin de vous assurer que ces derniers se 
+				comportent correctement. La manière la plus simple de le faire est de ne rien les
+				laisser faire d'autre que de lancer pppd. Ceci peut être, ou non, nécessaire.
+				J'ai restreins les possibilités des utilisateurs parce que le système que je 
+				maintiens est dédié au VPN, et que les utilisateurs n'ont aucune raison de 
+				faire quoique ce soir d'autre dessus.
+			</p>
+			<sect2>sudo ou pas sudo
+				<p>
+					Il existe un petit programme propret appelé sudo qui permet à 
+					l'administrateur d'un système Unix d'autoriser à certains utilisateurs
+					la possibilité de lancer certains programmes en tant que root. C'est ici
+					certainement le cas, étant donné que pppd doit être lancé ainsi. Vous
+					devrez utiliser cette méthode si vous souhaitez autoriser les accès
+					ligne de commande aux utilisateurs. Référez-vous à la page man de sudo pour savoir
+					comment mettre sudo en place. Utiliser sudo est préférable 
+					sur les systèmes multi-usage qui hébergent généralement un faible nombre
+					d'utilisateurs de confiance.
+				</p><p>
+					Si vous désirez ne pas autoriser les utilisateurs à disposer d'un accès par ligne
+					de commande, le meilleur moyen de le faire est de faire que leur shell soit pppd.
+					Ceci se fait dans le fichier /etc/passwd. Vous pouvez voir 
+					<ref id="passwd" name="ci-dessous"> que c'est ce que j'ai fait pour les 
+					trois derniers utilisateurs. Le dernier champ du fichier /etc/passwd est 
+					le shell de l'utilisateur. Vous n'avez pas besoin de faire quoique ce soit
+					de spécial à pppd pour le faire fonctionner. Il est exécuté en tant que 
+					root lorsque l'utilisateur se connecte. C'est certainement la mise en place
+					la plus simple possible, ainsi que la plus sûre. Elle est idéale pour les
+					systèmes industriels et à grande échelle. J'ai décris exactement tout ce
+					qu'il faut faire plus loin dans ce document. Vous pouvez 
+					<ref id="user-accounts" name="y aller directement"> si vous le souhaitez.
+				</p>
+		<sect1>Le réseau
+			<p>
+				Maintenant que vos utilisateurs ont accès au système, nous devons nous assurer
+				qu'ils ont accès au réseau. Pour ce faire, nous utilisons les règles du noyau
+				Linux relatives au firewall et les tables de routage. En nous servant des commandes
+				<tt>route</tt> et <tt>ipfwadm</tt>, nous pouvons configurer le noyau pour
+				gérer le trafic réseau de manière correcte. Pour plus d'information sur 
+				<tt>ipfwadm</tt>, <tt>ipchains</tt> et <tt>route</tt>, référez vous au <url
+				url="http://www.linuxdoc.org/HOWTO/Linux-Networking-HOWTO.html"
+				name="Linux Networking HOWTO">.
+			</p>
+			<sect2>Le noyau
+				<p>
+					Pour que cela fonctionne, votre noyau doit être configuré correctement.
+					Si vous ne savez pas comment créer votre propre noyau, vous devriez
+					lire le <url
+					url="http://www.linuxdoc.org/HOWTO/Kernel-HOWTO.html" name="Kernel
+					HOWTO">.
+					Vous devez vous assurer que les options suivantes sont activées, en plus
+					des options réseaux de base. J'utilise un noyau 2.0.38 sur mon système.
+				</p><p>
+					Pour les noyaux 2.0:
+					<itemize>
+						<item>CONFIG_FIREWALL
+						<item>CONFIG_IP_FORWARD
+						<item>CONFIG_IP_FIREWALL
+						<item>CONFIG_IP_ROUTER
+						<item>CONFIG_IP_MASQUERADE (optionnel)
+						<item>CONFIG_IP_MASQUERADE_ICMP (optionnel)
+						<item>CONFIG_PPP
+					</itemize>
+				</p><p>
+					Pour les noyaux 2.2:
+					<itemize>
+						<item>CONFIG_FIREWALL
+						<item>CONFIG_IP_ADVANCED_ROUTER
+						<item>CONFIG_IP_FIREWALL
+						<item>CONFIG_IP_ROUTER
+						<item>CONFIG_IP_MASQUERADE (optionnel)
+						<item>CONFIG_IP_MASQUERADE_ICMP (optionnel)
+						<item>CONFIG_PPP
+					</itemize>
+				</p>
+			<sect2>Rêgles de filtrage
+				<p>
+					Tout d'abord, nous devons écrire des règles de filtrage de firewall qui
+					permettent aux utilisateurs d'accéder à nos réseaux internes, 
+					tout en leur interdisant d'accéder au réseau externe. Cela peut
+					sembler étrange, mais envisagez le sous cet angle: Ils ont déjà
+					accès à l'Internet, alors pourquoi les laisser utiliser le tunnel
+					pour y accéder? Cela gâche à la fois la bande passante et le 
+					processeur.
+				</p><p>
+					Les règles de filtrage utilisées dépendent du réseau interne utilisé.
+					En gros, elle disent: "Autoriser le trafic venant de nos VPNs et
+					destiné à nos réseaux internes". Comment allons nous faire?
+					Comme toujours, ça dépends. Si vous utilisez un noyau 2.0, vous
+					devez vous servir d'un outil appelé <tt>ipfwadm</tt>, alors que si 
+					vous utilisez un noyau 2.0, vous utiliserez <tt>ipchains</tt>.
+				</p><p>
+					Pour mettre en place les règles avec <tt>ipfwadm</tt>, lancez le avec
+					les options suivantes:
+				</p><p>
+
+<verb>
+&num; /sbin/ipchains -F forward
+&num; /sbin/ipchains -P forward DENY
+&num; /sbin/ipchains -A forward -j ACCEPT -s 192.168.13.0/24 -d 172.16.0.0/12
+</verb>
+				</p><p>
+					Pour les utilisateurs de noyau 2.2, se référer à 
+					<ref id="ipv4forwarding" name="ceci">.
+				</p>
+			<sect2>Routage
+				<p>
+					Désormais, nos utilisateurs sont autorisés à accéder à nos réseaux, 
+					et nous devons dire au noyau où envoyer les paquets. Sur mon système,
+					je dispose de deux ethernets : L'un d'entre eux est relié au réseau
+					externe, l'autre au réseau interne. Ceci aide à la sécurisation, car 
+					le trafic extérieur est masqué par notre passerelle, et n'importe
+					quel trafic entrant est filtré et routé par notre Cisco. Pour la 
+					plupart des dispositifs, le routage devrait être une chose simple.
+				</p><p>
+					Nous routons l'intégralité du trafic destiné au réseaux privés vers
+					l'interface connectée au réseau interne, et le reste du trafic vers
+					l'interface externe. Les commandes de routage spécifiques dépendent 
+					des réseaux internes que vous utilisez. Voici un exemple de ce à quoi
+					elles pourraient ressembler. Ces lignes sont bien sûr ajoutées à vos
+					règles de routages habituelles pour vos réseaux locaux. Je doute
+					que vous utilisiez les trois groupes d'adresses privées.
+				</p><p>
+<verb>
+En supposant que 172.16.254.254 est notre passerelle interne:
+
+&num; /sbin/route add -net 10.0.0.0 netmask 255.0.0.0 gw 172.16.254.254 dev eth1
+&num; /sbin/route add -net 172.16.0.0 netmask 255.240.0.0 gw 172.16.254.254 dev eth1
+&num; /sbin/route add -net 192.168.0.0 netmask 255.255.0.0 gw 172.16.254.254 dev eth1
+</verb>
+				</p><p>
+					Encore une chose sur le routage. Si vous utilisez du routage 
+					bidirectionnel, vous aurez alors besoin de réaliser une chose 
+					en plus. Il vous faudra mettre en place les routes revenant
+					vers le client. La manière la plus simple de le faire est de lancer
+					un cron chaque minute qui va assigner les valeurs des
+					routes. Ce n'est pas très grave si le client n'est pas connecté, 
+					<tt>route</tt> va simplement cracher une erreur (que vous aurez
+					judicieusement redirigé vers <tt>/dev/null</tt>).
+				</p>
+
+	<sect>Le client
+		<p>
+			Nous nous consacrons maintenant au client. En pratique, lorsqu'elle est utilisé
+			pour permettre l'accès à un réseau distant, cette machine peut facilement servir
+			de serveur Samba (réseau Windows), DHCP, ou même web interne. L'aspect important
+			dont il faut se souvenir est que cette machine doit être aussi sécurisée que
+			possible, étant donnée qu'elle fait fonctionner tout votre réseau distant.
+		</p>
+		<sect1>Le noyau
+			<p>
+				Commençons par le commencement. Vous devez disposer de ppp dans votre noyau.
+				Si vous souhaitez autoriser plusieurs machines à utiliser le tunnel, il vous
+				faut aussi les services de firewall et de transmission (forwarding). Si le
+				client consiste en une seule machine, ppp est suffisant.
+			</p>
+		<sect1>Réaliser la liaison
+			<p>
+				La liaison est créée en lançant <tt>pppd</tt> à travers un pseudo terminal
+				lui-même créé par <tt>pty-redir</tt> et connecté à <tt>ssh</tt>. C'est 
+				ce que réalise la séquence de commande suivante.
+			</p><p>
+<verb>
+&num; /usr/sbin/pty-redir /usr/bin/ssh -t -e none -o 'Batchmode yes' -c blowfish -i /root/.ssh/identity.vpn -l joe > /tmp/vpn-device
+&num; sleep 10
+
+&num; /usr/sbin/pppd `cat /tmp/vpn-device`
+&num; sleep 15
+
+&num; /sbin/route add -net 172.16.0.0 gw vpn-internal.mycompany.com netmask 255.240.0.0
+&num; /sbin/route add -net 192.168.0.0 gw vpn-internal.mycompany.com netmask 255.255.0.0
+</verb>
+			</p><p>
+				Clairement, on lance ssh, et on redirige ses entrées et sorties vers
+				pppd. Les options passées à ssh le configurent pour s'exécuter sans 
+				caractère d'échappement (-e), en utilisant l'algorithme de chiffrement
+				blowfish (-i), en mode terminal (-l), avec les options 'Batchmode yes'
+				(-o). Les commandes sleep sont utilisées pour espacer les exécutions
+				des commandes pour que chacune puisse compléter son initialisation 
+				avant que la suivante ne soit lancée.
+			</p>
+		<sect1>Faire des scripts
+			<p>
+				Bien sûr, vous ne souhaitez pas avoir à taper ces commandes à chaque
+				fois que vous souhaitez voir le tunnel fonctionner. J'ai écrit un 
+				ensemble de scripts bash qui gardent le tunnel en état de fonctionnement.
+				Vous pouvez télécharger le package à partir 
+				<url url="http://www.shinythings.com/vpnd/vpnd.tar.gz" name="d'ici">. 
+				Il suffit de les télécharger et de les décompresser dans /usr/local/vpn.
+				Vous trouverez trois fichiers à l'intérieur:
+			</p><p>
+			<itemize>
+				<item>vpnd: le script qui contrôle la connexion du tunnel.
+				<item>check-vpnd: un script qui sera lancé par le cron pour vérifier
+				que le VPN fonctionne toujours.
+				<item>pty-redir: un petit exécutable requis pour l'initiation du tunnel.
+			</itemize>
+			</p><p>
+				Vous aurez besoin d'éditer le script <tt>vpnd</tt> pour assigner quelques
+				valeurs telles que le nom d'utilisateur du client et le nom du serveur.
+				Vous pourrez aussi avoir besoin de modifier la section starttunnel du 
+				script pour spécifier le réseau utilisé.
+				Vous trouverez ci-dessous une copie du script pour le plaisir des yeux.
+				Remarquez que vous pouvez mettre le script dans un répertoire différent, 
+				il suffit de changer la variable VPN_DIR.
+			</p><p>
+<label id="vpnd-script"><verb>
+
+#! /bin/bash
+#
+# vpnd: Monitor the tunnel, bring it up and down as necessary
+#
+
+USERNAME=vpn-username
+IDENTITY=/root/.ssh/identity.vpn
+
+VPN_DIR=/usr/local/vpn
+LOCK_DIR=/var/run
+VPN_EXTERNAL=vpn.mycompany.com
+VPN_INTERNAL=vpn-internal.mycompany.com
+PTY_REDIR=${VPN_DIR}/pty-redir
+SSH=${VPN_DIR}/${VPN_EXTERNAL}
+PPPD=/usr/sbin/pppd
+ROUTE=/sbin/route
+CRYPTO=blowfish
+PPP_OPTIONS="noipdefault ipcp-accept-local ipcp-accept-remote local noauth nocrtscts lock nodefaultroute"
+ORIG_SSH=/usr/bin/ssh
+
+
+starttunnel () {
+   $PTY_REDIR $SSH -t -e none -o 'Batchmode yes' -c $CRYPTO -i $IDENTITY -l $USERNAME > /tmp/vpn-device
+   sleep 15
+
+   $PPPD `cat /tmp/vpn-device` $PPP_OPTIONS
+   sleep 15
+
+   # Add routes (modify these lines as necessary)
+   /sbin/route add -net 10.0.0.0 gw $VPN_INTERNAL netmask 255.0.0.0
+   /sbin/route add -net 172.16.0.0 gw $VPN_INTERNAL netmask 255.240.0.0
+   /sbin/route add -net 192.168.0.0 gw $VPN_INTERNAL netmask 255.255.0.0
+}
+
+stoptunnel () {
+   kill `ps ax | grep $SSH | grep -v grep | awk '{print $1}'`
+}
+
+resettunnel () {
+   echo "reseting tunnel."
+   date >> ${VPN_DIR}/restart.log
+   eval stoptunnel
+   sleep 5
+   eval starttunnel
+}
+
+checktunnel () {
+   ping -c 4 $VPN_EXTERNAL 2>/dev/null 1>/dev/null
+
+   if [ $? -eq 0 ]; then
+      ping -c 4 $VPN_INTERNAL 2>/dev/null 1>/dev/null
+      if [ $? -ne 0 ]; then
+         eval resettunnel
+      fi
+   fi
+}
+
+settraps () {
+   trap "eval stoptunnel; exit 0" INT TERM
+   trap "eval resettunnel" HUP
+   trap "eval checktunnel" USR1
+}
+
+runchecks () {
+   if [ -f ${LOCK_DIR}/tunnel.pid ]; then
+      OLD_PID=`cat ${LOCK_DIR}/vpnd.pid`
+      if [ -d /proc/${OLD_PID} ]; then
+         echo "vpnd is already running on process ${OLD_PID}."
+         exit 1
+      else
+         echo "removing stale pid file."
+         rm -rf ${LOCK_DIR}/vpnd.pid
+         echo $$ > ${LOCK_DIR}/vpnd.pid
+         echo "checking tunnel state."
+         eval checktunnel
+      fi
+   else
+      echo $$ > ${LOCK_DIR}/vpnd.pid
+      eval starttunnel
+   fi
+}
+
+case $1 in
+    check)  if [ -d /proc/`cat ${LOCK_DIR}/vpnd.pid` ]; then
+               kill -USR1 `cat ${LOCK_DIR}/vpnd.pid`
+               exit 0
+            else
+               echo "vpnd is not running."
+               exit 1
+            fi ;;
+
+    reset)  if [ -d /proc/`cat ${LOCK_DIR}/vpnd.pid` ]; then
+               kill -HUP `cat ${LOCK_DIR}/vpnd.pid`
+               exit 0
+            else
+               echo "vpnd is not running."
+               exit 1
+            fi ;;
+
+   --help | -h)
+            echo "Usage: vpnd [ check | reset ]"
+            echo "Options:"
+            echo "     check    Sends running vpnd a USR1 signal, telling it to check"
+            echo "              the tunnel state, and restart if neccesary."
+            echo "     reset    Sends running vpnd a HUP signal, telling it to reset"
+            echo "              it's tunnel connection." ;; 
+esac
+
+ln -sf $ORIG_SSH $SSH
+settraps
+runchecks
+
+while true; do
+   i=0
+   while [ $i -lt 600 ]; do
+      i=((i+1))
+      sleep 1
+   done
+   eval checktunnel
+done
+
+</verb>
+			</p>
+		<sect1>LRP - Projet de Routeur Linux (Linux Router Project)
+			<p>
+				J'ai lancé cette installation sur un Pentium 90 exécutant la distribution
+				LRP de Linux. LRP est une distribution de Linux qui tient et se charge
+				sur une seule disquette. Vous en apprendrez plus sur <url
+				url="http://www.linuxrouter.org/" name="http://www.linuxrouter.org/">.
+				Vous pouvez télécharger <url
+				url="http://www.shinythings.com/vpnd/vpnd.lrp" name="ici">
+				mon package LRP pour le client VPN. Vous aurez aussi besoin des packages 
+				ppp et ssh du sîte LRP.
+			</p>
+	
+	<sect>Implémentation
+		<p>
+			Dans cette section, j'explique pas à pas comment mettre en place votre système
+			VPN. Je commencerais par le serveur, et poursuivrais avec le client. Pour les
+			besoins de l'exemple, j'inventerais une situation qui nécessitera différentes
+			mise en place de VPN.
+		</p>
+		<sect1>Organisation
+			<p>
+				Imaginons que nous ayons une entreprise, appelée monentreprise.com. 
+				Au siège, nous utilisons l'adresse réseau réservée 192.168.0.0, et séparons
+				le réseau de classe B en 256 réseaux de classe C pour permettre le 
+				routage. Nous venons de mettre en place deux petits bureaux distants, 
+				et souhaitons les ajouter à notre réseau. Nous souhaitons aussi permettre
+				aux employés travaillant chez eux d'utiliser leurs connexions câble ou 
+				DSL plutôt que de leur faire utiliser une communication directe par modem.
+				Pour commencer, nous devons organiser quelques peu les choses.
+			</p><p>
+				J'ai décidé que je voulais donner à chaque bureau distant une plage d'adresse
+				de classe C pour leur permettre de s'étendre si cela devait être nécessaire.
+				J'ai donc réservé les réseaux 192.168.10.0 et 192.168.11.0. J'ai aussi décidé
+				que pour les utilisateur se connectant depuis leur domicile, je disposais de 
+				suffisamment d'adresses et que je n'avais donc pas besoin de leur appliquer
+				de masquarade du côté du serveur VPN. Chaque client dispose de sa propre 
+				adresse IP interne. J'ai donc eu besoin de réserver une autre adresse réseau
+				de classe C pour cela, disons 192.168.40.0. La seule chose que j'ai alors du
+				faire fut d'ajouter ces espaces d'adresse à mon routeur. Imaginons que notre
+				entreprise possède un petit Cisco (192.168.254.254) qui gère tout le trafic
+				via notre OC1. Nous n'avons alors qu'à ajouter les routes sur le Cisco 
+				de telle manière que le trafic dirigé vers ces réseaux réservés soit
+				dirigé vers notre serveur VPN (192.168.40.254). J'ai considéré que le serveur
+				VPN appartenait au réseau de l'utilisateur se connectant depuis son domicile
+				pour une raison qui sera plus claire tout à l'heure. Nous appellerons l'interface
+				externe du serveur vpn.monentreprise.com, et l'interface interne 
+				vpn-interne.monentreprise.com.
+			</p><p>
+				Nous n'avons pas besoin de connaître explicitement les adresses externes. 
+				Vous devriez avoir les vôtres, fournies par votre FAI.
+			</p>
+		<sect1>Rassembler les outils
+			<p>
+				Nous allons avoir besoin de quelques logiciels. Récupérez les 
+				packages suivants, et installez les à l'endroit indiqué.
+			</p>
+			<sect2>Pour le serveur :
+			<p>
+				<itemize>
+					<item>pppd (version 2.3 ou supérieure)
+					<item>ssh (version 1.2.26 ou supérieure)
+				</itemize>
+			</p>
+			<sect2>Pour le client :
+			<p>
+				<itemize>
+					<item>pppd (la même version que le serveur)
+					<item>ssh
+					<item><url url="ftp://ftp.vein.hu/ssa/contrib/mag/pty-redir-0.1.tar.gz" name="pty-redir">
+				</itemize>
+			</p>
+		<sect1>Serveur: Compiler le noyau
+			<p>
+				Pour commencer, vous aurez probablement besoin de recompiler le noyau
+				pour le serveur. Il faut vous assurer que les options suivantes du noyau
+				sont activées, en plus des option réseaux de base, et de toutes celles
+				dont vous avez besoin. Si vous n'avez jamais compilé de noyau, référez vous au
+				<url url="/HOWTO/Kernel-HOWTO.html" name="Kernel HOWTO">.
+			</p><p>
+				Pour les noyaux 2.0 :	
+				<itemize>
+					<item>CONFIG_FIREWALL
+					<item>CONFIG_IP_FORWARD
+					<item>CONFIG_IP_FIREWALL
+					<item>CONFIG_IP_ROUTER
+					<item>CONFIG_PPP
+				</itemize>
+			</p><p>
+				Pour les noyaux 2.2 :
+				<itemize>
+					<item>CONFIG_FIREWALL
+					<item>CONFIG_IP_ADVANCED_ROUTER
+					<item>CONFIG_IP_FIREWALL
+					<item>CONFIG_IP_ROUTER
+					<item>CONFIG_PPP
+				</itemize>
+			</p>
+		<sect1>Serveur: Configurer les paramètres réseaux
+			<p>
+				Si vous préparez un serveur ne disposant que d'une carte réseau, je vous
+				suggère d'envisager d'en acheter une autre, et de refaire la connectique
+				de votre réseau. La meilleure méthode pour garder votre réseau privé est
+				encore de le doter de ses propres câbles.
+				Si vous avez deux cartes réseaux, vous aurez besoin de savoir les configurer.
+				Nous nous servirons de eth0 comme interface externe, et de eth1
+				comme interface interne.
+			</p>
+			<sect2>Configurer les interfaces
+				<p>
+					Nous devons tout d'abord configurer l'interface externe du serveur.
+					Vous êtes censé savoir le faire, et l'avez probablement déjà fait.
+					Si ce n'est pas le cas, faites le. Si vous ne savez pas le faire, 
+					référez vous au 
+					<url url="/HOWTO/NET3-4-HOWTO.html" name="Networking HOWTO">
+				</p><p>
+					Occupons nous maintenant de l'interface interne. Selon la numérotation
+					que nous avons choisi, elle dispose de l'adresse 192.168.40.254.
+				</p><p>
+					Pour les noyaux 2.0, utilisez les commandes suivantes :
+				</p><p>
+<verb>
+&num; /sbin/ifconfig eth1 192.168.40.254 netmask 255.255.255.0 broadcast 192.168.40.255
+&num; /sbin/route add -net 192.168.40.0 netmask 255.255.255.0 dev eth1
+</verb>
+				</p><p>
+					Pour les noyaux 2.2, utilisez la commande suivante :
+				</p><p>
+<verb>
+&num; /sbin/ifconfig eth1 192.168.40.254 netmask 255.255.255.0 broadcast 192.168.40.255
+</verb>
+				</p><p>
+					Cela active nos interfaces. Vous pouvez maintenant communiquer avec
+					les machines situées sur les deux réseaux connectés localement au serveur.
+				</p>
+			<sect2>Mettre les routes en place
+				<p>
+					Nous pouvons parler aux machines situées sur nos réseaux locaux, mais ne pouvons
+					accéder au reste de notre réseau interne. Ceci nécessite quelques lignes de code
+					supplémentaires. Pour pouvoir atteindre les machines situées sur les autres
+					sous-réseaux, nous devons avoir une route envoyant le trafic vers le routeur
+					Cisco. C'est ce que fait la commande suivante :
+<verb>
+&num; /sbin/route add -net 192.168.0.0 gw 192.168.254.254 netmask 255.255.0.0 dev eth1
+</verb>
+				</p><p>
+					Cette ligne indique au noyau que le trafic destiné au réseau 192.168.0.0 devrait
+					être envoyé par eth1, et transmis au Cisco. Le trafic pour notre réseau local
+					va toujours où il est supposé aller puisque les tables de routage sont ordonnées
+					par taille de masque de sous-réseau. Si nous devions avoir d'autres réseaux
+					internes dans notre réseau, nous devrions avoir une ligne comme celle-ci pour
+					chacun d'entre eux.
+			<sect2>Mettre en place les règles de filtrage
+				<p>
+					Très bien, nous pouvons donc atteindre toutes les machines que nous voulons.
+					Nous devons maintenant écrire les règles de filtrage du firewall qui autorise
+					ou refuse l'accès au via le serveur VPN.
+				</p><p>
+					Pour mettre en place les règles avec <tt>ipfwadm</tt>, lancez le ainsi :
+				</p><p>
+<verb>
+&num; /sbin/ipfwadm -F -f
+&num; /sbin/ipfwadm -F -p deny
+&num; /sbin/ipfwadm -F -a accept -S 192.168.40.0/24 -D 192.168.0.0/16
+&num; /sbin/ipfwadm -F -a accept -b -S 192.168.10.0/24 -D 192.168.0.0/16
+&num; /sbin/ipfwadm -F -a accept -b -S 192.168.11.0/24 -D 192.168.0.0/16
+</verb>
+				</p><p>
+					Pour mettre en place les règles avec <tt>ipchains</tt>, lancez le ainsi :
+				</p><p>
+<verb>
+&num; /sbin/ipchains -F forward
+&num; /sbin/ipchains -P forward DENY
+&num; /sbin/ipchains -A forward -j ACCEPT -s 192.168.40.0/24 -d 192.168.0.0/16
+&num; /sbin/ipchains -A forward -j ACCEPT -b -s 192.168.10.0/24 -d 192.168.0.0/16
+&num; /sbin/ipchains -A forward -j ACCEPT -b -s 192.168.11.0/24 -d 192.168.0.0/16
+</verb>
+				</p><p>
+					Cela dit au noyau de refuser tout trafic, excepté celui provenant du réseau
+					192.168.40.0/24 et destiné au réseau 192.168.0.0/16. Le trafic est autorisé
+					entre les réseaux 192.168.10.0/24 et 192.168.0.0/16, de même que pour le réseau
+					192.168.11.0. Ces deux dernières règles sont bi-directionnelles, ce qui est 
+					important pour obtenir un routage fonctionnant dans les deux sens.
+				</p>
+			<sect2>Le routage
+				<p>
+					Pour les utilisateurs souhaitant se connecter depuis leur domicile, tout 
+					fonctionnera parfaitement à partir de maintenant. Toutefois, pour les
+					bureaux distants, nous devons réaliser un peu de routage. Nous devons 
+					tout d'abord dire au routeur principal que les bureaux
+					distants sont derrière le serveur VPN, et donc lui spécifier des routes 
+					indiquant d'envoyer le trafic destiné aux bureaux distants au VPN. 
+					Ceci fait, il faut indiquer au serveur VPN ce qu'il doit faire de ce trafic.
+					Pour ce faire, il faut lancer la commande <tt>route</tt> sur le serveur. Le
+					seul problème est que pour que celle-ci fonctionne, la liaison doit fonctionner.
+					Si celle-ci tombe, la route sera perdue. La solution consiste à ajouter les
+					routes quand les clients se connectent, ou, plus simplement, à lancer la commande
+					route fréquemment, étant donné qu'il n'est pas grave de l'utiliser plus que
+					nécessaire. De fait, créez un script contenant les lignes suivantes, 
+					et ajoutez le à votre crontab pour qu'il soit lancé toutes les quelques minutes.  
+			</p><p>
+<verb>
+/sbin/route add -net 192.168.11.0 gw 192.168.10.253 netmask 255.255.255.0
+/sbin/route add -net 192.168.10.0 gw 192.168.11.253 netmask 255.255.255.0
+</verb>
+				</p>
+		<sect1>Serveur: Configurer <tt>pppd</tt>
+			<p>
+				Nous allons maintenant configurer pppd sur le serveur pour gérer les connections au VPN.
+				Si vous utilisez déjà ce serveur pour gérer des utilisateurs accédant au réseau par
+				modem, ou que vous même vous servez d'un modem pour sortir du réseau, sachez que ces 
+				modifications peuvent affecter ces services. J'expliquerais 
+				comment éviter les conflits à la fin de cette section.
+ 			</p>
+ 			<sect2><tt>/etc/ppp/</tt>
+ 				<p>
+					Ce répertoire peut contenir de nombreux fichiers. Vous disposez déjà probablement
+ 					d'un fichier appelé <tt>options</tt>.  Ce fichier contient toutes les options
+ 					globales pour <tt>pppd</tt>. Elles ne peuvent être surchargées par 
+ 					l'utilisation de <tt>pppd</tt> en ligne de commande.
+ 				</p>
+ 			<sect2><tt>/etc/ppp/options</tt>
+ 				<p>
+ 					Votre fichier <tt>options</tt> devrait au moins contenir les paramètres suivants :
+ 				</p><p>
+<verb>
+ipcp-accept-local
+ipcp-accept-remote
+proxyarp
+noauth
+</verb>
+ 				</p><p>
+					Les deux premières lignes indiquent à <tt>pppd</tt> d'accepter que l'autre
+					côté spécifie les adresses IP. Ces options sont nécessaires lorsque l'on se connecte
+					avec des bureaux distants, mais peut être désactivée si l'on ne la fait
+					qu'avec des travailleurs à domicile. Les laisser activées ne pose pas de problèmes,
+					étant donné qu'elles n'empêchent pas le serveur d'assigner une adresse, mais 
+					informe simplement celui-ci que le client a le droit d'en proposer une.
+ 				</p><p>
+ 					La troisième ligne est très importante.  Selon la page man de <tt>pppd</tt> :
+ 				</p><p>
+<verb>
+proxyarp
+	Ajoute une entrée à la table ARP [Address Resolution
+	Protocol] de ce système avec l'adresse IP du pair
+	et l'adresse Ethernet de ce système. Cela aura pour 
+	effet de faire croire aux autres systèmes que
+	le pair est situé sur l'ethernet local.
+</verb>		
+				</p><p>
+					C'est une option importante, car si elle n'est pas utilisée, le trafic
+					local ne pourra pas revenir par le tunnel.
+ 				</p><p>
+					La dernière ligne est toute aussi importante. Elle informe <tt>pppd</tt> 
+					qu'il faut autoriser les connections sans nom d'utilisateur ni mot de passe.
+					Cette méthode ne nuit pas à la sécurité, puisque l'authentification est
+					déjà réalisée par <tt>sshd</tt>.
+ 				</p>
+			<sect2>Eviter les conflits
+	 			<p>
+					Si vous gérez d'autres services avec <tt>pppd</tt>, vous devez considérer
+					que les configurations respectives de ces autres services peuvent être
+					différentes de celle requise par le VPN.  <tt>pppd</tt> est conçu pour que
+					les options du fichier d'options principal <tt>/etc/ppp/options</tt> ne
+					puissent pas être surchargées par les options spécifiées au moment de
+					l'exécution, et ceci pour des raisons de sécurité. Afin d'éviter les conflits,
+					déterminez les options qui en sont à l'origine, et déplacez les du fichier
+					principal vers un fichier d'option distinct, chargé lorsque l'application
+					appropriée de <tt>pppd</tt> est lancée. 
+	 			</p>
+		<sect1>Serveur: Configurer <tt>sshd</tt>
+			<p>
+				Voici a quoi ressemble mon fichier <tt>/etc/sshd_config</tt>, et à quoi devrait
+				approximativement ressembler le votre :
+			</p><p>
+<verb>
+# Fichier de configuration ssh du serveur
+
+Port 22
+ListenAddress 0.0.0.0
+HostKey /etc/ssh_host_key
+RandomSeed /etc/ssh_random_seed
+ServerKeyBits 768
+LoginGraceTime 600
+KeyRegenerationInterval 3600
+PermitRootLogin yes
+IgnoreRhosts yes
+StrictModes yes
+QuietMode no
+FascistLogging yes
+CheckMail no
+IdleTimeout 3d
+X11Forwarding no
+PrintMotd no
+KeepAlive yes
+SyslogFacility DAEMON
+RhostsAuthentication no
+RhostsRSAAuthentication no
+RSAAuthentication yes
+PasswordAuthentication no
+PermitEmptyPasswords no
+UseLogin no
+</verb>
+			</p><p>
+				Il est important de remarquer que l'authentification par mot de passe a été désactivée, 
+				tout comme tous les autres services &quot;r&quot;.  J'ai aussi désactivé la notification
+				de mail, et le message du jour, étant donné qu'il peuvent désorienter <tt>pppd</tt> du
+				côté client. J'autorise toujours la connexion en tant que root, qui reste sûre étant
+				donné qu'elle requiert l'utilisation d'une clé.
+			</p>
+		<sect1>Serveur: Mettre en place les comptes utilisateurs<label id="user-accounts">
+			<p>
+				Nous allons maintenant mettre en place les comptes utilisateurs.
+			</p>
+			<sect2>Ajouter un groupe <tt>vpn-users</tt>
+				<p>
+					lancez simplement:
+				</p><p>
+<verb>
+&num; /usr/sbin/groupadd vpn-users
+</verb>
+				</p><p>
+					Faites maintenant un cat du fichier <tt>/etc/group</tt> et regardez la dernière
+					ligne. Il doit s'agir de l'entrée pour le groupe vpn-users. Remarquez le 
+					troisième champ. Il s'agit de l'identifiant du groupe (Group ID ou GID).
+					Notez le, étant donné que nous allons en avoir besoin sous peu. Dans notre
+					exemple, GID vaut 101.
+				</p>
+			<sect2>Créer le répertoire domicile des <tt>vpn-users</tt>
+				<p>
+					Nous utiliserons un seul répertoire domicile pour tous les utilisateurs.
+					Lancez simplement :
+				</p><p>
+<verb>
+&num; mkdir /home/vpn-users
+</verb>
+				</p>
+			<sect2>Le répertoire <tt>.ssh</tt>
+				<p>
+					Créez maintenant le répertoire <tt>.ssh</tt> dans le répertoire
+					domicile des <tt>vpn-users</tt>.
+				</p><p>
+<verb>
+&num; mkdir /home/vpn-users/.ssh
+</verb>
+				</p>
+			<sect2>Ajouter des utilisateurs
+				<p>
+					Ca devient amusant. Nous allons éditer le fichier <tt>/etc/passwd</tt> à la
+					main :) . Normalement, vous laissez le système gérer ce fichier, mais pour 
+					une installation aussi étrange que celle-ci, il est plus simple de le faire
+					vous même. Pour commencer, ouvrons le fichier <tt>/etc/passwd</tt> et 
+					regardons ce qu'il contient. Voici un exemple de ce que vous pourriez trouver:
+				</p><p>
+<verb>
+...
+nobody:x:65534:100:nobody:/dev/null:
+mwilson:x:1000:100:Matthew Wilson,,,:/home/mwilson:/bin/bash
+joe:*:1020:101:Joe Mode (home),,,:/home/vpn-users:/usr/sbin/pppd
+bill:*:1020:101:Bill Smith (home),,,:/home/vpn-users:/usr/sbin/pppd
+frank:*:1020:101:Frank Jones (home),,,:/home/vpn-users:/usr/sbin/pppd
+...
+</verb>
+				</p><p>
+					Vous trouverez le premier utilisateur sur la plupart des systèmes. Le
+					suivant, c'est moi :). Après viennent quelques vpn-users que j'ai créé.
+					Le premier champ est le nom d'utilisateur, le second le mot de passe. 
+					Le troisième est l'identifiant d'utilisateur (User ID ou UID), et le
+					quatrième l'identifiant de groupe. Après viennent certaines infos sur 
+					l'identité de l'utilisateur (dans le cinquième champ). Le sixième est 
+					le répertoire domicile de l'utilisateur, et le dernier son shell. Comme
+					vous pouvez le voir, chaque champ est séparé par une deux points.
+					Regardez les trois dernières lignes. La seule différence existant entre 
+					eux est le nom d'utilisateur du premier champ et l'information sur 
+					l'utilisateur dans le cinquième. Nous souhaitons créer une ligne comme
+					celles-ci pour chaque utilisateur. Evitez d'utiliser un seul utilisateur
+					pour toutes les connections, faute de quoi il vous sera impossible de 
+					les différencier par la suite. Donc, copiez la dernière ligne du fichier, 
+					et éditez la afin de qu'elle ressemble à notre exemple. Assurez vous que 
+					le second champ contient une astérisque. Le troisième champ devrait être unique
+					par rapport à tous les autres identifiants dans le fichier. J'ai utilisé 
+					1020. Vous devriez utiliser un nombre supérieur à 1000, étant donné que
+					les nombres inférieurs à 1000 sont généralement réservés pour le système.
+					Le quatrième champ devrait être l'identifiant du groupe vpn-users. Je vous
+					ai dit tout à l'heure de l'écrire, c'est maintenant qu'il faut s'en servir.
+					Donc, mettez ici l'identifiant du groupe. Enfin, changez le répertoire
+					domicile en <tt>/home/vpn-users</tt>, et le shell en <tt>/usr/sbin/pppd</tt>.
+					C'est fait. Maintenant, copiez celle ligne pour créer plus d'utilisateurs.
+					Editez simplement le premier et le dernier champ, et c'est fait.
+				</p>
+		<sect1>Serveur: Administration
+			<p>
+				Un des avantages de l'utilisation de ce systèmes pour les comptes utilisateurs
+				est que l'on peut bénéficier des commandes d'administrations d'utilisateur UNIX.
+				Comme chaque client est connecté en tant qu'utilisateur, on peut utiliser les 
+				méthodes standards pour obtenir les statistiques des utilisateurs. Voici quelques
+				commandes que j'aime utiliser pour voir ce qui se passe:
+			</p><p>
+			<descrip>
+				<p><tag>who</tag>
+					Affiche les utilisateurs connectés actuellement, ainsi que le moment où
+					ils se sont connectés, de quelle machines (par le nom de celle-ci ou
+					son adresse IP), et sur quel port.
+				<p><tag>w</tag>
+					Cette commande affiche une description plus exhaustive des entités actuellement
+					connectées. Il fournit aussi le temps écoulé depuis la mise en fonctionnement
+					du système, ainsi que sa charge. De même, il liste les processus des utilisateurs
+					(qui devraient être -pppd pout les client VPN) qui tournent, le temps processeur
+					non utilisé (idle time), et l'utilisation faite du processeur, pour chacun des
+					processus et pour le processus courant. Référez vous à la page man <tt>w</tt>
+					pour plus d'information.
+				<p><tag>last [nom_utilisateur]</tag>
+					Cette commande fournit l'historique pour l'utilisateur spécifié, et pour tout les
+					utilisateurs si aucun nom_utilisateur n'est fourni. Elle est particulièrement
+					utile pour s'assurer que les tunnels fonctionnent bien, car elle affiche le
+					temps écoulé depuis la connexion de l'utilisateur, et donne la liste des
+					utilisateur connectés. Je dois vous prévenir que sur un système qui n'a 
+					pas été redémarré depuis longtemps, cette liste peut devenir extrêmement longue.
+					Je vous conseille donc de l'utiliser conjointement avec <tt>grep</tt> ou
+					<tt>head</tt>, grâce à un pipe, pour découvrir exactement ce que vous souhaitez.
+			</descrip>
+			</p><p>
+				Vous pouvez aussi contrôler quels utilisateurs sont autorisés à se connecter en 
+				modifiant le fichier <tt>/home/vpn-users/.ssh/authorized_keys</tt>.
+				Si vous en retirez la ligne contenant la clé publique d'un utilisateur, il ne
+				sera plus capable de se reconnecter.
+			</p>
+		
+		<sect1>Client: Compiler le noyau
+			<p>
+				Nous nous intéressons maintenant au client. Nous devons tout d'abord recompiler le
+				noyau pour qu'il contienne toutes les fonctionnalités nécessaires. Il faut au minimum
+				disposer de ppp dans le noyau. Après cela, il nous faudra les fonctions de forwarding, 
+				de firewall, et de passerelle, mais seulement si vous comptez autoriser d'autres 
+				machines à accéder au tunnel. Dans cet exemple, je configurerais une des machines du
+				bureau distant. Ajoutez les options ci-dessous à votre noyau. Une fois encore, si
+				vous n'avez jamais recompilé de noyau, référez vous au
+				<url url="/HOWTO/Kernel-HOWTO.html" name="Kernel HOWTO">.
+			</p><p>
+				Pour les noyaux 2.0:
+				<itemize>
+					<item>CONFIG_PPP
+					<item>CONFIG_FIREWALL
+					<item>CONFIG_IP_FORWARD
+					<item>CONFIG_IP_FIREWALL
+					<item>CONFIG_IP_ROUTER
+					<item>CONFIG_IP_MASQUERADE
+					<item>CONFIG_IP_MASQUERADE_ICMP
+				</itemize>
+			</p><p>
+				Pour les noyaux 2.2:
+				<itemize>
+					<item>CONFIG_PPP
+					<item>CONFIG_FIREWALL
+					<item>CONFIG_IP_ADVANCED_ROUTER
+					<item>CONFIG_IP_FIREWALL
+					<item>CONFIG_IP_ROUTER
+					<item>CONFIG_IP_MASQUERADE
+					<item>CONFIG_IP_MASQUERADE_ICMP
+				</itemize>
+			</p>
+		<sect1>Client: Configurer les paramètres réseaux
+			<p>
+				Nous devons maintenant configurer les paramètres réseaux sur notre client.
+				Considérons que tout fonctionne correctement avec le réseau externe. Nous allons
+				maintenant mettre en place l'interface interne du client notre intranet.
+			</p>
+			<sect2>Interface
+				<p>
+					Nous devons tout d'abord configurer l'interface réseau interne. Pour ce faire,
+					ajoutez les lignes suivantes à votre fichier <tt>/etc/rc.d/rc.inet1</tt> 
+					(ou équivalent):
+				</p><p>
+					Pour les noyaux 2.0 : 
+				</p><p>
+<verb>
+/sbin/ifconfig eth1 192.168.10.253 broadcast 192.168.10.255 netmask 255.255.255.0
+/sbin/route add -net 192.168.10.0 netmask 255.255.255.0 dev eth1
+</verb>
+				</p><p>
+					Pour les noyaux 2.2 : 
+				</p><p>
+<verb>
+/sbin/ifconfig eth1 192.168.10.253 broadcast 192.168.10.255 netmask 255.255.255.0
+</verb>
+			<sect2>Règles de filtrage
+				<p>
+					Pour configurer le bureau distant, nous voulons mettre en place des règles
+					de filtrage qui permettent au trafic d'emprunter le tunnel dans les 
+					deux directions. Ajoutez pour cela les lignes suivantes à votre fichier
+					<tt>/etc/rc.d/rc.inet1</tt> ou équivalent: 
+				</p><p>
+					Pour les noyaux 2.0 :
+				</p><p>
+<verb>
+/sbin/ipfwadm -F -f
+/sbin/ipfwadm -F -p deny
+/sbin/ipfwadm -F -a accept -b -S 192.168.10.0/24 -D 192.168.0.0/16
+</verb>
+				</p><p>
+					Pour les noyaux 2.2 :
+				</p><p>
+<verb>
+/sbin/ipchains -F forward
+/sbin/ipchains -P forward DENY
+/sbin/ipchains -A forward -j ACCEPT -b -s 192.168.10.0/24 -d 192.168.0.0/16
+</verb>
+				</p><p>
+					Vous avez peut-être remarqué que ces lignes ressemblent à celles que nous avons
+					sur le serveur. C'est parce qu'elles sont identiques. Elles décrivent simplement
+					où le trafic est autorisé à aller, c'est à dire entre les deux réseaux.
+				</p>
+			<sect2>Routage
+				<p>
+					Les seules deux routes supplémentaires nécessaires sont crées par le script
+					qui met en place le tunnel.
+				</p>
+		<sect1>Client: Configurer <tt>pppd</tt>
+			<p>
+				Vous n'aurez peut-être pas besoin d'éditer le fichier <tt>/etc/ppp/options</tt> du
+				client. Ce ne sera nécessaire que si l'option "auth" ou certaines autres options
+				sont présentes. Essayez, et si ça ne marche pas, un fichier <tt>/etc/ppp/options</tt>
+				vide fonctionnera. Continuez simplement à ajouter les options de l'ancien fichier pour
+				savoir laquelle pose problème (si ce n'est pas évident), et regardez si vous pouvez
+				vous en passer. Peut-être est-ce le cas, notamment si vous ne vous servez de <tt>pppd</tt> 
+				pour rien d'autre.
+			</p>
+		<sect1>Client: Configurer <tt>ssh</tt>
+			<p>
+				En tant que root, exécutez les lignes suivantes sur le client:
+			</p><p>
+<verb>
+&num; mkdir /root/.ssh
+&num; ssh-keygen -f /root/.ssh/identity.vpn -P ""
+</verb>
+			</p><p>
+				Ces commandes vont créer deux fichiers, <tt>identity.vpn</tt> et
+				<tt>identity.vpn.pub</tt> dans le répertoire <tt>.ssh</tt>. Le premier est votre
+				clé privée, et devrait le rester. <em>NE L'ENVOYEZ JAMAIS SUR LE RESEAU</em>, à 
+				moins que ce ne soit au travers d'un transfert chiffrée. Le second fichier est 
+				votre clé publique, et vous pouvez l'envoyer où vous voulez, il ne sert 
+				qu'à vous autoriser l'accès aux autres systèmes, et ne peut être utilisé 
+				pour pénétrer le votre. Il s'agit d'un fichier texte d'une ligne, codant votre clé. 
+				A la fin de la ligne se trouve le champ commentaire, que vous pouvez modifier sans 
+				craindre de briser la clé. Voici un exemple de clé : 
+			</p><p>
+<verb>
+1024 35 1430723736674162619588314275167.......250872101150654839 root@vpn-client.mycompany.com
+</verb>
+			</p><p>
+				C'est en fait beaucoup plus long que cela, mais ça ne tiendrait pas sur une page si
+				je montrais la totalité de la chose. Copiez votre clé dans le fichier
+				<tt>/home/vpn-users/.ssh/authorized_keys</tt> sur le serveur. Assurez vous 
+				qu'il s'agit de la seule clé de la ligne, et que chaque clé n'est pas séparée sur
+				de multiples lignes. Vous pouvez modifier le champ de commentaire comme vous voulez
+				pour vous rappeler quelle clé corresponds à quel utilisateur. Je vous le recommande
+				fortement. 
+			</p>
+		<sect1>Client: mettre en place la connexion
+			<p>
+				Nous allons maintenant essayer de réaliser la connexion au serveur VPN. Tout d'abord, 
+				nous avons besoin d'éditer le fichier known_hosts de <tt>ssh</tt> pour réaliser 
+				la moindre connexion. Exécutez ceci:
+			</p><p>
+<verb>
+&num; ssh vpn.mycompany.com
+</verb>
+			</p><p>
+				Répondez par l'affirmative lorsqu'il vous est demandé si vous souhaitez continuer
+				à vous connecter. Le serveur va répondre ''permission denied'', mais c'est normal.
+				Il est important que vous utilisiez le même nom pour le serveur que celui que vous
+				utilisez pour vos scripts de connexion. Exécutez maintenant les lignes suivantes. 
+				Vous aurez évidement besoin de changer la plupart des options pour correspondre
+				à votre installation.
+			</p><p>
+<verb>
+&num; /usr/sbin/pty-redir /usr/bin/ssh -t -e none -o 'Batchmode yes' -c blowfish -i /root/.ssh/identity.vpn -l vpn-user vpn.mycompany.com > /tmp/vpn-device
+
+	(Maintenant, attendez à peu près 10 secondes)
+
+&num; /usr/sbin/pppd `cat /tmp/vpn-device` 192.168.10.254:192.168.40.254
+</verb>
+			</p><p>
+				Remarquez les adresses IP spécifiées dans la ligne pppd. La première est
+				l'adresse du client à l'autre bout du tunnel. La seconde est l'adresse 
+				de l'issue du tunnel coté serveur, mise à la valeur de l'adresse interne
+				du serveur. Si tout semble fonctionner, continuez. Si non, vérifiez que
+				vous avez bien toutes les options, et qu'elles sont correctement entrée.
+				Si les problèmes persistent, vérifiez la <ref id="pitfalls" name="section Problèmes">.
+			</p>
+		<sect1>Client: Définir les routes
+			<p>
+				Définissez maintenant la route pour envoyer le trafic au travers du tunnel. Lancez
+				simplement cette commande :
+			</p><p>
+<verb>
+&num; /sbin/route add -net 192.168.0.0 gw vpn-internal.mycompany.com netmask 255.255.0.0
+</verb>
+			</p><p>
+				Vous devriez maintenant être capable de communiquer avec les machines de 
+				l'autre côté du tunnel. Faites un essais... Nickel, hein? Si ça ne 
+				fonctionne pas, essayez d'utiliser <tt>ping</tt> et <tt>traceroute</tt> 
+				pour découvrir où se situe le problème. Si en fait ça fonctionne réellement, 
+				continuez en mettant en place des scripts qui feront le travail pour vous.
+			</p>
+		<sect1>Client: Faire des scripts
+			<p>
+				Utilisez le script vpnd que je montre <ref id="vpn-script" name="ici">.
+				Vous n'avez qu'à le modifier un petit peu. Faites les changements suivants:
+			</p><p>
+			<itemize>
+				<item>Changez les variables du début pour correspondre à votre configuration.
+					La plupart sont probablement corrects, mais vous pouvez les changer
+					si vous en avez besoin...
+				<item>Ligne 27: ajoutez les adresses IP locales et distantes avant $PPP_OPTIONS
+				<item>Ligne 31: changez cette ligne, et les deux suivantes pour configurer les 
+					routes pour votre réseau interne.
+			</itemize>
+
+			<sect2>Le maintenir en état de fonctionnement
+				<p>
+					Même si les scripts bash sont généralement stables, il sont connus
+					pour planter parfois. Pour s'assurer que le script <tt>vpnd</tt> continue
+					à tourner, ajoutez une entrée dans la contab du client qui exécute
+					le script <tt>check-vpnd</tt>. Je lance le mien toute les cinq minutes à 
+					peu près. Si <tt>vpnd</tt> tourne réellement, <tt>check-vpnd</tt> n'utilise
+					pas beaucoup de puissance de calcul.
+				</p>
+	<sect>Annexes
+		<sect1>Problèmes<label id="pitfalls">
+			<p>
+				Voici quelques-uns des problèmes que j'ai rencontré alors que j'utilisais ce système.
+				Je les ai indiqués ici dans l'espoir que vous puissiez les éviter. Si vous rencontrez
+				un problème que je ne décris pas ici, envoyez moi un
+				<url url="mailto:matthew@shinythings.com" name="courrier électronique"> pour que 
+				je puisse le référencer et permettre aux autres de l'éviter.
+			</p>
+			<sect2>Lecture : erreur d'entrée/sortie
+				<p>
+					Cette erreur vient apparemment de pppd. C'est du à l'utilisation d'une mauvaise
+					version de pppd. Si cela vous arrive, essayez de mettre à jour les deux 
+					côtés de la connexion avec la dernière version de pppd. J'ai découvert 
+					que la version 2.2 pose problème, et utilise les versions 2.3.7 ou 2.3.8 
+					à la place.
+				</p>
+			<sect2>SIOCADDRT: Le réseau est non-atteignable
+				<p>
+					Cette erreur est générée par <tt>route</tt>. Je l'ai vu se produire quand le
+					temps d'attente entre <tt>ssh</tt> et <tt>pppd</tt> n'est pas assez grand.
+					Si vous rencontrez cette erreur, lancez <tt>ifconfig</tt>, il se peut que 
+					vous vous aperceviez qu'il n'y a pas d'interface pppX. Cela signifie que 
+					<tt>ssh</tt> n'avait pas fini l'authentification avant que <tt>pppd</tt> 
+					ne soit lancé, et que <tt>pppd</tt> n'ait donc pu réaliser la connexion.
+					Augmentez simplement le délai d'attente, et vos problèmes seront résolus.
+				</p><p>
+					Je me demande toutefois s'il n'existe pas une option pppd qui règlerait
+					ce problème.
+				</p>
+			<sect2>Transmission IPv4 et les noyaux 2.2<label id="ipv4forwarding">
+				<p>
+					Dans les nouveaux noyaux 2.2, vous devez spécifier que vous installez
+					le forwarding IPv4 dans le noyau au démarrage. Ce qui se fait avec la
+					commande suivante:
+				</p><p>
+<verb>
+&num; echo 1 > /proc/sys/net/ipv4/ip_forward
+</verb>
+				</p><p>
+					Sans cela, le noyau ne transmettra aucun datagramme, et le serveur ne
+					fonctionnera donc pas, pas plus qu'aucun des clients passerelles.
+				</p>
+			<sect2>Routage
+				<p>
+					Cela va sans dire, mais faites attention quand vous routez des adresses
+					réelles que vous ne routez pas le trafic destiné aux adresses externes
+					du serveur VPN au travers du tunnel. Ca ne le fera pas (Oui, il s'agit 
+					<em>vraiment</em> d'une expérience personnelle). 
+				</p>
+		<sect1>Configuration minimale matérielle et logicielle
+			<sect2>Configuration matérielle minimale
+				<p>
+					Croyez le ou pas, ce système a été exécuté sur un 486SX33 avec 8 Mo de RAM.
+					Ca ne marchait toutefois pas très bien, car il avait des problèmes à 
+					gérer le gros trafic.
+				</p><p>
+					Ca n'a cependant pas été trop dur de le faire fonctionner. Ce système 
+					marche très bien sur un Pentium 75 avec 16 Mo de RAM, utilisant une 
+					distribution LRP sur disquette, avec 6 Mo de ramdisk, et 10 Mo de mémoire
+					principale. J'ai testé cette configuration en faisant passer un flux RealVideo
+					à 700Kbits au travers pendant plus d'une heure.
+				</p><p>
+					Je le fait maintenant fonctionner en général sur des Pentium 90, étant donné
+					que leur fréquence d'horloge fonctionne mieux avec les cartes Ethernet à
+					100Mbits/sec.
+				</p>
+			<sect2>Configuration logicielle minimale
+				<p>
+					Ce système fonctionne tant avec les noyaux 2.0 qu'avec les 2.2. Le script
+					permettant de garder le tunnel en fonctionnement demande un bash raisonnablement
+					moderne. J'ai toutefois remarqué que les versions de bash que l'on trouve
+					sur certaines distributions ne fonctionnent pas très bien avec le script.
+				</p><p>
+					De fait, si quelqu'un pouvait m'aider à améliorer mes scripts (ou même 
+					à écrire un exécutable?), ça m'aiderait beaucoup. Je ne suis pas certains 
+					de savoir pourquoi, mais même mon propre bash ne suit pas les règles et ne 
+					semble pas interpréter les signaux correctement. Si vous faites des améliorations, 
+					envoyez moi un courrier électronique à 
+					<url url="mailto:matthew@shinythings.com" name="matthew@shinythings.com">
+					s'il vous plait.
+				</p>
+		
+</article>
